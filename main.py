@@ -1,13 +1,16 @@
 """
 sus-adb
 Android Device Companion
-
-Main application entry point.
 """
+
+from app.gui.main_window import SusADBWindow
 
 
 def main():
-    print("sus-adb initializing...")
+
+    app = SusADBWindow()
+
+    app.mainloop()
 
 
 if __name__ == "__main__":

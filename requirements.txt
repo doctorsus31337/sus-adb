@@ -1,5 +1,5 @@
-# GUI
+# GUI Framework
 customtkinter
 
-# Utilities
+# System Utilities
 psutil
