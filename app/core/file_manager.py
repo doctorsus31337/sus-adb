@@ -1,7 +1,3 @@
-"""
-File utilities.
-"""
-
 from tkinter import filedialog
 
 
@@ -11,33 +7,16 @@ class FileManager:
     def save_console(text):
 
         filename = filedialog.asksaveasfilename(
-
             defaultextension=".txt",
-
             filetypes=[
-
-                ("Text Files","*.txt"),
-
-                ("Log Files","*.log"),
-
-                ("All Files","*.*")
-
+                ("Text Files", "*.txt"),
+                ("Log Files", "*.log"),
+                ("All Files", "*.*")
             ]
-
         )
 
         if not filename:
-
             return
 
-        with open(
-
-            filename,
-
-            "w",
-
-            encoding="utf-8"
-
-        ) as f:
-
+        with open(filename, "w", encoding="utf-8") as f:
             f.write(text)

@@ -1,9 +1,3 @@
-"""
-Embedded terminal manager.
-
-Runs subprocesses and streams stdout back to the GUI.
-"""
-
 import subprocess
 import threading
 
@@ -14,44 +8,29 @@ class TerminalManager:
 
         self.log = log_callback
 
-
     def execute(self, command):
 
-        thread = threading.Thread(
-            target=self._run,
-            args=(command,),
-            daemon=True
-        )
-
+        thread = threading.Thread(target=self._run, args=(command,), daemon=True)
         thread.start()
-
 
     def _run(self, command):
 
-        self.log(f"> {command}")
+        self.log(f"[CMD] {command}")
 
         process = subprocess.Popen(
-
             command,
-
             shell=True,
-
             stdout=subprocess.PIPE,
-
             stderr=subprocess.STDOUT,
-
             universal_newlines=True
-
         )
 
         for line in process.stdout:
-
-            self.log(
-                line.rstrip()
-            )
+            self.log(line.rstrip())
 
         process.wait()
 
-        self.log(
-            f"[Process exited with code {process.returncode}]"
-        )
+        if process.returncode == 0:
+            self.log("[OK] Command completed successfully.")
+        else:
+            self.log(f"[ERROR] Command exited with code {process.returncode}.")
