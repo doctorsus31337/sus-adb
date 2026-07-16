@@ -284,6 +284,7 @@ class SusADBWindow(ctk.CTk):
 
             return
 
+        first = True
         for device in devices:
 
             self.device_list.insert(
@@ -295,11 +296,31 @@ class SusADBWindow(ctk.CTk):
                 f"[OK] Found device: {device}"
             )
 
+            if first:
+                self.show_device_info(device)
+                first = False
+
         self.status.configure(
             text=f"{len(devices)} device(s) connected."
         )
 
     ############################################################
+
+
+    def show_device_info(self, serial):
+
+        info = self.adb.device_info(serial)
+
+        self.info.delete("1.0", "end")
+
+        for key, value in info.items():
+
+            self.info.insert(
+                "end",
+                f"{key}\n{value}\n\n"
+            )
+
+
 
     def connect_device(self):
 
