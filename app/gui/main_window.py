@@ -18,10 +18,10 @@ from app.core.terminal_manager import TerminalManager
 class SusADBWindow(ctk.CTk):
 
     def __init__(self):
-        
-        MenuBar(self)
 
         super().__init__()
+        
+        MenuBar(self)
 
         self.theme = get_theme()
 
@@ -209,10 +209,10 @@ class SusADBWindow(ctk.CTk):
         
     def clear_console(self):
 
-    self.console.delete(
-        "1.0",
-        "end"
-    )
+        self.console.delete(
+            "1.0",
+            "end"
+        )
 
 
     def save_console(self):
