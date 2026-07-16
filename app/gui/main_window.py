@@ -4,6 +4,9 @@ sus-adb Main GUI Window
 
 import customtkinter as ctk
 
+from app.gui.menu_bar import MenuBar
+from app.core.file_manager import FileManager
+
 from app.gui.theme import get_theme
 from app.gui.device_panel import DevicePanel
 from app.gui.command_bar import CommandBar
@@ -15,6 +18,8 @@ from app.core.terminal_manager import TerminalManager
 class SusADBWindow(ctk.CTk):
 
     def __init__(self):
+        
+        MenuBar(self)
 
         super().__init__()
 
@@ -199,4 +204,24 @@ class SusADBWindow(ctk.CTk):
 
         self.log(
             "[ADB] Connect feature coming soon."
+        )
+        
+        
+    def clear_console(self):
+
+    self.console.delete(
+        "1.0",
+        "end"
+    )
+
+
+    def save_console(self):
+
+        FileManager.save_console(
+
+            self.console.get(
+                "1.0",
+                "end"
+            )
+
         )
