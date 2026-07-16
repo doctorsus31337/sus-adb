@@ -5,24 +5,24 @@ sus-adb Main GUI Window
 import customtkinter as ctk
 
 from app.gui.theme import get_theme
-from app.core.adb_manager import ADBManager
-from app.core.worker import BackgroundWorker
+from app.gui.device_panel import DevicePanel
+
+from app.core.device_manager import DeviceManager
 
 
 class SusADBWindow(ctk.CTk):
 
     def __init__(self):
+
         super().__init__()
 
         self.theme = get_theme()
 
-        self.adb = ADBManager()
+        self.devices = DeviceManager()
 
         self.title("SUS-ADB Companion")
 
-        self.geometry("1400x800")
-
-        self.minsize(1200, 700)
+        self.geometry("1300x800")
 
         self.configure(
             fg_color=self.theme["bg"]
@@ -30,211 +30,85 @@ class SusADBWindow(ctk.CTk):
 
         self.create_widgets()
 
-        self.refresh_devices()
-
-    ############################################################
 
     def create_widgets(self):
 
-        #
-        # Header
-        #
+        self.title_label = ctk.CTkLabel(
 
-        self.header = ctk.CTkLabel(
             self,
+
             text="SUS-ADB Companion",
-            font=("Times New Roman", 42, "bold"),
+
+            font=("Times New Roman",40,"bold"),
+
             text_color=self.theme["gold"]
+
         )
 
-        self.header.pack(
-            pady=(20, 0)
+        self.title_label.pack(
+            pady=15
         )
 
-        self.subtitle = ctk.CTkLabel(
-            self,
-            text="Android Reverse Engineering Companion",
-            font=("Times New Roman", 18),
-            text_color=self.theme["text"]
-        )
-
-        self.subtitle.pack(
-            pady=(0, 20)
-        )
-
-        ########################################################
-
-        self.main_frame = ctk.CTkFrame(
+        body = ctk.CTkFrame(
             self,
             fg_color="transparent"
         )
 
-        self.main_frame.pack(
+        body.pack(
             fill="both",
             expand=True,
             padx=15,
             pady=10
         )
 
-        self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_columnconfigure(1, weight=3)
-        self.main_frame.grid_columnconfigure(2, weight=1)
+        body.grid_columnconfigure(1,weight=1)
 
-        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.device_panel = DevicePanel(
 
-        ########################################################
-        #
-        # LEFT PANEL
-        #
-        ########################################################
+            body,
 
-        self.left_frame = ctk.CTkFrame(self.main_frame)
+            self.theme,
 
-        self.left_frame.grid(
+            self.refresh_devices,
+
+            self.connect_device
+
+        )
+
+        self.device_panel.grid(
             row=0,
             column=0,
-            sticky="nsew",
-            padx=(0, 10)
+            sticky="ns",
+            padx=(0,15)
         )
-
-        device_label = ctk.CTkLabel(
-            self.left_frame,
-            text="ADB Devices",
-            font=("Arial", 20, "bold")
-        )
-
-        device_label.pack(pady=10)
-
-        self.device_list = ctk.CTkTextbox(
-            self.left_frame,
-            width=250,
-            height=450
-        )
-
-        self.device_list.pack(
-            padx=10,
-            pady=10,
-            fill="both",
-            expand=True
-        )
-
-        self.refresh_button = ctk.CTkButton(
-            self.left_frame,
-            text="Refresh Devices",
-            command=self.refresh_devices
-        )
-
-        self.refresh_button.pack(
-            padx=10,
-            pady=(5, 5),
-            fill="x"
-        )
-
-        self.connect_button = ctk.CTkButton(
-            self.left_frame,
-            text="Connect",
-            command=self.connect_device
-        )
-
-        self.connect_button.pack(
-            padx=10,
-            pady=(0, 10),
-            fill="x"
-        )
-
-        ########################################################
-        #
-        # CENTER PANEL
-        #
-        ########################################################
-
-        self.center_frame = ctk.CTkFrame(self.main_frame)
-
-        self.center_frame.grid(
-            row=0,
-            column=1,
-            sticky="nsew",
-            padx=10
-        )
-
-        console_label = ctk.CTkLabel(
-            self.center_frame,
-            text="Console",
-            font=("Arial", 20, "bold")
-        )
-
-        console_label.pack(pady=10)
 
         self.console = ctk.CTkTextbox(
-            self.center_frame
+            body
         )
 
-        self.console.pack(
-            fill="both",
-            expand=True,
-            padx=10,
-            pady=(0, 10)
-        )
-
-        ########################################################
-        #
-        # RIGHT PANEL
-        #
-        ########################################################
-
-        self.right_frame = ctk.CTkFrame(self.main_frame)
-
-        self.right_frame.grid(
+        self.console.grid(
             row=0,
-            column=2,
-            sticky="nsew",
-            padx=(10, 0)
+            column=1,
+            sticky="nsew"
         )
 
-        info_label = ctk.CTkLabel(
-            self.right_frame,
-            text="Information",
-            font=("Arial", 20, "bold")
-        )
-
-        info_label.pack(
-            pady=10
-        )
-
-        self.info = ctk.CTkTextbox(
-            self.right_frame,
-            width=250
-        )
-
-        self.info.pack(
-            fill="both",
-            expand=True,
-            padx=10,
-            pady=(0, 10)
-        )
-
-        self.info.insert(
+        self.console.insert(
             "end",
-            "Select a device to view information.\n"
+            "[INFO] SUS-ADB Companion started.\n"
         )
-
-        ########################################################
 
         self.status = ctk.CTkLabel(
             self,
             text="Ready",
-            anchor="w"
+            text_color=self.theme["text"]
         )
 
         self.status.pack(
-            fill="x",
-            padx=15,
-            pady=(0, 10)
+            pady=8
         )
 
-    ############################################################
 
-    def log(self, text):
+    def log(self,text):
 
         self.console.insert(
             "end",
@@ -243,91 +117,26 @@ class SusADBWindow(ctk.CTk):
 
         self.console.see("end")
 
-    ############################################################
 
     def refresh_devices(self):
 
-        self.status.configure(
-            text="Scanning for ADB devices..."
+        devices = self.devices.refresh()
+
+        self.device_panel.update_devices(
+            devices
         )
 
-        self.log("[INFO] Searching for connected devices...")
-
-        worker = BackgroundWorker(
-            target=self.adb.devices,
-            callback=self.populate_devices
+        self.log(
+            f"[ADB] Found {len(devices)} device(s)."
         )
-
-        worker.start()
-
-    ############################################################
-
-    def populate_devices(self, devices):
-
-        self.device_list.delete(
-            "1.0",
-            "end"
-        )
-
-        if len(devices) == 0:
-
-            self.device_list.insert(
-                "end",
-                "No devices found."
-            )
-
-            self.log("[WARN] No ADB devices detected.")
-
-            self.status.configure(
-                text="No devices detected."
-            )
-
-            return
-
-        first = True
-        for device in devices:
-
-            self.device_list.insert(
-                "end",
-                device + "\n"
-            )
-
-            self.log(
-                f"[OK] Found device: {device}"
-            )
-
-            if first:
-                self.show_device_info(device)
-                first = False
-
-        self.status.configure(
-            text=f"{len(devices)} device(s) connected."
-        )
-
-    ############################################################
-
-
-    def show_device_info(self, serial):
-
-        info = self.adb.device_info(serial)
-
-        self.info.delete("1.0", "end")
-
-        for key, value in info.items():
-
-            self.info.insert(
-                "end",
-                f"{key}\n{value}\n\n"
-            )
-
 
 
     def connect_device(self):
 
         self.log(
-            "[INFO] Connect button pressed."
+            "[ADB] Connect button pressed."
         )
 
         self.status.configure(
-            text="Connection feature coming next..."
+            text="Ready for future connection manager."
         )
