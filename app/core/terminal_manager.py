@@ -34,12 +34,26 @@ class TerminalManager:
         self.log(f"{self.PROMPT}{command}")
         self.log("")
 
-
         if command.lower() == "cls":
             self.log("\n" * 40)
             return
         if command.lower() == "clear":
             self.log("\n" * 40)
+            return
+
+        if command == "devices":
+            output = ADBModule.devices()
+            self.log(output)
+            return
+
+        if command == "logcat":
+            self.log("Starting Logcat...")
+            LogcatModule.start()
+            return
+
+        if command == "clearlog":
+            LogcatModule.clear()
+            self.log("Logcat buffer cleared.")
             return
 
 

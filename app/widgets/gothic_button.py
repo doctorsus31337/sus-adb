@@ -19,8 +19,7 @@ class GothicButton(ctk.CTkButton):
 
             "font": ("Segoe UI", 15, "bold"),
 
-            "border_width": 2,
-
+            "border_width": 2,\
             "border_color": "#3a1b1b"
         }
 

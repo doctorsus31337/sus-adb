@@ -1,9 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 
-FONT = ("Segoe UI", 11)
-# or
-# FONT = ("Consolas", 11)
+tk.Menu(root, tearoff=False, font=MENU_FONT)
 
 
 class MenuBar:
