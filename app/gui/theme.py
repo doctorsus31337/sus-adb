@@ -15,6 +15,12 @@ THEME = {
     "red": "#6E0F0F",
     "red_hover": "#9B1717",
 
+    "button": "#821313",
+    "button_hover": "#aa1c1c",
+    "panel_border": "#363636",
+    "title": "#d6b55a",
+    "subtitle": "#9f8f67",
+
     # Text
     "text": "#EFE2B0",
     "muted": "#9D9272",

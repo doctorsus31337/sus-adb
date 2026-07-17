@@ -1,9 +1,9 @@
-"""
-Application menu bar.
-"""
-
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
+
+FONT = ("Segoe UI", 11)
+# or
+# FONT = ("Consolas", 11)
 
 
 class MenuBar:
@@ -12,98 +12,35 @@ class MenuBar:
 
         self.window = window
 
-        self.menu = tk.Menu(window)
+        menu = tk.Menu(window)
 
-        #
-        # File
-        #
-
-        file_menu = tk.Menu(self.menu, tearoff=0)
-
-        file_menu.add_command(
-            label="Save Console",
-            command=self.window.save_console
-        )
-
+        file_menu = tk.Menu(menu, tearoff=False, font=FONT)
+        file_menu.add_command(label="Save Console", command=window.save_console)
         file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=window.quit)
+        menu.add_cascade(label="File", menu=file_menu)
 
-        file_menu.add_command(
-            label="Exit",
-            command=self.window.quit
-        )
+        settings_menu = tk.Menu(menu, tearoff=False, font=FONT)
+        settings_menu.add_command(label="Preferences (Coming Soon)")
+        menu.add_cascade(label="Settings", menu=settings_menu)
 
-        self.menu.add_cascade(
-            label="File",
-            menu=file_menu
-        )
+        tools_menu = tk.Menu(menu, tearoff=False, font=FONT)
+        tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
+        tools_menu.add_command(label="Clear Console", command=window.clear_console)
+        menu.add_cascade(label="Tools", menu=tools_menu)
 
-        #
-        # Settings
-        #
+        about_menu = tk.Menu(menu, tearoff=False, font=FONT)
+        about_menu.add_command(label="About SUS-ADB", command=self.about_box)
+        menu.add_cascade(label="About", menu=about_menu)
 
-        settings = tk.Menu(self.menu, tearoff=0)
-
-        settings.add_command(
-            label="Preferences (Coming Soon)"
-        )
-
-        self.menu.add_cascade(
-            label="Settings",
-            menu=settings
-        )
-
-        #
-        # Tools
-        #
-
-        tools = tk.Menu(self.menu, tearoff=0)
-
-        tools.add_command(
-            label="Refresh Devices",
-            command=self.window.refresh_devices
-        )
-
-        tools.add_command(
-            label="Clear Console",
-            command=self.window.clear_console
-        )
-
-        self.menu.add_cascade(
-            label="Tools",
-            menu=tools
-        )
-
-        #
-        # About
-        #
-
-        about = tk.Menu(self.menu, tearoff=0)
-
-        about.add_command(
-            label="About SUS-ADB",
-            command=self.about_box
-        )
-
-        self.menu.add_cascade(
-            label="About",
-            menu=about
-        )
-
-        window.config(menu=self.menu)
-
+        window.config(menu=menu)
 
     def about_box(self):
 
         messagebox.showinfo(
-
-            "About",
-
-            "SUS-ADB Companion\n\n"
-
-            "Cross-platform Android companion\n"
-
-            "Built with Python + CustomTkinter\n\n"
-
+            "About SUS-ADB",
+            "SUS-ADB Companion\\n\\n"
+            "Cross-platform Android reverse engineering companion\\n\\n"
+            "Built with Python + CustomTkinter\\n\\n"
             "Created by DoctorSUS & ChatGPT ❤️"
-
         )

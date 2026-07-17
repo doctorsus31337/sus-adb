@@ -1,18 +1,22 @@
+from app.core.history_manager import HistoryManager
 import subprocess
 import threading
 
 
 class TerminalManager:
 
-    PROMPT = "sus-adb > "
+    PROMPT = "sus-adb >> "
 
     def __init__(self, log_callback):
+        self.cwd = None
         self.log = log_callback
+        self.history = HistoryManager()
 
     def execute(self, command):
 
         command = command.strip()
-
+        self.history.add(command)
+        
         if not command:
             return
 
@@ -23,12 +27,21 @@ class TerminalManager:
         )
 
         thread.start()
+        
 
-    def _run(self, command):
-
+    def _run(self, command):q
         self.log("")
         self.log(f"{self.PROMPT}{command}")
         self.log("")
+
+
+        if command.lower() == "cls":
+            self.log("\n" * 40)
+            return
+        if command.lower() == "clear":
+            self.log("\n" * 40)
+            return
+
 
         process = subprocess.Popen(
             command,

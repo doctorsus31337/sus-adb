@@ -1,7 +1,7 @@
 import customtkinter as ctk
 
 
-class CommandBar(ctk.CTkFrame):
+class CommandBar(GothicFrame):
 
     def __init__(self, parent, execute_callback):
 
@@ -38,7 +38,7 @@ class CommandBar(ctk.CTkFrame):
             self.run
         )
 
-        self.run_button = ctk.CTkButton(
+        self.run_button = GothicButton(
 
             self,
 

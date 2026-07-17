@@ -1,7 +1,10 @@
 import customtkinter as ctk
 
+from app.gui.gothic_button import GothicButton
+from app.gui.gothic_frame import GothicFrame
 
-class DevicePanel(ctk.CTkFrame):
+
+class DevicePanel(GothicFrame):
 
     def __init__(self, parent, theme, refresh_callback, connect_callback):
 
@@ -42,7 +45,7 @@ class DevicePanel(ctk.CTkFrame):
             expand=True
         )
 
-        self.refresh_button = ctk.CTkButton(
+        self.refresh_button = GothicButtona(
             self,
             text="Refresh Devices",
             command=self.refresh_callback
@@ -54,7 +57,7 @@ class DevicePanel(ctk.CTkFrame):
             fill="x"
         )
 
-        self.connect_button = ctk.CTkButton(
+        self.connect_button = GothicButton(
             self,
             text="Connect",
             command=self.connect_callback

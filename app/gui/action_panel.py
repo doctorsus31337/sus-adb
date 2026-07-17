@@ -1,7 +1,7 @@
 import customtkinter as ctk
 
 
-class ActionPanel(ctk.CTkFrame):
+class ActionPanel(GothicFrame):
 
     def __init__(self, parent, run_callback):
 
@@ -51,7 +51,7 @@ class ActionPanel(ctk.CTkFrame):
 
     def _button(self, text, command):
 
-        btn = ctk.CTkButton(
+        btn = GothicButton(
             self,
             text=text,
             command=lambda c=command: self.run(c),
