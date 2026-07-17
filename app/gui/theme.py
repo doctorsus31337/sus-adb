@@ -1,14 +1,37 @@
 """
-sus-adb Gothic Theme Engine
+SUS-ADB Medieval Gothic Blackhat Theme
 """
 
 THEME = {
-    "bg": "#0b0b0b",
-    "panel": "#151515",
-    "gold": "#d4af37",
-    "gold_dark": "#8c6b18",
-    "text": "#e6d8ad",
-    "error": "#8b0000"
+    # Core colors
+    "bg": "#090909",
+    "panel": "#131313",
+    "panel_alt": "#1B1B1B",
+    "border": "#2D2D2D",
+
+    # Primary colors
+    "gold": "#D6B55A",
+    "gold_dark": "#8B6B1D",
+    "red": "#6E0F0F",
+    "red_hover": "#9B1717",
+
+    # Text
+    "text": "#EFE2B0",
+    "muted": "#9D9272",
+
+    # Terminal
+    "terminal_bg": "#050505",
+    "terminal_text": "#D8D1BB",
+
+    # Status
+    "success": "#56B870",
+    "error": "#B83C3C",
+
+    # Fonts
+    "title_font": ("Times New Roman", 42, "bold"),
+    "header_font": ("Times New Roman", 20, "bold"),
+    "button_font": ("Segoe UI", 15, "bold"),
+    "terminal_font": ("Consolas", 15)
 }
 
 
