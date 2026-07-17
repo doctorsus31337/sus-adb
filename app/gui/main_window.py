@@ -1,18 +1,26 @@
 import customtkinter as ctk
 
+from app.gui.gothic_header import GothicHeader
 from app.gui.theme import get_theme
 from app.gui.device_panel import DevicePanel
 from app.gui.command_bar import CommandBar
 from app.gui.action_panel import ActionPanel
 from app.gui.menu_bar import MenuBar
 from app.gui.cheat_sheet_window import CheatSheetWindow
-from app.gui.status_bar import StatusBar
-from app.gui.gothic_header import GothicHeader
-
 from app.core.device_manager import DeviceManager
 from app.core.terminal_manager import TerminalManager
 from app.core.file_manager import FileManager
+from app.widgets.gothic_button import GothicButton
+from app.widgets.gothic_frame import GothicFrame
+from app.widgets.gothic_label import GothicLabel
+from app.widgets.status_bar import StatusBar
+from app.widgets.device_card import DeviceCard
+from app.modules.adb import Modules
+from app.modules.environment import EnvironmentModule
+from app.utils.system_info import SystemInfo
+from app.utils.clipboard import ClipboardManager
 
+#------------------Created By DoctorSUS & ChatGPT---------------------------#
 
 class SusADBWindow(ctk.CTk):
 
@@ -23,19 +31,51 @@ class SusADBWindow(ctk.CTk):
 
         self.devices = DeviceManager()
         self.terminal = TerminalManager(self.log)
+        self.modules = Modules(self.terminal)
 
         self.title("SUS-ADB Companion")
         self.geometry("1400x860")
         self.minsize(1200, 760)
 
         self.configure(fg_color=self.theme["bg"])
-
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         MenuBar(self)
 
         self.create_widgets()
+        self.startup_check()
+        self.after(250, self.center_window)
+
+
+
+    def startup_check(self):
+        info = SystemInfo.get()
+        self.log(f"[SYSTEM] {info['platform']} {info['release']}")
+        self.log(f"[PYTHON] {info['python']}")
+        env = EnvironmentModule.check()
+        for tool, found in env.items():
+            if found:
+                self.log(f"[OK] {tool}")
+            else:
+                self.log(f"[MISSING] {tool}")
+
+
+    def center_window(self):
+
+        self.update_idletasks()
+
+        width = self.winfo_reqwidth()
+        height = self.winfo_reqheight()
+
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+
+        self.geometry(f"+{x}+{y}")
+
 
     def create_widgets(self):
 
@@ -98,8 +138,12 @@ class SusADBWindow(ctk.CTk):
             border_width=1
         )
         self.console.grid(row=1, column=0, sticky="nsew")
-
         self.console.insert("end", "sus-adb > Ready.\n\n")
+        
+        self.console.bind(
+            "<Control-c>",
+            lambda e: ClipboardManager.copy(self.console)
+)
 
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))

@@ -1,4 +1,7 @@
 from app.core.history_manager import HistoryManager
+from app.modules.adb import ADBModule
+from app.modules.logcat import LogcatModule
+
 import subprocess
 import threading
 
@@ -29,10 +32,8 @@ class TerminalManager:
         thread.start()
         
 
-    def _run(self, command):q
-        self.log("")
-        self.log(f"{self.PROMPT}{command}")
-        self.log("")
+    def _run(self, command):
+        self.log(f"\n{self.PROMPT}{command}\n")
 
         if command.lower() == "cls":
             self.log("\n" * 40)

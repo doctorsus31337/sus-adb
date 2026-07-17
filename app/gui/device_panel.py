@@ -1,7 +1,11 @@
 import customtkinter as ctk
 
-from app.gui.gothic_button import GothicButton
-from app.gui.gothic_frame import GothicFrame
+
+from app.widgets.gothic_button import GothicButton
+from app.widgets.gothic_frame import GothicFrame
+from app.widgets.gothic_label import GothicLabel
+from app.widgets.device_card import DeviceCard
+from app.widgets.status_bar import StatusBar
 
 
 class DevicePanel(GothicFrame):
@@ -45,7 +49,7 @@ class DevicePanel(GothicFrame):
             expand=True
         )
 
-        self.refresh_button = GothicButtona(
+        self.refresh_button = GothicButton(
             self,
             text="Refresh Devices",
             command=self.refresh_callback

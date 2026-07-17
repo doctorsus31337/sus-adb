@@ -1,6 +1,6 @@
 """
 sus-adb
-Android Device Companion
+Android Device Companion   
 """
 
 from app.gui.main_window import SusADBWindow

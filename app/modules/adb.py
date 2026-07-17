@@ -1,29 +1,12 @@
-import subprocess
+from .adb_module import ADBModule
+from .frida_module import FridaModule
+from .objection_module import ObjectionModule
 
 
-class ADBModule:
+class Modules:
 
-    @staticmethod
-    def devices():
+    def __init__(self, terminal):
 
-        result = subprocess.run(
-
-            ["adb", "devices"],
-
-            capture_output=True,
-
-            text=True
-
-        )
-
-        return result.stdout
-
-    @staticmethod
-    def reboot():
-
-        subprocess.run(["adb", "reboot"])
-
-    @staticmethod
-    def shell():
-
-        subprocess.run(["adb", "shell"])
+        self.adb = ADBModule(terminal)
+        self.frida = FridaModule()
+        self.objection = ObjectionModule()

@@ -11,4 +11,4 @@ def center_window(window):
     x = (screen_width // 2) - (width // 2)
     y = (screen_height // 2) - (height // 2)
 
-    window.geometry(f"{width}x{height}+{x}+{y}")
+    window.geometry(f"{width}x{height}+{x}+{y}")   

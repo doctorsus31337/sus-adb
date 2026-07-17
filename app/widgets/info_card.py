@@ -23,7 +23,7 @@ class InfoCard(GothicFrame):
         self.value = ctk.CTkLabel(
 
             self,
-
+ 
             text=value,
 
             font=("Consolas", 15)
