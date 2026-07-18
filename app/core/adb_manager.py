@@ -14,7 +14,7 @@ from app.core.device import Device
 class ADBManager:
     def __init__(self, runner: CommandRunner | None = None, adb_path: str | None = None):
         self.runner = runner or CommandRunner()
-        self.adb_path = adb_path or shutil.which("adb")
+        self.adb_path = shutil.which("adb") if adb_path is None else adb_path
 
     def exists(self) -> bool:
         return bool(self.adb_path)

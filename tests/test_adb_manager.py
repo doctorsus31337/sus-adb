@@ -29,10 +29,12 @@ SERIAL3\toffline transport_id:3
         self.assertEqual(devices[2].state, "offline")
 
     def test_missing_adb_returns_structured_error(self):
-        manager = ADBManager(adb_path="")
+        runner = FakeRunner([])
+        manager = ADBManager(runner=runner, adb_path="")
         result = manager.run("devices")
         self.assertFalse(result.ok)
         self.assertIn("not found", result.output.lower())
+        self.assertEqual(runner.commands, [])
 
 
 if __name__ == "__main__":
