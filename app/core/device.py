@@ -1,50 +1,34 @@
-"""
-Device model for SUS-ADB
+"""Connected Android device model used throughout SUS-ADB."""
 
-Represents one connected Android device.
-"""
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 
+@dataclass(slots=True)
 class Device:
+    serial: str
+    state: str = "unknown"
+    model: str = "Unknown"
+    manufacturer: str = "Unknown"
+    android_version: str = "Unknown"
+    sdk: str = "Unknown"
+    abi: str = "Unknown"
+    product: str = "Unknown"
+    device_name: str = "Unknown"
+    transport_id: str = ""
+    battery: str = "Unknown"
+    root: bool | None = None
+    frida: bool | None = None
 
-    def __init__(
-        self,
-        serial: str,
-        state: str,
-    ):
+    @property
+    def connected(self) -> bool:
+        return self.state == "device"
 
-        self.serial = serial
-        self.state = state
+    @property
+    def display_name(self) -> str:
+        pieces = [piece for piece in (self.manufacturer, self.model) if piece and piece != "Unknown"]
+        return " ".join(pieces) or self.serial
 
-        #
-        # These will be populated later
-        #
-
-        self.model = "Unknown"
-
-        self.manufacturer = "Unknown"
-
-        self.android_version = "Unknown"
-
-        self.sdk = "Unknown"
-
-        self.root = False
-
-        self.frida = False
-
-        self.objection = False
-
-        self.cpu = "Unknown"
-
-        self.abi = "Unknown"
-
-        self.selinux = "Unknown"
-
-        self.magisk = False
-
-    def __str__(self):
-
-        return (
-            f"{self.serial}"
-            f" ({self.state})"
-        )
+    def __str__(self) -> str:
+        return f"{self.display_name} [{self.serial}] — {self.state}"

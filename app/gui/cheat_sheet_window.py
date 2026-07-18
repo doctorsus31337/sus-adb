@@ -1,109 +1,66 @@
+"""Non-modal floating command reference."""
+
 import customtkinter as ctk
+
+from app.core.command_registry import CommandRegistry
 
 
 class CheatSheetWindow(ctk.CTkToplevel):
+    WIDTH = 430
+    HEIGHT = 560
 
     def __init__(self, parent, theme):
         super().__init__(parent)
-
+        self.parent = parent
         self.theme = theme
 
-        self.title("SUS-ADB Cheat Sheet")
-
-        self.geometry("420x540")
+        self.title("SUS-ADB Quick Commands")
+        self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
-
         self.configure(fg_color=theme["bg"])
-
-        self.after(100, self.center_window)
-
-        self.grab_set()
+        self.transient(parent)
 
         title = ctk.CTkLabel(
             self,
-            text="⚔ SUS-ADB COMMAND CHEAT SHEET ⚔",
-            font=("Cinzel", 22, "bold"),      # smaller than title_font
+            text="⚔ QUICK COMMAND GRIMOIRE ⚔",
+            font=("Times New Roman", 20, "bold"),
             text_color=theme["gold"],
-            anchor="center",
-            justify="center"
         )
-        title.pack(fill="x", padx=20, pady=(20, 15))
+        title.pack(fill="x", padx=12, pady=(12, 8))
 
         console = ctk.CTkTextbox(
             self,
             fg_color=theme["terminal_bg"],
             text_color=theme["terminal_text"],
-            font=theme["terminal_font"],
-            border_width=1
+            font=("Consolas", 12),
+            border_width=1,
+            border_color=theme["border"],
+            wrap="none",
         )
-        console.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-
-        commands = """
-=== SUS-ADB COMMANDS ===
-
-help
-clear
-exit
-
-
-=== ADB ===
-
-adb devices
-adb shell
-adb reboot
-adb reboot recovery
-adb reboot bootloader
-adb install app.apk
-adb uninstall com.example.app
-adb push local_file /sdcard/
-adb pull /sdcard/file.txt
-
-
-=== FRIDA ===
-
-frida-ps -U
-frida-ps -Uai
-frida -U -n "AppName"
-frida -U -f com.example.app
-
-
-=== OBJECTION ===
-
-objection -g com.example.app explore
-objection -S socket -n AppName start
-
-
-=== TIPS ===
-
-• Use the command bar at the top.
-
-• Every command appears in the terminal.
-
-• Type clear to clear the console.
-
-• Type help for built-in commands.
-
-• The prompt is:
-
-sus-adb >
-
-⚔ Hack the Castle ⚔
-"""
-
-        console.insert("1.0", commands)
+        console.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        console.insert("1.0", CommandRegistry.render_text())
         console.configure(state="disabled")
 
-    def center_window(self):
+        self.after_idle(self._place_beside_parent)
+        self.lift()
 
+    def _place_beside_parent(self):
         self.update_idletasks()
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        parent_x = self.parent.winfo_rootx()
+        parent_y = self.parent.winfo_rooty()
+        parent_w = self.parent.winfo_width()
 
-        width = self.winfo_width()
-        height = self.winfo_height()
+        right_x = parent_x + parent_w + 10
+        left_x = parent_x - self.WIDTH - 10
 
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
+        if right_x + self.WIDTH <= screen_w:
+            x = right_x
+        elif left_x >= 0:
+            x = left_x
+        else:
+            x = max(0, screen_w - self.WIDTH - 20)
 
-        x = max(0, (screen_width - width) // 2)
-        y = max(0, (screen_height - height) // 2)
-
-        self.geometry(f"{width}x{height}+{x}+{y}")
+        y = max(0, min(parent_y + 70, screen_h - self.HEIGHT - 50))
+        self.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")

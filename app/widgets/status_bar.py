@@ -1,8 +1,9 @@
+"""Persistent live status display for the main SUS-ADB window."""
+
 import customtkinter as ctk
 
 
 class StatusBar(ctk.CTkFrame):
-
     def __init__(self, parent, theme):
         super().__init__(
             parent,
@@ -10,42 +11,39 @@ class StatusBar(ctk.CTkFrame):
             border_width=1,
             border_color=theme["border"],
             corner_radius=8,
-            height=42
+            height=42,
         )
-
         self.theme = theme
-
-        self.pack_propagate(False)
-
-        self.label = ctk.CTkLabel(
-            self,
-            text="ADB: Idle    |    Frida: Unknown    |    Device: None    |    Root: Unknown",
-            font=("Segoe UI", 13, "bold"),
-            text_color=theme["gold"]
-        )
-        self.label.pack(fill="x", padx=15, pady=8)
-
-    def set_status(self, adb=None, frida=None, device=None, root=None):
-
-        current = {
+        self.grid_propagate(False)
+        self._status = {
             "adb": "Idle",
             "frida": "Unknown",
             "device": "None",
-            "root": "Unknown"
+            "root": "Unknown",
         }
 
-        if adb is not None:
-            current["adb"] = adb
+        self.label = ctk.CTkLabel(
+            self,
+            text="",
+            font=("Segoe UI", 13, "bold"),
+            text_color=theme["gold"],
+        )
+        self.label.pack(fill="x", padx=15, pady=8)
+        self._render()
 
-        if frida is not None:
-            current["frida"] = frida
+    def set_status(self, adb=None, frida=None, device=None, root=None):
+        updates = {"adb": adb, "frida": frida, "device": device, "root": root}
+        for key, value in updates.items():
+            if value is not None:
+                self._status[key] = str(value)
+        self._render()
 
-        if device is not None:
-            current["device"] = device
-
-        if root is not None:
-            current["root"] = root
-
+    def _render(self):
         self.label.configure(
-            text=f"ADB: {current['adb']}    |    Frida: {current['frida']}    |    Device: {current['device']}    |    Root: {current['root']}"
+            text=(
+                f"ADB: {self._status['adb']}    |    "
+                f"Frida: {self._status['frida']}    |    "
+                f"Device: {self._status['device']}    |    "
+                f"Root: {self._status['root']}"
+            )
         )

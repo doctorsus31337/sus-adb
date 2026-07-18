@@ -1,95 +1,90 @@
+"""Connected-device sidebar panel."""
+
 import customtkinter as ctk
 
-
+from app.core.device import Device
+from app.widgets.device_card import DeviceCard
 from app.widgets.gothic_button import GothicButton
 from app.widgets.gothic_frame import GothicFrame
-from app.widgets.gothic_label import GothicLabel
-from app.widgets.device_card import DeviceCard
-from app.widgets.status_bar import StatusBar
 
 
 class DevicePanel(GothicFrame):
-
     def __init__(self, parent, theme, refresh_callback, connect_callback):
-
-        super().__init__(parent)
-
+        super().__init__(parent, fg_color=theme["panel"])
         self.theme = theme
-
         self.refresh_callback = refresh_callback
         self.connect_callback = connect_callback
+        self.selected_serial: str | None = None
+        self.cards: list[DeviceCard] = []
 
-        self.configure(
-            fg_color=theme["panel"]
-        )
-
-        self.grid_columnconfigure(0, weight=1)
-
-        self.title = ctk.CTkLabel(
+        title = ctk.CTkLabel(
             self,
             text="Connected Devices",
             font=("Segoe UI", 18, "bold"),
-            text_color=theme["gold"]
+            text_color=theme["gold"],
         )
+        title.pack(pady=(10, 5))
 
-        self.title.pack(
-            pady=(10,5)
-        )
-
-        self.device_list = ctk.CTkTextbox(
+        self.device_list = ctk.CTkScrollableFrame(
             self,
-            width=300,
-            height=220
+            width=285,
+            height=220,
+            fg_color=theme["terminal_bg"],
+            border_width=1,
+            border_color=theme["border"],
         )
+        self.device_list.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.device_list.pack(
-            padx=10,
-            pady=5,
-            fill="both",
-            expand=True
+        self.empty_label = ctk.CTkLabel(
+            self.device_list,
+            text="No devices detected.",
+            text_color=theme["muted"],
         )
+        self.empty_label.pack(pady=20)
 
-        self.refresh_button = GothicButton(
+        GothicButton(
             self,
             text="Refresh Devices",
-            command=self.refresh_callback
-        )
+            command=self.refresh_callback,
+        ).pack(fill="x", padx=10, pady=(5, 5))
 
-        self.refresh_button.pack(
-            padx=10,
-            pady=(5,5),
-            fill="x"
-        )
-
-        self.connect_button = GothicButton(
+        GothicButton(
             self,
-            text="Connect",
-            command=self.connect_callback
-        )
+            text="Connect / Diagnose",
+            command=self._connect,
+        ).pack(fill="x", padx=10, pady=(0, 10))
 
-        self.connect_button.pack(
-            padx=10,
-            pady=(0,10),
-            fill="x"
-        )
-
-
-    def update_devices(self, devices):
-
-        self.device_list.delete("1.0","end")
+    def update_devices(self, devices: list[Device]):
+        for widget in self.device_list.winfo_children():
+            widget.destroy()
+        self.cards.clear()
 
         if not devices:
-
-            self.device_list.insert(
-                "end",
-                "No devices detected."
+            self.empty_label = ctk.CTkLabel(
+                self.device_list,
+                text="No devices detected.",
+                text_color=self.theme["muted"],
             )
-
+            self.empty_label.pack(pady=20)
+            self.selected_serial = None
             return
 
-        for device in devices:
+        serials = {device.serial for device in devices}
+        if self.selected_serial not in serials:
+            self.selected_serial = devices[0].serial
 
-            self.device_list.insert(
-                "end",
-                f"{device}\n"
+        for device in devices:
+            card = DeviceCard(
+                self.device_list,
+                device,
+                self.theme,
+                select_callback=self.select_device,
             )
+            card.pack(fill="x", padx=3, pady=3)
+            self.cards.append(card)
+
+    def select_device(self, serial: str):
+        self.selected_serial = serial
+
+    def _connect(self):
+        self.connect_callback(self.selected_serial)
