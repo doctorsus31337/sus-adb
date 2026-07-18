@@ -6,15 +6,21 @@ import threading
 
 import customtkinter as ctk
 
+from app.core.command_runner import CommandRunner
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
 from app.core.file_manager import FileManager
+from app.core.frida_manager import FridaManager
+from app.core.objection_manager import ObjectionManager
 from app.core.terminal_manager import TerminalManager
+from app.core.tool_diagnostics import ToolDiagnostics
+from app.core.worker import BackgroundWorker
 from app.gui.action_panel import ActionPanel
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
 from app.gui.device_panel import DevicePanel
 from app.gui.gothic_header import GothicHeader
+from app.gui.instrumentation_panel import InstrumentationPanel
 from app.gui.menu_bar import MenuBar
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
@@ -28,6 +34,10 @@ class SusADBWindow(ctk.CTk):
         super().__init__()
         self.theme = get_theme()
         self.devices = DeviceManager()
+        self.command_runner = CommandRunner()
+        self.tool_diagnostics = ToolDiagnostics(self.command_runner)
+        self.frida_manager = FridaManager(self.devices.adb, self.command_runner)
+        self.objection_manager = ObjectionManager(self.command_runner, self.frida_manager)
         self.terminal = TerminalManager(self.log, self.clear_console)
         self.cheat_sheet: CheatSheetWindow | None = None
 
@@ -82,22 +92,41 @@ class SusADBWindow(ctk.CTk):
             self.theme,
             self.refresh_devices,
             self.connect_device,
+            self.select_device,
         )
         self.device_panel.pack(fill="x", padx=10, pady=(0, 18))
 
         self.action_panel = ActionPanel(left, self.execute_command)
         self.action_panel.pack(fill="x", padx=10, pady=(0, 15))
 
-        right = ctk.CTkFrame(body, fg_color="transparent")
-        right.grid(row=0, column=1, sticky="nsew")
-        right.grid_rowconfigure(1, weight=1)
-        right.grid_columnconfigure(0, weight=1)
+        self.workspace = ctk.CTkTabview(
+            body,
+            fg_color=self.theme["panel"],
+            segmented_button_fg_color=self.theme["panel_alt"],
+            segmented_button_selected_color=self.theme["red"],
+            segmented_button_selected_hover_color=self.theme["red_hover"],
+            segmented_button_unselected_color=self.theme["panel_alt"],
+            segmented_button_unselected_hover_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+            border_width=1,
+            border_color=self.theme["border"],
+        )
+        self.workspace.grid(row=0, column=1, sticky="nsew")
+        console_tab = self.workspace.add("Console")
+        instrumentation_tab = self.workspace.add("Instrumentation")
 
-        self.command_bar = CommandBar(right, self.execute_command)
+        console_tab.configure(fg_color=self.theme["bg"])
+        console_tab.grid_rowconfigure(1, weight=1)
+        console_tab.grid_columnconfigure(0, weight=1)
+        instrumentation_tab.configure(fg_color=self.theme["bg"])
+        instrumentation_tab.grid_rowconfigure(0, weight=1)
+        instrumentation_tab.grid_columnconfigure(0, weight=1)
+
+        self.command_bar = CommandBar(console_tab, self.execute_command)
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
 
         self.console = ctk.CTkTextbox(
-            right,
+            console_tab,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
             font=self.theme["terminal_font"],
@@ -107,6 +136,16 @@ class SusADBWindow(ctk.CTk):
         self.console.grid(row=1, column=0, sticky="nsew")
         self.console.insert("end", "sus-adb > Ready.\n\n")
         self.console.bind("<Control-c>", self.copy_console_selection)
+
+        self.instrumentation_panel = InstrumentationPanel(
+            instrumentation_tab,
+            self.theme,
+            self.tool_diagnostics,
+            self.frida_manager,
+            self.objection_manager,
+            self.log,
+        )
+        self.instrumentation_panel.grid(row=0, column=0, sticky="nsew")
 
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
@@ -147,20 +186,22 @@ class SusADBWindow(ctk.CTk):
     def refresh_devices(self):
         self.status_bar.set_status(adb="Scanning")
         self.log("[ADB] Scanning for devices...")
-        threading.Thread(target=self._refresh_devices_worker, daemon=True).start()
-
-    def _refresh_devices_worker(self):
-        devices = self.devices.refresh(enrich=True)
-        self.after(0, self._apply_devices, devices)
+        BackgroundWorker(
+            lambda: self.devices.refresh(enrich=True),
+            callback=lambda devices: self.after(0, self._apply_devices, devices),
+        ).start()
 
     def _apply_devices(self, devices: list[Device]):
         self.device_panel.update_devices(devices)
         if not devices:
+            self.instrumentation_panel.set_selected_device(None)
             self.status_bar.set_status(adb="No Devices", device="None", root="Unknown", frida="Unknown")
             self.log("[ADB] No devices detected.")
             return
 
         selected = self.devices.selected or devices[0]
+        self.device_panel.selected_serial = selected.serial
+        self.instrumentation_panel.set_selected_device(selected)
         self.status_bar.set_status(
             adb="Connected",
             device=selected.display_name,
@@ -177,8 +218,15 @@ class SusADBWindow(ctk.CTk):
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
             return
+        self.instrumentation_panel.set_selected_device(device)
+        self.log(f"[ADB] Selecting {device.display_name} ({serial})...")
+        BackgroundWorker(
+            lambda: self.devices.adb.forward_frida_ports(serial),
+            callback=lambda results: self.after(0, self._apply_connection, device, results),
+        ).start()
 
-        first, second = self.devices.adb.forward_frida_ports(serial)
+    def _apply_connection(self, device: Device, results):
+        first, second = results
         forwarded = first.ok and second.ok
         self.status_bar.set_status(
             adb="Connected",
@@ -186,13 +234,28 @@ class SusADBWindow(ctk.CTk):
             root="Yes" if device.root else "No",
             frida="Running" if device.frida else "Stopped",
         )
-        self.log(f"[ADB] Selected {device.display_name} ({serial}).")
+        self.log(f"[ADB] Selected {device.display_name} ({device.serial}).")
         self.log("[FRIDA] Ports 27042/27043 forwarded." if forwarded else "[FRIDA] Port forwarding failed.")
         if not forwarded:
             if first.output:
                 self.log(first.output)
             if second.output:
                 self.log(second.output)
+
+    def select_device(self, serial: str):
+        device = self.devices.select(serial)
+        if device is None:
+            self.log(f"[ADB] Device not found: {serial}")
+            self.instrumentation_panel.set_selected_device(None)
+            return
+        self.instrumentation_panel.set_selected_device(device)
+        self.status_bar.set_status(
+            adb="Connected" if device.connected else device.state,
+            device=device.display_name,
+            root="Yes" if device.root else "No",
+            frida="Running" if device.frida else "Stopped",
+        )
+        self.log(f"[ADB] Selected {device.display_name} ({serial}).")
 
     def copy_console_selection(self, _event=None):
         return "break" if ClipboardManager.copy(self.console) else None
