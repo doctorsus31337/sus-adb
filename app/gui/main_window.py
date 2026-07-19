@@ -354,6 +354,14 @@ class SusADBWindow(ctk.CTk):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_apk_lab()
 
+    def open_findings(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_findings()
+
+    def open_report_builder(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_report_builder()
+
     def open_generated_script(self, descriptor):
         self.navigate_workspace("Scripts")
         self.script_studio_panel.refresh_library()
@@ -365,6 +373,8 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace.open_scope_dialog()
 
     def shutdown(self):
+        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"findings_reporting"):
+            self.pentest_workspace.findings_reporting.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"apk_lab"):
             self.pentest_workspace.apk_lab.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"storage_workspace"):
