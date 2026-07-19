@@ -30,6 +30,7 @@ from app.gui.device_panel import DevicePanel
 from app.gui.gothic_header import GothicHeader
 from app.gui.instrumentation_panel import InstrumentationPanel
 from app.gui.script_studio_panel import ScriptStudioPanel
+from app.gui.pentest_workspace import PentestWorkspace
 from app.gui.menu_bar import MenuBar
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
@@ -142,6 +143,7 @@ class SusADBWindow(ctk.CTk):
         console_tab = self.workspace.add("Console")
         instrumentation_tab = self.workspace.add("Instrumentation")
         scripts_tab = self.workspace.add("Scripts")
+        pentest_tab = self.workspace.add("Pentest")
 
         console_tab.configure(fg_color=self.theme["bg"])
         console_tab.grid_rowconfigure(1, weight=1)
@@ -152,6 +154,9 @@ class SusADBWindow(ctk.CTk):
         scripts_tab.configure(fg_color=self.theme["bg"])
         scripts_tab.grid_rowconfigure(0, weight=1)
         scripts_tab.grid_columnconfigure(0, weight=1)
+        pentest_tab.configure(fg_color=self.theme["bg"])
+        pentest_tab.grid_rowconfigure(0, weight=1)
+        pentest_tab.grid_columnconfigure(0, weight=1)
 
         self.command_bar = CommandBar(console_tab, self.execute_command)
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -186,6 +191,12 @@ class SusADBWindow(ctk.CTk):
             self.script_validator, self.log, objection_recipes=self.objection_recipes,
         )
         self.script_studio_panel.grid(row=0, column=0, sticky="nsew")
+
+        self.pentest_workspace = PentestWorkspace(
+            pentest_tab, self.theme, "workspaces", self.frida_manager,
+            self.frida_runtime, self.tool_diagnostics, self.log, self.navigate_workspace,
+        )
+        self.pentest_workspace.grid(row=0, column=0, sticky="nsew")
 
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
@@ -236,6 +247,7 @@ class SusADBWindow(ctk.CTk):
         if not devices:
             self.instrumentation_panel.set_selected_device(None)
             self.script_studio_panel.set_selected_device(None)
+            self.pentest_workspace.set_selected_device(None)
             self.status_bar.set_status(adb="No Devices", device="None", root="Unknown", frida="Unknown")
             self.log("[ADB] No devices detected.")
             return
@@ -244,6 +256,7 @@ class SusADBWindow(ctk.CTk):
         self.device_panel.selected_serial = selected.serial
         self.instrumentation_panel.set_selected_device(selected)
         self.script_studio_panel.set_selected_device(selected)
+        self.pentest_workspace.set_selected_device(selected)
         self.status_bar.set_status(
             adb="Connected",
             device=selected.display_name,
@@ -262,6 +275,7 @@ class SusADBWindow(ctk.CTk):
             return
         self.instrumentation_panel.set_selected_device(device)
         self.script_studio_panel.set_selected_device(device)
+        self.pentest_workspace.set_selected_device(device)
         self.log(f"[ADB] Selecting {device.display_name} ({serial})...")
         BackgroundWorker(
             lambda: self.devices.adb.forward_frida_ports(serial),
@@ -291,9 +305,11 @@ class SusADBWindow(ctk.CTk):
             self.log(f"[ADB] Device not found: {serial}")
             self.instrumentation_panel.set_selected_device(None)
             self.script_studio_panel.set_selected_device(None)
+            self.pentest_workspace.set_selected_device(None)
             return
         self.instrumentation_panel.set_selected_device(device)
         self.script_studio_panel.set_selected_device(device)
+        self.pentest_workspace.set_selected_device(device)
         self.status_bar.set_status(
             adb="Connected" if device.connected else device.state,
             device=device.display_name,
@@ -305,6 +321,19 @@ class SusADBWindow(ctk.CTk):
     def _sync_script_target(self, target):
         if hasattr(self, "script_studio_panel"):
             self.script_studio_panel.set_selected_target(target)
+        if hasattr(self, "pentest_workspace"):
+            self.pentest_workspace.set_selected_target(target)
+
+    def navigate_workspace(self, name: str):
+        if name in self.workspace._tab_dict:
+            self.workspace.set(name)
+
+    def enter_pentest_workspace(self):
+        self.navigate_workspace("Pentest")
+
+    def new_assessment_case(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_scope_dialog()
 
     def copy_console_selection(self, _event=None):
         return "break" if ClipboardManager.copy(self.console) else None
