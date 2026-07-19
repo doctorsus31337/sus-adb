@@ -15,7 +15,7 @@ class MenuBar:
         file_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         file_menu.add_command(label="Save Console", command=window.save_console)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=window.quit)
+        file_menu.add_command(label="Exit", command=window.shutdown)
         menu.add_cascade(label="File", menu=file_menu)
 
         settings_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
@@ -27,6 +27,7 @@ class MenuBar:
         tools_menu.add_command(label="Clear Console", command=window.clear_console)
         tools_menu.add_separator()
         tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
+        tools_menu.add_command(label="Open ADB Explorer", command=window.open_adb_explorer)
         tools_menu.add_command(label="New Assessment Case", command=window.new_assessment_case)
         menu.add_cascade(label="Tools", menu=tools_menu)
 

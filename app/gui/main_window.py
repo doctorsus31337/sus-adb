@@ -79,6 +79,7 @@ class SusADBWindow(ctk.CTk):
         self.create_widgets()
         self.after_idle(self.center_window)
         self.after(250, self.startup_check)
+        self.protocol("WM_DELETE_WINDOW", self.shutdown)
 
     def create_widgets(self):
         GothicHeader(self, self.theme).grid(
@@ -195,6 +196,7 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace = PentestWorkspace(
             pentest_tab, self.theme, "workspaces", self.frida_manager,
             self.frida_runtime, self.tool_diagnostics, self.log, self.navigate_workspace,
+            adb=self.devices.adb,
         )
         self.pentest_workspace.grid(row=0, column=0, sticky="nsew")
 
@@ -331,9 +333,18 @@ class SusADBWindow(ctk.CTk):
     def enter_pentest_workspace(self):
         self.navigate_workspace("Pentest")
 
+    def open_adb_explorer(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_adb_explorer()
+
     def new_assessment_case(self):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_scope_dialog()
+
+    def shutdown(self):
+        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"adb_explorer"):
+            self.pentest_workspace.adb_explorer.cleanup()
+        self.destroy()
 
     def copy_console_selection(self, _event=None):
         return "break" if ClipboardManager.copy(self.console) else None
