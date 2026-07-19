@@ -60,6 +60,8 @@ cover/
 scripts/session-exports/
 scripts/.bundles/
 scripts/.cache/
+workspaces/*
+!workspaces/README.md
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

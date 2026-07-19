@@ -25,6 +25,9 @@ class MenuBar:
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
         tools_menu.add_command(label="Clear Console", command=window.clear_console)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
+        tools_menu.add_command(label="New Assessment Case", command=window.new_assessment_case)
         menu.add_cascade(label="Tools", menu=tools_menu)
 
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
