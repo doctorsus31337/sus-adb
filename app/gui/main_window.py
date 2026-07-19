@@ -13,10 +13,15 @@ from app.core.file_manager import FileManager
 from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
 from app.core.frida_session_manager import FridaSessionManager
+from app.core.frida_python_adapter import FridaPythonAdapter
+from app.core.frida_runtime_manager import FridaRuntimeManager
 from app.core.objection_manager import ObjectionManager
+from app.core.objection_recipe_manager import ObjectionRecipeManager
 from app.core.terminal_manager import TerminalManager
 from app.core.tool_diagnostics import ToolDiagnostics
 from app.core.target_discovery import TargetDiscovery
+from app.core.script_library import ScriptLibrary
+from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.action_panel import ActionPanel
 from app.gui.cheat_sheet_window import CheatSheetWindow
@@ -24,6 +29,7 @@ from app.gui.command_bar import CommandBar
 from app.gui.device_panel import DevicePanel
 from app.gui.gothic_header import GothicHeader
 from app.gui.instrumentation_panel import InstrumentationPanel
+from app.gui.script_studio_panel import ScriptStudioPanel
 from app.gui.menu_bar import MenuBar
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
@@ -45,6 +51,19 @@ class SusADBWindow(ctk.CTk):
         self.frida_sessions = FridaSessionManager(self.frida_manager, self.external_terminal)
         self.objection_manager = ObjectionManager(
             self.command_runner, self.frida_manager, self.external_terminal
+        )
+        self.objection_recipes = ObjectionRecipeManager(
+            self.objection_manager,
+            lambda: self.command_runner.run(
+                (self.objection_manager.objection_path or "objection", "--help"), timeout=10
+            ),
+        )
+        self.script_library = ScriptLibrary()
+        self.frida_python = FridaPythonAdapter()
+        self.script_validator = ScriptValidator()
+        self.frida_runtime = FridaRuntimeManager(
+            self.frida_python, self.script_library, self.script_validator,
+            diagnosis_provider=self.frida_manager.diagnose,
         )
         self.terminal = TerminalManager(self.log, self.clear_console)
         self.cheat_sheet: CheatSheetWindow | None = None
@@ -122,6 +141,7 @@ class SusADBWindow(ctk.CTk):
         self.workspace.grid(row=0, column=1, sticky="nsew")
         console_tab = self.workspace.add("Console")
         instrumentation_tab = self.workspace.add("Instrumentation")
+        scripts_tab = self.workspace.add("Scripts")
 
         console_tab.configure(fg_color=self.theme["bg"])
         console_tab.grid_rowconfigure(1, weight=1)
@@ -129,6 +149,9 @@ class SusADBWindow(ctk.CTk):
         instrumentation_tab.configure(fg_color=self.theme["bg"])
         instrumentation_tab.grid_rowconfigure(0, weight=1)
         instrumentation_tab.grid_columnconfigure(0, weight=1)
+        scripts_tab.configure(fg_color=self.theme["bg"])
+        scripts_tab.grid_rowconfigure(0, weight=1)
+        scripts_tab.grid_columnconfigure(0, weight=1)
 
         self.command_bar = CommandBar(console_tab, self.execute_command)
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -154,8 +177,15 @@ class SusADBWindow(ctk.CTk):
             self.target_discovery,
             self.frida_sessions,
             self.log,
+            self._sync_script_target,
         )
         self.instrumentation_panel.grid(row=0, column=0, sticky="nsew")
+
+        self.script_studio_panel = ScriptStudioPanel(
+            scripts_tab, self.theme, self.script_library, self.frida_runtime,
+            self.script_validator, self.log, objection_recipes=self.objection_recipes,
+        )
+        self.script_studio_panel.grid(row=0, column=0, sticky="nsew")
 
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
@@ -205,6 +235,7 @@ class SusADBWindow(ctk.CTk):
         self.device_panel.update_devices(devices)
         if not devices:
             self.instrumentation_panel.set_selected_device(None)
+            self.script_studio_panel.set_selected_device(None)
             self.status_bar.set_status(adb="No Devices", device="None", root="Unknown", frida="Unknown")
             self.log("[ADB] No devices detected.")
             return
@@ -212,6 +243,7 @@ class SusADBWindow(ctk.CTk):
         selected = self.devices.selected or devices[0]
         self.device_panel.selected_serial = selected.serial
         self.instrumentation_panel.set_selected_device(selected)
+        self.script_studio_panel.set_selected_device(selected)
         self.status_bar.set_status(
             adb="Connected",
             device=selected.display_name,
@@ -229,6 +261,7 @@ class SusADBWindow(ctk.CTk):
             self.log(f"[ADB] Device not found: {serial}")
             return
         self.instrumentation_panel.set_selected_device(device)
+        self.script_studio_panel.set_selected_device(device)
         self.log(f"[ADB] Selecting {device.display_name} ({serial})...")
         BackgroundWorker(
             lambda: self.devices.adb.forward_frida_ports(serial),
@@ -257,8 +290,10 @@ class SusADBWindow(ctk.CTk):
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
             self.instrumentation_panel.set_selected_device(None)
+            self.script_studio_panel.set_selected_device(None)
             return
         self.instrumentation_panel.set_selected_device(device)
+        self.script_studio_panel.set_selected_device(device)
         self.status_bar.set_status(
             adb="Connected" if device.connected else device.state,
             device=device.display_name,
@@ -266,6 +301,10 @@ class SusADBWindow(ctk.CTk):
             frida="Running" if device.frida else "Stopped",
         )
         self.log(f"[ADB] Selected {device.display_name} ({serial}).")
+
+    def _sync_script_target(self, target):
+        if hasattr(self, "script_studio_panel"):
+            self.script_studio_panel.set_selected_target(target)
 
     def copy_console_selection(self, _event=None):
         return "break" if ClipboardManager.copy(self.console) else None

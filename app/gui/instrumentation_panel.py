@@ -33,6 +33,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         target_discovery: TargetDiscovery,
         frida_sessions: FridaSessionManager,
         log_callback: Callable[[str], None],
+        target_callback: Callable[[FridaTarget | None], None] | None = None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme = theme
@@ -42,6 +43,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.target_discovery = target_discovery
         self.frida_sessions = frida_sessions
         self.log = log_callback
+        self.target_callback = target_callback
         self.device: Device | None = None
         self.targets: tuple[FridaTarget, ...] = ()
         self.selected_target: FridaTarget | None = None
@@ -553,6 +555,8 @@ class InstrumentationPanel(ctk.CTkFrame):
     def clear_targets(self, reason: str | None = None):
         self.targets = ()
         self.selected_target = None
+        if self.target_callback:
+            self.target_callback(None)
         self.frida_preview_command = ()
         self.objection_preview_command = ()
         self._render_targets()
@@ -607,6 +611,8 @@ class InstrumentationPanel(ctk.CTkFrame):
 
     def select_target(self, target: FridaTarget):
         self.selected_target = target
+        if self.target_callback:
+            self.target_callback(target)
         self._highlight_selected_row()
         self._show_selected_target()
         self.preview_frida()
