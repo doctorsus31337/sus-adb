@@ -48,6 +48,7 @@ from app.core.recovery_manager import RecoveryManager
 from app.core.application_lifecycle import ApplicationLifecycle
 from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
+from app.core.host_tool_resolver import HostToolResolver
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
 from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
@@ -60,13 +61,14 @@ class SusADBWindow(ctk.CTk):
         self.theme = get_theme()
         self.devices = DeviceManager()
         self.command_runner = CommandRunner()
-        self.tool_diagnostics = ToolDiagnostics(self.command_runner)
-        self.frida_manager = FridaManager(self.devices.adb, self.command_runner)
+        self.host_tools = HostToolResolver(self.app_config.get("executables", {}))
+        self.tool_diagnostics = ToolDiagnostics(self.command_runner, resolver=self.host_tools)
+        self.frida_manager = FridaManager(self.devices.adb, self.command_runner, resolver=self.host_tools)
         self.external_terminal = ExternalTerminal()
         self.target_discovery = TargetDiscovery(self.frida_manager)
-        self.frida_sessions = FridaSessionManager(self.frida_manager, self.external_terminal)
+        self.frida_sessions = FridaSessionManager(self.frida_manager, self.external_terminal, resolver=self.host_tools)
         self.objection_manager = ObjectionManager(
-            self.command_runner, self.frida_manager, self.external_terminal
+            self.command_runner, self.frida_manager, self.external_terminal, resolver=self.host_tools
         )
         self.objection_recipes = ObjectionRecipeManager(
             self.objection_manager,
@@ -81,7 +83,7 @@ class SusADBWindow(ctk.CTk):
             self.frida_python, self.script_library, self.script_validator,
             diagnosis_provider=self.frida_manager.diagnose,
         )
-        self.terminal = TerminalManager(self.log, self.clear_console)
+        self.terminal = TerminalManager(self.log, self.clear_console, self.host_tools)
         plugin_root = self.app_config.get("plugin_storage_root", "plugins")
         if not __import__("pathlib").Path(plugin_root).is_absolute():
             plugin_root = self.config_manager.directory / plugin_root
@@ -273,7 +275,7 @@ class SusADBWindow(ctk.CTk):
         if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
             self.diagnostics_window.lift()
             return
-        results = EnvironmentDiagnostics().run(self.config_manager.directory, self.app_config.get("workspace_root", "workspaces"))
+        results = EnvironmentDiagnostics(resolver=self.host_tools).run(self.config_manager.directory, self.app_config.get("workspace_root", "workspaces"))
         self.diagnostics_window = EnvironmentDiagnosticsWindow(self, self.theme, results)
 
     def open_first_run(self):

@@ -103,6 +103,41 @@ class FridaManagerTests(unittest.TestCase):
         self.assertFalse(manager.list_processes("SERIAL").ok)
         self.assertEqual(runner.commands, [])
 
+    def test_server_already_running_does_not_execute_start(self):
+        adb = FakeADB(adb_output)
+        result = self.make_manager(adb=adb).start_server("SERIAL")
+        self.assertTrue(result.ok)
+        self.assertIn("already running", result.stdout.lower())
+        self.assertFalse(any("chmod 755" in " ".join(call[0]) for call in adb.calls))
+
+    def test_address_in_use_requires_expected_server_verification(self):
+        state = {"started": False}
+
+        def handler(args, serial, kwargs):
+            joined = " ".join(args)
+            if "chmod 755" in joined:
+                state["started"] = True
+                return CommandResult.from_command(args, 1, error="Address already in use")
+            if "pidof" in joined:
+                return CommandResult.from_command(args, 0 if state["started"] else 1, stdout="42" if state["started"] else "")
+            return adb_output(args, serial, kwargs)
+
+        result = self.make_manager(adb=FakeADB(handler)).start_server("SERIAL")
+        self.assertTrue(result.ok)
+        self.assertIn("already running", result.stdout.lower())
+
+    def test_unrelated_address_in_use_remains_failure(self):
+        def handler(args, serial, kwargs):
+            if "chmod 755" in " ".join(args):
+                return CommandResult.from_command(args, 1, error="Address already in use")
+            if "pidof" in " ".join(args):
+                return CommandResult.from_command(args, 1)
+            return adb_output(args, serial, kwargs)
+
+        result = self.make_manager(adb=FakeADB(handler)).start_server("SERIAL")
+        self.assertFalse(result.ok)
+        self.assertIn("address already in use", result.output.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

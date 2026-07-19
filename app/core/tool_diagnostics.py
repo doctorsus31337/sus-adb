@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
-from collections.abc import Callable
 
 from app.core.command_result import CommandResult
 from app.core.command_runner import CommandRunner
+from app.core.host_tool_resolver import HostToolResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,19 +34,22 @@ class ToolDiagnostics:
     def __init__(
         self,
         runner: CommandRunner | None = None,
-        which: Callable[[str], str | None] | None = None,
+        which=None,
+        resolver: HostToolResolver | None = None,
+        configured: dict[str, str] | None = None,
     ):
         self.runner = runner or CommandRunner()
-        self.which = which or shutil.which
+        self.resolver = resolver or HostToolResolver(configured, **({"which": which} if which else {}))
 
     def check(self, name: str) -> ToolDiagnostic:
         if name not in self.TOOL_SPECS:
             raise ValueError(f"Unsupported tool: {name}")
         display_name, version_args = self.TOOL_SPECS[name]
-        path = self.which(name)
+        path = self.resolver.resolve(name)
         if not path:
             result = CommandResult.from_command(
-                (name, *version_args), -1, error=f"{display_name} was not found in PATH."
+                (name, *version_args), -1,
+                error=self.resolver.missing_message(name, display_name),
             )
             return ToolDiagnostic(
                 name=name,
@@ -59,6 +61,8 @@ class ToolDiagnostics:
             )
 
         result = self.runner.run((path, *version_args), timeout=10)
+        if result.ok:
+            self.resolver.record_validated(name, path)
         version = self._version_text(result) if result.ok else None
         return ToolDiagnostic(
             name=name,

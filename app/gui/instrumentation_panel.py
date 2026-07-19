@@ -471,7 +471,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._last_diagnosis = diagnosis
         values = {
             "path": diagnosis.server_path or "Not found",
-            "running": "Running" if diagnosis.server_running else "Stopped",
+            "running": "Server running" if diagnosis.server_running else "Server stopped",
             "version": diagnosis.server_version or "Unknown",
             "match": self._state(diagnosis.versions_match),
             "27042": self._state(diagnosis.port_27042),
@@ -482,7 +482,7 @@ class InstrumentationPanel(ctk.CTkFrame):
             self.frida_labels[name].configure(text=value)
         self.summary_labels["root"].configure(text=self._state(diagnosis.root_available))
         self.summary_labels["server"].configure(
-            text="Running" if diagnosis.server_running else "Stopped"
+            text="Server running" if diagnosis.server_running else "Server stopped"
         )
         self.summary_labels["reachable"].configure(text=self._state(diagnosis.reachable))
         self.summary_labels["versions"].configure(
@@ -490,20 +490,54 @@ class InstrumentationPanel(ctk.CTkFrame):
             else "Mismatch" if diagnosis.versions_match is False else "Unknown"
         )
         output = list(diagnosis.recommendations)
+        if diagnosis.server_running and any("GUI process" in error for error in diagnosis.errors):
+            output.insert(0, "Device frida-server is running, but host frida-ps is unavailable to the GUI process. Configure its executable path or launch SUS-ADB from the project virtual environment.")
         if diagnosis.errors:
             output.extend(("", "Errors:", *diagnosis.errors))
         self._append_results("Frida diagnosis", "\n".join(output))
         self.overview_notice.configure(text="\n".join(output) or "No recommendations.")
         self._update_mismatch_warning()
+        if diagnosis.versions_match is False:
+            warning_state = "Version mismatch"
+        elif diagnosis.server_running and any("GUI process" in error for error in diagnosis.errors):
+            warning_state = "Host CLI unavailable"
+        elif diagnosis.server_running and not diagnosis.port_27042:
+            warning_state = "Forwarding unavailable"
+        elif diagnosis.server_running and not diagnosis.reachable:
+            warning_state = "Target discovery unavailable"
+        else:
+            warning_state = "None"
+        self.summary_labels["warning"].configure(
+            text=warning_state,
+            text_color=self.theme["error"] if warning_state != "None" else self.theme["gold"],
+        )
         for error in diagnosis.errors:
             self.log(f"[FRIDA ERROR] {error}")
 
     def _lifecycle(self, action: str, operation):
         serial = self._serial()
+        if action in {"Start", "Restart"}:
+            self.frida_labels["running"].configure(text="Server starting")
+            self.summary_labels["server"].configure(text="Server starting")
         self._run_operation(
             f"{action} Frida server", lambda: operation(serial),
-            lambda value: self._complete_stale_operation(value, "Frida server state changed"),
+            lambda value: self._complete_lifecycle(value, action),
         )
+
+    def _complete_lifecycle(self, value, action):
+        results = value if isinstance(value, tuple) else (value,)
+        already = any(isinstance(result, CommandResult) and "already running" in result.output.casefold() for result in results)
+        if already:
+            state = "Server already running"
+        elif action in {"Start", "Restart"} and all(result.ok for result in results):
+            state = "Server running"
+        elif action == "Stop" and all(result.ok for result in results):
+            state = "Server stopped"
+        else:
+            state = "Target discovery unavailable"
+        self.frida_labels["running"].configure(text=state)
+        self.summary_labels["server"].configure(text=state)
+        self._complete_stale_operation(value, "Frida server state changed")
 
     def repair_forwarding(self):
         serial = self._serial()

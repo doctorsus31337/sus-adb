@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import shlex
 import threading
 from collections.abc import Callable
 
 from app.core.command_registry import CommandRegistry
 from app.core.command_runner import CommandRunner
 from app.core.history_manager import HistoryManager
+from app.core.host_tool_resolver import HostToolResolver
 
 
 class TerminalManager:
@@ -18,11 +20,13 @@ class TerminalManager:
         self,
         log_callback: Callable[[str], None],
         clear_callback: Callable[[], None] | None = None,
+        resolver: HostToolResolver | None = None,
     ):
         self.log = log_callback
         self.clear_callback = clear_callback
         self.history = HistoryManager()
         self.runner = CommandRunner()
+        self.resolver = resolver or HostToolResolver()
         self.cwd = os.getcwd()
         self._active_lock = threading.Lock()
         self._active = False
@@ -63,7 +67,16 @@ class TerminalManager:
     def _run(self, command: str) -> None:
         self.log(f"\n{self.PROMPT}{command}\n")
         try:
-            returncode = self.runner.stream_shell(command, self._write_line, cwd=self.cwd)
+            argv = tuple(shlex.split(command, posix=os.name != "nt"))
+            if not argv:
+                return
+            resolved = self.resolver.resolve(argv[0])
+            if resolved:
+                argv = (resolved, *argv[1:])
+            elif argv[0] in self.resolver.configured or argv[0] in {"frida", "frida-ps", "frida-trace", "objection"}:
+                self.log(f"[ERROR] {self.resolver.missing_message(argv[0])}")
+                return
+            returncode = self.runner.stream(argv, self._write_line, cwd=self.cwd)
             self.log("")
             self.log("[✓] Complete" if returncode == 0 else f"[✗] Exit code {returncode}")
             self.log("")

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import re
 import shlex
-import shutil
 from dataclasses import dataclass, field
 
 from app.core.adb_manager import ADBManager
 from app.core.command_result import CommandResult
 from app.core.command_runner import CommandRunner
+from app.core.host_tool_resolver import HostToolResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,11 +49,15 @@ class FridaManager:
         *,
         frida_path: str | None = None,
         frida_ps_path: str | None = None,
+        resolver: HostToolResolver | None = None,
     ):
         self.adb = adb
         self.runner = runner
-        self.frida_path = shutil.which("frida") if frida_path is None else frida_path
-        self.frida_ps_path = shutil.which("frida-ps") if frida_ps_path is None else frida_ps_path
+        self._frida_explicit = frida_path is not None
+        self._frida_ps_explicit = frida_ps_path is not None
+        self.resolver = resolver or HostToolResolver()
+        self.frida_path = self.resolver.resolve("frida") if frida_path is None else frida_path
+        self.frida_ps_path = self.resolver.resolve("frida-ps") if frida_ps_path is None else frida_ps_path
 
     @staticmethod
     def _serial_error(operation: str) -> CommandResult:
@@ -62,11 +66,14 @@ class FridaManager:
         )
 
     def host_version(self) -> CommandResult:
-        if not self.frida_path:
+        executable = self.frida_path if self._frida_explicit else self.resolver.resolve("frida")
+        if not executable:
             return CommandResult.from_command(
-                ("frida", "--version"), -1, error="Frida was not found in PATH."
+                ("frida", "--version"), -1,
+                error=self.resolver.missing_message("frida", "Frida"),
             )
-        return self.runner.run((self.frida_path, "--version"), timeout=10)
+        self.frida_path = executable
+        return self.runner.run((executable, "--version"), timeout=10)
 
     def server_version(self, serial: str | None) -> CommandResult:
         if not serial:
@@ -145,11 +152,14 @@ class FridaManager:
     def _list(self, serial: str | None, *, applications: bool) -> CommandResult:
         if not serial:
             return self._serial_error("frida-ps")
-        if not self.frida_ps_path:
+        executable = self.frida_ps_path if self._frida_ps_explicit else self.resolver.resolve("frida-ps")
+        if not executable:
             return CommandResult.from_command(
-                ("frida-ps",), -1, error="frida-ps was not found in PATH."
+                ("frida-ps",), -1,
+                error=self.resolver.missing_message("frida-ps"),
             )
-        args = [self.frida_ps_path, "-H", "127.0.0.1:27042"]
+        self.frida_ps_path = executable
+        args = [executable, "-H", "127.0.0.1:27042"]
         if applications:
             args.append("-ai")
         return self.runner.run(args, timeout=30)
@@ -163,9 +173,26 @@ class FridaManager:
                 ("adb", "-s", serial, "shell", "su", "-c"), -1,
                 error="frida-server was not found on the selected device.",
             )
+        if self._expected_server_ready(serial, selected_path):
+            return CommandResult.from_command(
+                ("adb", "-s", serial, "shell", "su", "-c", selected_path), 0,
+                stdout="Frida server is already running.",
+            )
         quoted = shlex.quote(selected_path)
         command = f"chmod 755 {quoted} && {quoted} >/dev/null 2>&1 &"
-        return self.adb.run("shell", "su", "-c", command, serial=serial, timeout=12)
+        result = self.adb.run("shell", "su", "-c", command, serial=serial, timeout=12)
+        address_in_use = "address already in use" in result.output.casefold()
+        if address_in_use and self._expected_server_ready(serial, selected_path):
+            return CommandResult.from_command(result.command, 0, stdout="Frida server is already running.")
+        return result
+
+    def _expected_server_ready(self, serial: str, expected_path: str) -> bool:
+        if not self.server_running(serial):
+            return False
+        located = self.locate_server(serial)
+        if located != expected_path:
+            return False
+        return self.forwarding_status(serial).port_27042
 
     def stop_server(self, serial: str | None) -> CommandResult:
         if not serial:
