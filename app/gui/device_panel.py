@@ -9,11 +9,12 @@ from app.widgets.gothic_frame import GothicFrame
 
 
 class DevicePanel(GothicFrame):
-    def __init__(self, parent, theme, refresh_callback, connect_callback):
+    def __init__(self, parent, theme, refresh_callback, connect_callback, select_callback=None):
         super().__init__(parent, fg_color=theme["panel"])
         self.theme = theme
         self.refresh_callback = refresh_callback
         self.connect_callback = connect_callback
+        self.select_callback = select_callback
         self.selected_serial: str | None = None
         self.cards: list[DeviceCard] = []
 
@@ -85,6 +86,8 @@ class DevicePanel(GothicFrame):
 
     def select_device(self, serial: str):
         self.selected_serial = serial
+        if self.select_callback is not None:
+            self.select_callback(serial)
 
     def _connect(self):
         self.connect_callback(self.selected_serial)

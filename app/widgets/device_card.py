@@ -6,6 +6,8 @@ from app.core.device import Device
 
 
 class DeviceCard(ctk.CTkFrame):
+    VALUE_WRAP_LENGTH = 165
+
     def __init__(self, parent, device: Device, theme, select_callback=None):
         super().__init__(
             parent,
@@ -16,31 +18,70 @@ class DeviceCard(ctk.CTkFrame):
         )
         self.device = device
         self.select_callback = select_callback
+        self.grid_columnconfigure(1, weight=1)
 
-        title = ctk.CTkLabel(
+        model = ctk.CTkLabel(
             self,
             text=device.display_name,
             font=("Segoe UI", 14, "bold"),
             text_color=theme["gold"],
             anchor="w",
-        )
-        title.pack(fill="x", padx=10, pady=(8, 0))
-
-        details = ctk.CTkLabel(
-            self,
-            text=(
-                f"{device.serial}\n"
-                f"Android {device.android_version}  •  Battery {device.battery}\n"
-                f"State: {device.state}  •  Root: {self._yes_no(device.root)}  •  Frida: {self._yes_no(device.frida)}"
-            ),
-            font=("Consolas", 11),
-            text_color=theme["text"],
             justify="left",
-            anchor="w",
+            wraplength=210,
         )
-        details.pack(fill="x", padx=10, pady=(2, 8))
+        model.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=10,
+            pady=(8, 4),
+        )
 
-        for widget in (self, title, details):
+        widgets = [model]
+        fields = (
+            ("Serial", device.serial),
+            ("Android", device.android_version),
+            ("Battery", device.battery),
+            ("State", device.state),
+            ("Root", self._yes_no(device.root)),
+            ("Frida", self._yes_no(device.frida)),
+        )
+        for row, (name, value) in enumerate(fields, start=1):
+            name_label = ctk.CTkLabel(
+                self,
+                text=f"{name}:",
+                font=("Segoe UI", 11, "bold"),
+                text_color=theme["muted"],
+                anchor="nw",
+            )
+            name_label.grid(
+                row=row,
+                column=0,
+                sticky="nw",
+                padx=(10, 6),
+                pady=(1, 7 if row == len(fields) else 1),
+            )
+
+            value_label = ctk.CTkLabel(
+                self,
+                text=str(value),
+                font=("Consolas", 11),
+                text_color=theme["text"],
+                justify="left",
+                anchor="nw",
+                wraplength=self.VALUE_WRAP_LENGTH,
+            )
+            value_label.grid(
+                row=row,
+                column=1,
+                sticky="ew",
+                padx=(0, 10),
+                pady=(1, 7 if row == len(fields) else 1),
+            )
+            widgets.extend((name_label, value_label))
+
+        for widget in (self, *widgets):
             widget.bind("<Button-1>", self._select)
 
     @staticmethod
