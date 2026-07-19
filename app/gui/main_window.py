@@ -196,7 +196,8 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace = PentestWorkspace(
             pentest_tab, self.theme, "workspaces", self.frida_manager,
             self.frida_runtime, self.tool_diagnostics, self.log, self.navigate_workspace,
-            adb=self.devices.adb,
+            adb=self.devices.adb, script_library=self.script_library,
+            open_script_callback=self.open_generated_script,
         )
         self.pentest_workspace.grid(row=0, column=0, sticky="nsew")
 
@@ -337,11 +338,23 @@ class SusADBWindow(ctk.CTk):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_adb_explorer()
 
+    def open_runtime_explorer(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_runtime_explorer()
+
+    def open_generated_script(self, descriptor):
+        self.navigate_workspace("Scripts")
+        self.script_studio_panel.refresh_library()
+        selected = next((item for item in self.script_studio_panel.descriptors if item.script_id == descriptor.script_id), descriptor)
+        self.script_studio_panel.select_descriptor(selected)
+
     def new_assessment_case(self):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_scope_dialog()
 
     def shutdown(self):
+        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"runtime_explorer"):
+            self.pentest_workspace.runtime_explorer.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"adb_explorer"):
             self.pentest_workspace.adb_explorer.cleanup()
         self.destroy()

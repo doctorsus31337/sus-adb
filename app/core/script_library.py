@@ -25,7 +25,7 @@ class LibraryResult:
 class ScriptLibrary:
     DIRECTORIES = (
         "frida/inspection", "frida/networking", "frida/resilience-testing",
-        "frida/custom", "objection", "profiles", "metadata",
+        "frida/custom", "frida/generated", "objection", "profiles", "metadata",
     )
     EXTENSIONS = {".js", ".ts", ".txt", ".objection", ".json"}
 

@@ -28,6 +28,7 @@ class MenuBar:
         tools_menu.add_separator()
         tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
         tools_menu.add_command(label="Open ADB Explorer", command=window.open_adb_explorer)
+        tools_menu.add_command(label="Open Runtime Explorer", command=window.open_runtime_explorer)
         tools_menu.add_command(label="New Assessment Case", command=window.new_assessment_case)
         menu.add_cascade(label="Tools", menu=tools_menu)
 
