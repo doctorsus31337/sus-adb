@@ -45,6 +45,7 @@ from app.core.app_metadata import METADATA
 from app.core.config_manager import ConfigManager
 from app.core.logging_manager import LoggingManager
 from app.core.recovery_manager import RecoveryManager
+from app.core.application_lifecycle import ApplicationLifecycle
 from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
@@ -433,23 +434,14 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace.open_scope_dialog()
 
     def shutdown(self):
-        if hasattr(self,"plugin_manager"):
-            self.plugin_manager.shutdown()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"findings_reporting"):
-            self.pentest_workspace.findings_reporting.cleanup()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"apk_lab"):
-            self.pentest_workspace.apk_lab.cleanup()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"storage_workspace"):
-            self.pentest_workspace.storage_workspace.cleanup()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"network_workspace"):
-            self.pentest_workspace.network_workspace.cleanup()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"runtime_explorer"):
-            self.pentest_workspace.runtime_explorer.cleanup()
-        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"adb_explorer"):
-            self.pentest_workspace.adb_explorer.cleanup()
-        if hasattr(self,"config_manager"):self.app_config["window"]["geometry"]=self.geometry();self.config_manager.save(self.app_config)
-        if hasattr(self,"recovery_manager"):self.recovery_manager.mark_clean_shutdown()
-        if hasattr(self,"logging_manager"):self.logging_manager.close()
+        if getattr(self,"_shutdown_started",False):return
+        self._shutdown_started=True;life=ApplicationLifecycle(shutdown_timeout=5)
+        for name,owner,method in (("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
+            if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
+        result=life.shutdown()
+        if result.errors:self.logging_manager.log("ERROR","; ".join(result.errors))
+        self.app_config["window"]["geometry"]=self.geometry();self.config_manager.save(self.app_config)
+        self.recovery_manager.mark_clean_shutdown();self.logging_manager.close()
         self.destroy()
 
     def copy_console_selection(self, _event=None):

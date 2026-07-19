@@ -12,18 +12,15 @@ def main():
   from app.gui.crash_dialog import CrashDialog
   from app.core.environment_diagnostics import DiagnosticRecord
   app=SusADBWindow()
-  for ident in app.tk.call("after","info"):
-   try:app.after_cancel(ident)
-   except Exception:pass
-  first=FirstRunDialog(app,app.theme);diagnostics=EnvironmentDiagnosticsWindow(app,app.theme,(DiagnosticRecord("ADB",False,False,guidance="Optional"),));crash=CrashDialog(app,app.theme,"redacted report")
+  app.open_first_run();first=app.first_run_dialog;app.open_first_run();assert app.first_run_dialog is first
+  diagnostics=EnvironmentDiagnosticsWindow(app,app.theme,(DiagnosticRecord("ADB",False,False,guidance="Optional"),));crash=CrashDialog(app,app.theme,"redacted report")
   for width,height in ((1200,760),(1400,860)):
    app.geometry(f"{width}x{height}+0+0");app.update_idletasks()
    assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height()
    assert all(name in app.workspace._tab_dict for name in ("Console","Instrumentation","Scripts","Pentest"))
   assert "1.0.0-rc.1" in app.title()
   first.destroy();diagnostics.destroy();crash.destroy()
-  try:app.shutdown()
-  except Exception:pass
+  app.shutdown()
  print("gui-smoke=PASS sizes=1200x760,1400x860 dialogs=first-run,diagnostics,crash")
  return 0
 if __name__=="__main__":raise SystemExit(main())

@@ -1,6 +1,6 @@
 """Read-only, injected host/environment diagnostics."""
 from __future__ import annotations
-import importlib.util,platform,shutil,sys
+import importlib.util,os,platform,shutil,sys
 from dataclasses import dataclass
 from pathlib import Path
 @dataclass(frozen=True,slots=True)
@@ -19,7 +19,10 @@ class EnvironmentDiagnostics:
             records.append(DiagnosticRecord(tool,bool(path),tool=="adb",version,path or "",f"Install/configure {tool} only if its workflow is needed."))
         for name,path in (("Configuration directory",config_dir),("Workspace directory",workspace_dir)):
             if path:
-                try:p=Path(path);p.mkdir(parents=True,exist_ok=True);ok=p.is_dir()
+                try:
+                    p=Path(path).expanduser();probe=p
+                    while not probe.exists() and probe!=probe.parent:probe=probe.parent
+                    ok=(p.is_dir() and os.access(p,os.W_OK)) or (not p.exists() and probe.is_dir() and os.access(probe,os.W_OK))
                 except OSError:ok=False
                 records.append(DiagnosticRecord(name,ok,True,path=str(path),guidance="Choose a user-writable local directory."))
         records.append(DiagnosticRecord("Platform",True,True,f"{platform.system()} {platform.machine()}"));return tuple(records)

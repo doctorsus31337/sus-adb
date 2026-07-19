@@ -9,7 +9,14 @@ def validate(data):
     errors=[]
     if not isinstance(data,dict):return ("Configuration must be a JSON object.",)
     if not isinstance(data.get("schema_version",0),int):errors.append("schema_version must be an integer.")
-    if any(str(k).casefold() in SECRET_KEYS for k in data):errors.append("Secrets and credentials may not be stored in configuration.")
+    def secret_keys(value):
+        if isinstance(value,dict):
+            for key,nested in value.items():
+                if str(key).casefold() in SECRET_KEYS:yield str(key)
+                yield from secret_keys(nested)
+        elif isinstance(value,(list,tuple)):
+            for nested in value:yield from secret_keys(nested)
+    if next(secret_keys(data),None) is not None:errors.append("Secrets and credentials may not be stored in configuration.")
     privacy=data.get("privacy",{})
     if privacy and not isinstance(privacy,dict):errors.append("privacy must be an object.")
     return tuple(errors)
