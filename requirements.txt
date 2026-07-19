@@ -1,5 +1,5 @@
 # GUI Framework
-customtkinter
+customtkinter>=5.2,<6
 
 # System Utilities
-psutil
+psutil>=5.9,<8

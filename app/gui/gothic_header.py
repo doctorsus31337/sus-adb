@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from app.core.app_metadata import METADATA
 
 
 class GothicHeader(ctk.CTkFrame):
@@ -19,7 +20,7 @@ class GothicHeader(ctk.CTkFrame):
 
         self.subtitle = ctk.CTkLabel(
             self,
-            text="Medieval Gothic Blackhat Console",
+            text=f"Medieval Gothic Blackhat Console · {METADATA.version}",
             font=("Times New Roman", 16, "italic"),
             text_color=theme["muted"]
         )

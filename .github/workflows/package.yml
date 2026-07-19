@@ -1,0 +1,21 @@
+name: Package RC
+on:
+  workflow_dispatch:
+  push: {branches: ['feature/release-engineering-stabilization', 'release-candidate/**']}
+permissions: {contents: read}
+jobs:
+  package:
+    strategy: {matrix: {os: [ubuntu-latest, windows-latest], python: ['3.11']}}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '${{ matrix.python }}', cache: pip}
+      - run: python -m pip install -r requirements-build.txt
+      - if: runner.os == 'Linux'
+        run: sh packaging/linux/build_linux.sh
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/build_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with: {name: 'sus-adb-1.0.0-rc.1-${{ runner.os }}', path: dist/}
