@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import shutil
-import subprocess
 from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
 
 from app.core.command_result import CommandResult
 from app.core.command_runner import CommandRunner
+from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
 
 
@@ -25,27 +24,20 @@ class ObjectionReadiness:
 
 
 class ObjectionManager:
-    TERMINALS = (
-        "x-terminal-emulator", "konsole", "gnome-terminal",
-        "xfce4-terminal", "kitty", "alacritty",
-    )
-
     def __init__(
         self,
         runner: CommandRunner,
         frida: FridaManager,
+        terminal: ExternalTerminal,
         *,
         objection_path: str | None = None,
         which: Callable[[str], str | None] | None = None,
-        launcher: Callable[..., object] | None = None,
-        platform_name: str | None = None,
     ):
         self.runner = runner
         self.frida = frida
+        self.terminal = terminal
         self.which = which or shutil.which
         self.objection_path = self.which("objection") if objection_path is None else objection_path
-        self.launcher = launcher or subprocess.Popen
-        self.platform_name = platform_name or os.name
 
     def version(self) -> CommandResult:
         if not self.objection_path:
@@ -128,41 +120,4 @@ class ObjectionManager:
         )
 
     def launch_external_session(self, command: Sequence[str]) -> CommandResult:
-        args = tuple(str(part) for part in command)
-        if not args:
-            return CommandResult.from_command(args, -1, error="No Objection command was provided.")
-        try:
-            launch_command = self._terminal_command(args)
-        except RuntimeError as exc:
-            return CommandResult.from_command(args, -1, error=str(exc))
-        try:
-            self.launcher(launch_command)
-        except Exception as exc:
-            return CommandResult.from_command(launch_command, -1, error=str(exc))
-        return CommandResult.from_command(launch_command, 0, stdout="External Objection terminal launched.")
-
-    def _terminal_command(self, command: tuple[str, ...]) -> tuple[str, ...]:
-        if self.platform_name == "nt":
-            powershell = self.which("powershell") or self.which("powershell.exe")
-            if not powershell:
-                raise RuntimeError("PowerShell was not found; cannot launch Objection externally.")
-            script = "& " + " ".join(self._powershell_quote(part) for part in command)
-            return powershell, "-NoExit", "-Command", script
-
-        terminal = None
-        for candidate in self.TERMINALS:
-            terminal = self.which(candidate)
-            if terminal:
-                break
-        if not terminal:
-            raise RuntimeError("No supported external terminal was found.")
-        name = os.path.basename(terminal)
-        if name in {"gnome-terminal", "xfce4-terminal"}:
-            return terminal, "--", *command
-        if name == "konsole":
-            return terminal, "-e", *command
-        return terminal, "-e", *command
-
-    @staticmethod
-    def _powershell_quote(value: str) -> str:
-        return "'" + value.replace("'", "''") + "'"
+        return self.terminal.launch(command)

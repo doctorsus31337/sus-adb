@@ -10,10 +10,13 @@ from app.core.command_runner import CommandRunner
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
 from app.core.file_manager import FileManager
+from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
+from app.core.frida_session_manager import FridaSessionManager
 from app.core.objection_manager import ObjectionManager
 from app.core.terminal_manager import TerminalManager
 from app.core.tool_diagnostics import ToolDiagnostics
+from app.core.target_discovery import TargetDiscovery
 from app.core.worker import BackgroundWorker
 from app.gui.action_panel import ActionPanel
 from app.gui.cheat_sheet_window import CheatSheetWindow
@@ -37,7 +40,12 @@ class SusADBWindow(ctk.CTk):
         self.command_runner = CommandRunner()
         self.tool_diagnostics = ToolDiagnostics(self.command_runner)
         self.frida_manager = FridaManager(self.devices.adb, self.command_runner)
-        self.objection_manager = ObjectionManager(self.command_runner, self.frida_manager)
+        self.external_terminal = ExternalTerminal()
+        self.target_discovery = TargetDiscovery(self.frida_manager)
+        self.frida_sessions = FridaSessionManager(self.frida_manager, self.external_terminal)
+        self.objection_manager = ObjectionManager(
+            self.command_runner, self.frida_manager, self.external_terminal
+        )
         self.terminal = TerminalManager(self.log, self.clear_console)
         self.cheat_sheet: CheatSheetWindow | None = None
 
@@ -143,6 +151,8 @@ class SusADBWindow(ctk.CTk):
             self.tool_diagnostics,
             self.frida_manager,
             self.objection_manager,
+            self.target_discovery,
+            self.frida_sessions,
             self.log,
         )
         self.instrumentation_panel.grid(row=0, column=0, sticky="nsew")

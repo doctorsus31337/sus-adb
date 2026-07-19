@@ -27,13 +27,23 @@ class FakeFrida:
         )
 
 
+class FakeTerminal:
+    def __init__(self, result=None):
+        self.commands = []
+        self.result = result
+
+    def launch(self, command):
+        self.commands.append(tuple(command))
+        return self.result or CommandResult.from_command(command, 0, stdout="launched")
+
+
 class ObjectionManagerTests(unittest.TestCase):
     def make_manager(self, **kwargs):
         return ObjectionManager(
-            FakeRunner(), kwargs.pop("frida", FakeFrida()), objection_path="/tools/objection",
+            FakeRunner(), kwargs.pop("frida", FakeFrida()),
+            kwargs.pop("terminal", FakeTerminal()), objection_path="/tools/objection",
             which=kwargs.pop("which", lambda _name: None),
-            launcher=kwargs.pop("launcher", lambda _command: object()),
-            platform_name=kwargs.pop("platform_name", "posix"), **kwargs,
+            **kwargs,
         )
 
     def test_empty_target_rejected(self):
@@ -56,7 +66,7 @@ class ObjectionManagerTests(unittest.TestCase):
         self.assertNotIn("-g", command)
 
     def test_missing_objection(self):
-        manager = ObjectionManager(FakeRunner(), FakeFrida(), objection_path="")
+        manager = ObjectionManager(FakeRunner(), FakeFrida(), FakeTerminal(), objection_path="")
         readiness = manager.readiness("SERIAL", "target", "socket")
         self.assertFalse(readiness.ready)
         self.assertFalse(readiness.objection_installed)
@@ -69,18 +79,14 @@ class ObjectionManagerTests(unittest.TestCase):
         self.assertIn("not reachable", " ".join(readiness.errors))
 
     def test_no_supported_external_terminal(self):
-        result = self.make_manager().launch_external_session(("objection", "version"))
+        failure = CommandResult.from_command(("objection",), -1, error="No supported external terminal was found.")
+        result = self.make_manager(terminal=FakeTerminal(failure)).launch_external_session(("objection", "version"))
         self.assertFalse(result.ok)
         self.assertIn("terminal", result.error.lower())
 
     def test_structured_launch_failure(self):
-        def fail(_command):
-            raise OSError("launch failed")
-
-        manager = self.make_manager(
-            which=lambda name: "/usr/bin/kitty" if name == "kitty" else None,
-            launcher=fail,
-        )
+        failure = CommandResult.from_command(("objection",), -1, error="launch failed")
+        manager = self.make_manager(terminal=FakeTerminal(failure))
         result = manager.launch_external_session(("objection", "version"))
         self.assertFalse(result.ok)
         self.assertEqual(result.error, "launch failed")
