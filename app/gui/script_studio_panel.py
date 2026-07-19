@@ -96,7 +96,13 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.unsaved_label = ctk.CTkLabel(bar, text="Saved", text_color=self.theme["muted"]); self.unsaved_label.grid(row=0, column=1, padx=7)
         self.find_entry = self._entry(bar, "Find text"); self.find_entry.grid(row=0, column=2, padx=3); self._button(bar, "Find", self.find_text, 0, 3)
         self.editor = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 13), border_width=1, border_color=self.theme["border"], wrap="none", scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.editor.grid(row=2, column=0, sticky="nsew", padx=10, pady=5); self.editor.bind("<<Modified>>", self._editor_modified); self.editor.bind("<KeyRelease>", self._cursor_update)
-        bottom = ctk.CTkFrame(frame, fg_color="transparent"); bottom.grid(row=3, column=0, sticky="ew", padx=7, pady=(2, 7))
+        self.validation_notice = ctk.CTkFrame(frame, fg_color=self.theme["panel_alt"], border_width=1, border_color=self.theme["gold_dark"])
+        self.validation_notice.grid(row=3, column=0, sticky="ew", padx=10, pady=(2, 4)); self.validation_notice.grid_columnconfigure(0, weight=1)
+        self.validation_message = ctk.CTkLabel(self.validation_notice, text="", text_color=self.theme["gold"], justify="left", anchor="w", wraplength=820)
+        self.validation_message.grid(row=0, column=0, sticky="ew", padx=9, pady=7)
+        self.validation_dismiss = self._button(self.validation_notice, "Dismiss", self.dismiss_validation, 0, 1)
+        self.validation_notice.grid_remove()
+        bottom = ctk.CTkFrame(frame, fg_color="transparent"); bottom.grid(row=4, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(5): bottom.grid_columnconfigure(i, weight=1)
         self.cursor_label = ctk.CTkLabel(bottom, text="Line 1, Column 0", text_color=self.theme["muted"]); self.cursor_label.grid(row=0, column=0, columnspan=5, sticky="w")
         for i, (text, callback) in enumerate((("Save", self.save_editor), ("Save As", self.save_as), ("Revert", self.open_selected), ("Validate", self.validate_selected), ("Load", self.load_selected), ("Reload", self.reload_selected), ("Unload", self.unload_selected), ("Prepare Recipe", self.prepare_recipe), ("Launch Recipe", self.launch_recipe))): self._button(bottom, text, callback, 1 + i // 5, i % 5)
@@ -218,7 +224,11 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def save_editor(self):
         if not self.selected: return
-        result = self.library.save_source(self.selected, self.editor.get("1.0", "end-1c"))
+        source = self.editor.get("1.0", "end-1c")
+        validation = self.validator.validate(self.selected, source)
+        self._show_validation(validation)
+        if not validation.valid: return
+        result = self.library.save_source(self.selected, source)
         if result.ok: self.selected = result.descriptor; self.editor_dirty = False; self.unsaved_label.configure(text="Saved", text_color=self.theme["muted"]); self.refresh_library()
         else: self._error(result.error)
 
@@ -230,9 +240,19 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def validate_selected(self):
         if not self.selected: return
-        result = self.validator.validate(self.selected, self.editor.get("1.0", "end-1c")); text = "Validation passed." if result.valid else "Errors: " + "; ".join(result.errors)
-        if result.warnings: text += "\nWarnings: " + "; ".join(result.warnings)
-        self.warning_label.configure(text=text, text_color=self.theme["success"] if result.valid else self.theme["error"]); self.log(f"[SCRIPT VALIDATION] {text}")
+        self._show_validation(self.validator.validate(self.selected, self.editor.get("1.0", "end-1c")))
+
+    def _show_validation(self, result):
+        lines = []
+        if result.errors: lines.append("Blocking errors:\n" + "\n".join(f"• {item}" for item in result.errors))
+        if result.warnings: lines.append("Advisory warnings (saving and editing remain available):\n" + "\n".join(f"• {item}" for item in result.warnings))
+        if not lines: lines.append("Validation passed with no warnings.")
+        text = "\n\n".join(lines)
+        self.validation_message.configure(text=text, text_color=self.theme["error"] if result.errors else self.theme["gold"] if result.warnings else self.theme["success"])
+        self.validation_notice.grid(); self.log(f"[SCRIPT VALIDATION] {text}")
+
+    def dismiss_validation(self):
+        self.validation_notice.grid_remove()
 
     def _confirm_script(self):
         if not self.selected: return None
