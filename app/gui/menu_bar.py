@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
+from app.core.app_metadata import METADATA
 
 MENU_FONT = ("Segoe UI", 13)
 
@@ -25,6 +26,7 @@ class MenuBar:
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
         tools_menu.add_command(label="Clear Console", command=window.clear_console)
+        tools_menu.add_command(label="Environment Diagnostics", command=window.open_environment_diagnostics)
         tools_menu.add_separator()
         tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
         tools_menu.add_command(label="Open ADB Explorer", command=window.open_adb_explorer)
@@ -48,7 +50,7 @@ class MenuBar:
 
         messagebox.showinfo(
             "About SUS-ADB",
-            "SUS-ADB\n\n"
+            f"{METADATA.display_version}\n\n"
             "Cross-platform Android Reverse Engineering Companion\n\n"
             "Created by DoctorSUS & ChatGPT"
         )

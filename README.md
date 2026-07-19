@@ -1,36 +1,21 @@
-# SUS-ADB Companion
+# SUS-ADB Companion 1.0.0-rc.1
 
-Cross-platform Android reverse-engineering companion with a Medieval Gothic blackhat interface.
+SUS-ADB is a local-first Android reverse-engineering and authorized security-assessment workstation for Linux and Windows. Use it only for devices and applications you own or have explicit permission to test.
 
-## Current recovery build
+## Install and run
 
-- Detects ADB, Fastboot, Frida, and Objection on the host.
-- Discovers online, offline, and unauthorized Android devices.
-- Retrieves device model, Android version, ABI, battery, root, and Frida-server status.
-- Renders selectable device cards.
-- Runs terminal commands without freezing the GUI.
-- Marshals background output safely back onto Tk's UI thread.
-- Forwards Frida ports 27042 and 27043 for the selected device.
-- Provides a non-modal command cheat sheet that can remain open while the main terminal is used.
+Use CPython 3.11–3.13 in a virtual environment:
 
-## Run
-
-```powershell
+```sh
+python -m venv .venv
 python -m pip install -r requirements.txt
 python main.py
 ```
 
-## Test
+ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/proxy tools, and external terminals are optional and diagnosed without automatic installation. Run `python main.py --diagnostics` for local readiness, `--version` for version output, or `--self-test` for packaged-resource/configuration validation.
 
-```powershell
-python -m unittest discover -s tests -v
-```
+SUS-ADB includes Console, Instrumentation, Script Studio, and an authorized Pentest workspace with ADB, Runtime, Network, Storage, APK, Findings/Reports, and local Plugin Manager sections. Generated scripts and plugins never auto-load merely because files exist.
 
-## Planned milestones
+Configuration and logs use the user-local platform configuration directory. Cases and evidence are sensitive local data; back them up securely. SUS-ADB has no telemetry or automatic upload.
 
-1. Stable ADB/device foundation
-2. Frida diagnostics and server lifecycle
-3. Objection session launcher
-4. Target application/process selector
-5. Logcat, packages, APK install/pull, screenshots, and file browser
-6. Profiles, sessions, plugins, and packaging for Windows/Linux
+See [installation](docs/installation.md), [quick start](docs/quick-start.md), [user guide](docs/user-guide.md), [privacy/security](docs/privacy-security.md), and [testing](docs/testing.md).

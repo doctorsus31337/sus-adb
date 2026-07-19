@@ -1,0 +1,1 @@
+VSVersionInfo(ffi=FixedFileInfo(filevers=(1,0,0,1),prodvers=(1,0,0,1)),kids=[StringFileInfo([StringTable('040904B0',[StringStruct('ProductName','SUS-ADB Companion'),StringStruct('ProductVersion','1.0.0-rc.1')])])])

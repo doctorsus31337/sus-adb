@@ -41,11 +41,21 @@ from app.plugins.contribution_registry import ContributionRegistry
 from app.plugins.plugin_store import PluginStore
 from app.plugins.plugin_trust import PluginTrustStore
 from app.plugins.plugin_manager import PluginManager
+from app.core.app_metadata import METADATA
+from app.core.config_manager import ConfigManager
+from app.core.logging_manager import LoggingManager
+from app.core.recovery_manager import RecoveryManager
+from app.core.crash_report import CrashReporter
+from app.core.environment_diagnostics import EnvironmentDiagnostics
+from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
+from app.gui.first_run_dialog import FirstRunDialog
+from app.gui.crash_dialog import CrashDialog
 
 
 class SusADBWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.config_manager=ConfigManager();self.config_result=self.config_manager.load();self.app_config=self.config_result.data or {};self.logging_manager=LoggingManager(self.config_manager.directory/"logs",**{"level":self.app_config.get("privacy",{}).get("log_level","INFO"),"structured":self.app_config.get("privacy",{}).get("structured_logs",True)});self.recovery_manager=RecoveryManager(self.config_manager.directory);self.previous_unclean_shutdown=self.recovery_manager.begin_startup();self.crash_reporter=CrashReporter(self.config_manager.directory/"crashes",METADATA,self.logging_manager.tail);self.diagnostics_window=None
         self.theme = get_theme()
         self.devices = DeviceManager()
         self.command_runner = CommandRunner()
@@ -71,9 +81,12 @@ class SusADBWindow(ctk.CTk):
             diagnosis_provider=self.frida_manager.diagnose,
         )
         self.terminal = TerminalManager(self.log, self.clear_console)
-        self.plugin_store = PluginStore("plugins")
+        plugin_root = self.app_config.get("plugin_storage_root", "plugins")
+        if not __import__("pathlib").Path(plugin_root).is_absolute():
+            plugin_root = self.config_manager.directory / plugin_root
+        self.plugin_store = PluginStore(plugin_root)
         self.plugin_registry = ContributionRegistry()
-        self.plugin_trust = PluginTrustStore("plugins/state/trust.json")
+        self.plugin_trust = PluginTrustStore(__import__("pathlib").Path(plugin_root)/"state"/"trust.json")
         self.plugin_manager = PluginManager(
             self.plugin_store, self.plugin_trust, self.plugin_registry,
             timeline_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "timeline", None),
@@ -84,8 +97,10 @@ class SusADBWindow(ctk.CTk):
             finding_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "findings", None),
         )
         self.cheat_sheet: CheatSheetWindow | None = None
+        self.first_run_dialog = None
+        self.crash_dialog = None
 
-        self.title("SUS-ADB Companion")
+        self.title(METADATA.display_version)
         self.minsize(1100, 700)
         self.configure(fg_color=self.theme["bg"])
         self.grid_rowconfigure(1, weight=1)
@@ -94,8 +109,17 @@ class SusADBWindow(ctk.CTk):
         MenuBar(self)
         self.create_widgets()
         self.after_idle(self.center_window)
+        if self.config_result.warning and self.config_result.warning.startswith("First run"):
+            self.after(50, self.open_first_run)
+        if self.previous_unclean_shutdown:
+            self.after(75, self.open_recovery_dialog)
         self.after(250, self.startup_check)
         self.protocol("WM_DELETE_WINDOW", self.shutdown)
+
+    def report_callback_exception(self, exc_type, exc_value, exc_traceback):
+        self.logging_manager.exception(f"Unhandled GUI exception: {exc_value}")
+        self.crash_reporter.capture(exc_value, tuple(self.workspace._tab_dict) if hasattr(self, "workspace") else ())
+        super().report_callback_exception(exc_type, exc_value, exc_traceback)
 
     def create_widgets(self):
         GothicHeader(self, self.theme).grid(
@@ -244,11 +268,26 @@ class SusADBWindow(ctk.CTk):
             return
         self.cheat_sheet = CheatSheetWindow(self, self.theme)
 
+    def open_environment_diagnostics(self):
+        if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
+            self.diagnostics_window.lift()
+            return
+        results = EnvironmentDiagnostics().run(self.config_manager.directory, self.app_config.get("workspace_root", "workspaces"))
+        self.diagnostics_window = EnvironmentDiagnosticsWindow(self, self.theme, results)
+
+    def open_first_run(self):
+        if self.first_run_dialog is None or not self.first_run_dialog.winfo_exists():
+            self.first_run_dialog = FirstRunDialog(self, self.theme)
+
+    def open_recovery_dialog(self):
+        if self.crash_dialog is None or not self.crash_dialog.winfo_exists():
+            self.crash_dialog = CrashDialog(self, self.theme, "A previous unclean shutdown was detected. Your local cases and evidence were preserved.")
+
     def log(self, text: str):
         if threading.current_thread() is not threading.main_thread():
             self.after(0, self.log, text)
             return
-        self.console.insert("end", f"{text}\n")
+        self.logging_manager.log("INFO",text);self.console.insert("end", f"{text}\n")
         self.console.see("end")
 
     def execute_command(self, command: str):
@@ -408,6 +447,9 @@ class SusADBWindow(ctk.CTk):
             self.pentest_workspace.runtime_explorer.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"adb_explorer"):
             self.pentest_workspace.adb_explorer.cleanup()
+        if hasattr(self,"config_manager"):self.app_config["window"]["geometry"]=self.geometry();self.config_manager.save(self.app_config)
+        if hasattr(self,"recovery_manager"):self.recovery_manager.mark_clean_shutdown()
+        if hasattr(self,"logging_manager"):self.logging_manager.close()
         self.destroy()
 
     def copy_console_selection(self, _event=None):
