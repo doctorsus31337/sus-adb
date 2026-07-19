@@ -37,6 +37,10 @@ from app.modules.environment import EnvironmentModule
 from app.utils.clipboard import ClipboardManager
 from app.utils.system_info import SystemInfo
 from app.widgets.status_bar import StatusBar
+from app.plugins.contribution_registry import ContributionRegistry
+from app.plugins.plugin_store import PluginStore
+from app.plugins.plugin_trust import PluginTrustStore
+from app.plugins.plugin_manager import PluginManager
 
 
 class SusADBWindow(ctk.CTk):
@@ -67,6 +71,18 @@ class SusADBWindow(ctk.CTk):
             diagnosis_provider=self.frida_manager.diagnose,
         )
         self.terminal = TerminalManager(self.log, self.clear_console)
+        self.plugin_store = PluginStore("plugins")
+        self.plugin_registry = ContributionRegistry()
+        self.plugin_trust = PluginTrustStore("plugins/state/trust.json")
+        self.plugin_manager = PluginManager(
+            self.plugin_store, self.plugin_trust, self.plugin_registry,
+            timeline_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "timeline", None),
+            session_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "session", None),
+            device_provider=lambda: self.devices.selected,
+            target_provider=lambda: getattr(getattr(self, "instrumentation_panel", None), "selected_target", None),
+            evidence_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "evidence", None),
+            finding_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "findings", None),
+        )
         self.cheat_sheet: CheatSheetWindow | None = None
 
         self.title("SUS-ADB Companion")
@@ -198,6 +214,7 @@ class SusADBWindow(ctk.CTk):
             self.frida_runtime, self.tool_diagnostics, self.log, self.navigate_workspace,
             adb=self.devices.adb, script_library=self.script_library,
             open_script_callback=self.open_generated_script,
+            plugin_manager=self.plugin_manager,
         )
         self.pentest_workspace.grid(row=0, column=0, sticky="nsew")
 
@@ -362,6 +379,10 @@ class SusADBWindow(ctk.CTk):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_report_builder()
 
+    def open_plugin_manager(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_plugins()
+
     def open_generated_script(self, descriptor):
         self.navigate_workspace("Scripts")
         self.script_studio_panel.refresh_library()
@@ -373,6 +394,8 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace.open_scope_dialog()
 
     def shutdown(self):
+        if hasattr(self,"plugin_manager"):
+            self.plugin_manager.shutdown()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"findings_reporting"):
             self.pentest_workspace.findings_reporting.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"apk_lab"):

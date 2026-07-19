@@ -34,6 +34,7 @@ class MenuBar:
         tools_menu.add_command(label="Open APK Laboratory", command=window.open_apk_laboratory)
         tools_menu.add_command(label="Open Findings", command=window.open_findings)
         tools_menu.add_command(label="Open Report Builder", command=window.open_report_builder)
+        tools_menu.add_command(label="Open Plugin Manager", command=window.open_plugin_manager)
         tools_menu.add_command(label="New Assessment Case", command=window.new_assessment_case)
         menu.add_cascade(label="Tools", menu=tools_menu)
 

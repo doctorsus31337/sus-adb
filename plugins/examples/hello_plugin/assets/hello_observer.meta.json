@@ -1,0 +1,7 @@
+{
+  "name": "Hello Observer",
+  "description": "Harmless explicit-load Script Studio example.",
+  "trust": "built-in-example",
+  "read_only": true,
+  "auto_load": false
+}
