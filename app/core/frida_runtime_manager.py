@@ -53,6 +53,13 @@ class FridaRuntimeManager:
         self.serial: str | None = None
         self.spawned_pid: int | None = None
         self.loaded: dict[str, LoadedScript] = {}
+        self.event_listeners: list[Callable[[ScriptEvent], None]] = []
+
+    def add_event_listener(self, callback):
+        if callback not in self.event_listeners: self.event_listeners.append(callback)
+
+    def remove_event_listener(self, callback):
+        if callback in self.event_listeners: self.event_listeners.remove(callback)
 
     def readiness(self, serial: str | None, target: FridaTarget | None) -> RuntimeResult:
         availability = self.adapter.availability()
@@ -227,8 +234,7 @@ class FridaRuntimeManager:
         return RuntimeResult(False, error=error)
 
     def _emit(self, event_type, summary, descriptor=None, **kwargs):
-        if not self.event_callback: return
-        try:
-            self.event_callback(ScriptEvent(event_type, summary, script_id=descriptor.script_id if descriptor else None, script_name=descriptor.name if descriptor else None, **kwargs))
-        except Exception:
-            return
+        event = ScriptEvent(event_type, summary, script_id=descriptor.script_id if descriptor else None, script_name=descriptor.name if descriptor else None, **kwargs)
+        for callback in tuple(([self.event_callback] if self.event_callback else []) + self.event_listeners):
+            try: callback(event)
+            except Exception: continue
