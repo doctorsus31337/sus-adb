@@ -342,6 +342,10 @@ class SusADBWindow(ctk.CTk):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_runtime_explorer()
 
+    def open_network_workspace(self):
+        self.enter_pentest_workspace()
+        self.pentest_workspace.open_network()
+
     def open_generated_script(self, descriptor):
         self.navigate_workspace("Scripts")
         self.script_studio_panel.refresh_library()
@@ -353,6 +357,8 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace.open_scope_dialog()
 
     def shutdown(self):
+        if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"network_workspace"):
+            self.pentest_workspace.network_workspace.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"runtime_explorer"):
             self.pentest_workspace.runtime_explorer.cleanup()
         if hasattr(self,"pentest_workspace") and hasattr(self.pentest_workspace,"adb_explorer"):
