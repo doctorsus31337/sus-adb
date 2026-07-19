@@ -14,14 +14,15 @@ from app.core.command_result import CommandResult
 from app.core.device import Device
 from app.core.frida_manager import FridaDiagnosis, FridaManager
 from app.core.frida_session_manager import FridaSessionManager, FridaSessionReadiness
-from app.core.frida_target import FridaTarget, TargetType
+from app.core.frida_target import FridaTarget
 from app.core.objection_manager import ObjectionManager
 from app.core.target_discovery import TargetDiscovery, TargetDiscoveryResult, filter_targets
 from app.core.tool_diagnostics import ToolDiagnostic, ToolDiagnostics
 from app.core.worker import BackgroundWorker
+from app.gui.instrumentation_reference_window import InstrumentationReferenceWindow
 
 
-class InstrumentationPanel(ctk.CTkScrollableFrame):
+class InstrumentationPanel(ctk.CTkFrame):
     def __init__(
         self,
         parent,
@@ -33,11 +34,7 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         frida_sessions: FridaSessionManager,
         log_callback: Callable[[str], None],
     ):
-        super().__init__(
-            parent, fg_color=theme["bg"], corner_radius=0,
-            scrollbar_button_color=theme["gold_dark"],
-            scrollbar_button_hover_color=theme["red_hover"],
-        )
+        super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme = theme
         self.diagnostics = diagnostics
         self.frida = frida
@@ -54,21 +51,89 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         self._last_diagnosis: FridaDiagnosis | None = None
         self._action_buttons: list[ctk.CTkButton] = []
         self._busy = False
+        self.reference_window: InstrumentationReferenceWindow | None = None
 
+        self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self._build_device_section()
-        self._build_toolchain_section()
-        self._build_frida_section()
-        self._build_results_section()
-        self._build_target_browser()
-        self._build_session_section()
+        self._build_summary_header()
+        self._build_workspace()
+        self._build_toolchain_section(self.overview_tab)
+        self._build_frida_section(self.overview_tab)
+        self._build_overview_notice(self.overview_tab)
+        self._build_target_browser(self.targets_tab)
+        self._build_session_section(self.sessions_tab)
+        self._build_results_section(self.results_tab)
         self._update_target_actions()
         self.refresh_targets_button.configure(state="disabled")
 
-    def _section(self, title: str, row: int, column: int = 0, columnspan: int = 1):
-        frame = ctk.CTkFrame(
+    def _build_summary_header(self):
+        header = ctk.CTkFrame(
             self, fg_color=self.theme["panel"], border_width=1,
+            border_color=self.theme["gold_dark"], corner_radius=9,
+        )
+        header.grid(row=0, column=0, sticky="ew", padx=6, pady=(5, 3))
+        for column in range(7):
+            header.grid_columnconfigure(column, weight=1)
+        self.summary_labels = {}
+        items = (
+            ("device", "Device", "None"), ("adb", "ADB", "Unavailable"),
+            ("root", "Root", "Unknown"), ("server", "Frida Server", "Unknown"),
+            ("reachable", "Reachability", "Unknown"), ("versions", "Versions", "Unknown"),
+            ("warning", "Warning", "None"),
+        )
+        for column, (key, title, value) in enumerate(items):
+            cell = ctk.CTkFrame(header, fg_color="transparent")
+            cell.grid(row=0, column=column, sticky="ew", padx=5, pady=(7, 2))
+            ctk.CTkLabel(
+                cell, text=title, text_color=self.theme["muted"],
+                font=("Segoe UI", 10, "bold"),
+            ).pack()
+            label = ctk.CTkLabel(
+                cell, text=value, text_color=self.theme["gold"],
+                font=("Consolas", 11, "bold"), wraplength=130,
+            )
+            label.pack(fill="x")
+            self.summary_labels[key] = label
+        self.device_warning = ctk.CTkLabel(
+            header, text="No device selected.", text_color=self.theme["error"],
+            font=("Segoe UI", 11, "bold"), anchor="w",
+        )
+        self.device_warning.grid(row=1, column=0, columnspan=5, sticky="ew", padx=10, pady=(1, 7))
+        ctk.CTkButton(
+            header, text="⚔ Frida / Objection Grimoire", command=self.open_reference_window,
+            fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], height=30,
+        ).grid(row=1, column=5, columnspan=2, sticky="e", padx=10, pady=(1, 7))
+
+    def _build_workspace(self):
+        self.internal_workspace = ctk.CTkTabview(
+            self, fg_color=self.theme["panel"], border_width=1,
+            border_color=self.theme["border"],
+            segmented_button_fg_color=self.theme["panel_alt"],
+            segmented_button_selected_color=self.theme["red"],
+            segmented_button_selected_hover_color=self.theme["red_hover"],
+            segmented_button_unselected_color=self.theme["panel_alt"],
+            segmented_button_unselected_hover_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+        )
+        self.internal_workspace.grid(row=1, column=0, sticky="nsew", padx=6, pady=(3, 6))
+        self.overview_tab = self.internal_workspace.add("Overview")
+        self.targets_tab = self.internal_workspace.add("Targets")
+        self.sessions_tab = self.internal_workspace.add("Sessions")
+        self.results_tab = self.internal_workspace.add("Results")
+        for tab in (self.overview_tab, self.targets_tab, self.sessions_tab, self.results_tab):
+            tab.configure(fg_color=self.theme["bg"])
+            tab.grid_columnconfigure(0, weight=1)
+        self.overview_tab.grid_columnconfigure(1, weight=1)
+        self.overview_tab.grid_rowconfigure(1, weight=1)
+        self.targets_tab.grid_rowconfigure(0, weight=1)
+        self.sessions_tab.grid_rowconfigure(0, weight=1)
+        self.results_tab.grid_rowconfigure(0, weight=1)
+
+    def _section(self, parent, title: str, row: int, column: int = 0, columnspan: int = 1):
+        frame = ctk.CTkFrame(
+            parent, fg_color=self.theme["panel"], border_width=1,
             border_color=self.theme["border"], corner_radius=9,
         )
         frame.grid(row=row, column=column, columnspan=columnspan, sticky="nsew", padx=6, pady=6)
@@ -101,20 +166,8 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             self._action_buttons.append(button)
         return button
 
-    def _build_device_section(self):
-        frame = self._section("Selected Device", 0, 0)
-        self.device_warning = ctk.CTkLabel(
-            frame, text="No device selected. Refresh and select an online device.",
-            text_color=self.theme["error"], font=("Segoe UI", 13, "bold"), anchor="w",
-        )
-        self.device_warning.grid(row=1, column=0, columnspan=2, sticky="ew", padx=12, pady=3)
-        self.device_serial = self._value_row(frame, 2, "Serial", "None")
-        self.device_model = self._value_row(frame, 3, "Model")
-        self.device_android = self._value_row(frame, 4, "Android")
-        self.device_root = self._value_row(frame, 5, "Root")
-
-    def _build_toolchain_section(self):
-        frame = self._section("Host Toolchain", 0, 1)
+    def _build_toolchain_section(self, parent):
+        frame = self._section(parent, "Host Toolchain", 0, 0, 2)
         self.tool_labels = {
             "adb": self._value_row(frame, 1, "ADB", "Not diagnosed"),
             "frida": self._value_row(frame, 2, "Frida", "Not diagnosed"),
@@ -125,8 +178,8 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             columnspan=2, padx=12, pady=(8, 10)
         )
 
-    def _build_frida_section(self):
-        frame = self._section("Frida Server", 1, 0, 2)
+    def _build_frida_section(self, parent):
+        frame = self._section(parent, "Frida Server", 1, 0, 2)
         self.frida_labels = {
             "path": self._value_row(frame, 1, "Server path", "Not diagnosed"),
             "running": self._value_row(frame, 2, "Server state", "Not diagnosed"),
@@ -152,10 +205,24 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         for index, (text, command) in enumerate(actions):
             self._button(buttons, text, command, index // 4, index % 4)
 
-    def _build_results_section(self):
-        frame = self._section("Instrumentation Results", 2, 0, 2)
+    def _build_overview_notice(self, parent):
+        notice = ctk.CTkFrame(
+            parent, fg_color=self.theme["panel_alt"], border_width=1,
+            border_color=self.theme["gold_dark"], corner_radius=8,
+        )
+        notice.grid(row=2, column=0, columnspan=2, sticky="ew", padx=6, pady=6)
+        notice.grid_columnconfigure(0, weight=1)
+        self.overview_notice = ctk.CTkLabel(
+            notice, text="Run diagnostics to see recommendations and important failures.",
+            text_color=self.theme["text"], justify="left", anchor="w", wraplength=800,
+        )
+        self.overview_notice.grid(row=0, column=0, sticky="ew", padx=10, pady=9)
+
+    def _build_results_section(self, parent):
+        frame = self._section(parent, "Instrumentation Results", 0, 0)
+        frame.grid_rowconfigure(1, weight=1)
         self.results = ctk.CTkTextbox(
-            frame, height=150, fg_color=self.theme["terminal_bg"],
+            frame, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], font=("Consolas", 12),
             border_width=1, border_color=self.theme["border"], wrap="none",
             scrollbar_button_color=self.theme["gold_dark"],
@@ -163,14 +230,30 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         )
         self.results.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=12, pady=5)
         self.results.insert("end", "Instrumentation results will appear here.\n")
+        controls = ctk.CTkFrame(frame, fg_color="transparent")
+        controls.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=(3, 9))
+        controls.grid_columnconfigure(0, weight=1)
+        self.results_source = ctk.CTkLabel(
+            controls, text="Source: Instrumentation", text_color=self.theme["gold"],
+            font=("Segoe UI", 11, "bold"),
+        )
+        self.results_source.grid(row=0, column=0, sticky="w", padx=4)
         ctk.CTkButton(
-            frame, text="Clear Results", command=lambda: self.results.delete("1.0", "end"),
+            controls, text="Copy Results", command=self.copy_results,
             fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
             text_color=self.theme["text"], border_width=1, border_color=self.theme["gold_dark"],
-        ).grid(row=2, column=0, columnspan=2, sticky="e", padx=12, pady=(3, 10))
+        ).grid(row=0, column=1, sticky="e", padx=4)
+        ctk.CTkButton(
+            controls, text="Clear Results", command=lambda: self.results.delete("1.0", "end"),
+            fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
+            text_color=self.theme["text"], border_width=1, border_color=self.theme["gold_dark"],
+        ).grid(row=0, column=2, sticky="e", padx=4)
 
-    def _build_target_browser(self):
-        frame = self._section("Target Browser", 3, 0, 2)
+    def _build_target_browser(self, parent):
+        frame = self._section(parent, "Target Browser", 0, 0)
+        frame.grid_rowconfigure(2, weight=1)
+        frame.grid_columnconfigure(0, weight=3)
+        frame.grid_columnconfigure(1, weight=2)
         toolbar = ctk.CTkFrame(frame, fg_color="transparent")
         toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=4)
         toolbar.grid_columnconfigure(0, weight=1)
@@ -201,16 +284,16 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         self.target_count.grid(row=0, column=4, padx=8)
 
         self.target_list = ctk.CTkScrollableFrame(
-            frame, height=250, fg_color=self.theme["terminal_bg"],
+            frame, fg_color=self.theme["terminal_bg"],
             border_width=1, border_color=self.theme["border"],
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
-        self.target_list.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=12, pady=6)
+        self.target_list.grid(row=2, column=0, sticky="nsew", padx=(12, 5), pady=(6, 10))
         self.target_list.grid_columnconfigure(0, weight=1)
 
         details = ctk.CTkFrame(frame, fg_color=self.theme["panel_alt"], corner_radius=7)
-        details.grid(row=3, column=0, columnspan=2, sticky="ew", padx=12, pady=(4, 10))
+        details.grid(row=2, column=1, sticky="nsew", padx=(5, 12), pady=(6, 10))
         details.grid_columnconfigure(1, weight=1)
         self.target_detail_labels = {
             "name": self._value_row(details, 0, "Name", "None", 650),
@@ -232,8 +315,9 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         )
         self.copy_guidance_button.grid(row=6, column=0, columnspan=2, sticky="e", padx=12, pady=(0, 8))
 
-    def _build_session_section(self):
-        frame = self._section("Live Session Launcher", 4, 0, 2)
+    def _build_session_section(self, parent):
+        frame = self._section(parent, "Live Session Launcher", 0, 0)
+        frame.grid_rowconfigure(3, weight=1)
         options = ctk.CTkFrame(frame, fg_color="transparent")
         options.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=4)
         options.grid_columnconfigure(1, weight=1)
@@ -258,39 +342,60 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         self.transport.grid(row=0, column=3, padx=4)
         self.transport.set("Socket")
 
-        frida_buttons = ctk.CTkFrame(frame, fg_color="transparent")
-        frida_buttons.grid(row=2, column=0, columnspan=2, sticky="ew", padx=7)
-        for column in range(6):
-            frida_buttons.grid_columnconfigure(column, weight=1)
-        self.frida_preview_button = self._button(
-            frida_buttons, "Preview Frida Command", self.preview_frida, 0, 0
+        action_split = ctk.CTkFrame(frame, fg_color="transparent")
+        action_split.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=7, pady=4)
+        action_split.grid_columnconfigure(0, weight=1)
+        action_split.grid_columnconfigure(1, weight=1)
+        frida_buttons = ctk.CTkFrame(
+            action_split, fg_color=self.theme["panel_alt"], border_width=1,
+            border_color=self.theme["border"], corner_radius=7,
         )
-        self.frida_attach_button = self._button(frida_buttons, "Attach", lambda: self.launch_frida("attach"), 0, 1)
-        self.frida_spawn_button = self._button(frida_buttons, "Spawn", lambda: self.launch_frida("spawn"), 0, 2)
-        self.frida_pid_button = self._button(frida_buttons, "Attach by PID", lambda: self.launch_frida("pid"), 0, 3)
-        self.frida_trace_button = self._button(frida_buttons, "Trace", lambda: self.launch_frida("trace"), 0, 4)
+        frida_buttons.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        for column in range(3):
+            frida_buttons.grid_columnconfigure(column, weight=1)
+        ctk.CTkLabel(
+            frida_buttons, text="Frida Sessions", text_color=self.theme["gold"],
+            font=("Segoe UI", 13, "bold"),
+        ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(7, 2))
+        self.frida_preview_button = self._button(
+            frida_buttons, "Preview Command", self.preview_frida, 1, 0
+        )
+        self.frida_attach_button = self._button(frida_buttons, "Attach", lambda: self.launch_frida("attach"), 1, 1)
+        self.frida_spawn_button = self._button(frida_buttons, "Spawn", lambda: self.launch_frida("spawn"), 1, 2)
+        self.frida_pid_button = self._button(frida_buttons, "Attach by PID", lambda: self.launch_frida("pid"), 2, 0)
+        self.frida_trace_button = self._button(frida_buttons, "Trace", lambda: self.launch_frida("trace"), 2, 1)
         self.frida_copy_button = self._button(
-            frida_buttons, "Copy Command", lambda: self.copy_preview("frida"), 0, 5
+            frida_buttons, "Copy Command", lambda: self.copy_preview("frida"), 2, 2
         )
 
-        objection_buttons = ctk.CTkFrame(frame, fg_color="transparent")
-        objection_buttons.grid(row=3, column=0, columnspan=2, sticky="ew", padx=7)
-        for column in range(5):
+        objection_buttons = ctk.CTkFrame(
+            action_split, fg_color=self.theme["panel_alt"], border_width=1,
+            border_color=self.theme["border"], corner_radius=7,
+        )
+        objection_buttons.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        for column in range(3):
             objection_buttons.grid_columnconfigure(column, weight=1)
+        ctk.CTkLabel(
+            objection_buttons, text="Objection Sessions", text_color=self.theme["gold"],
+            font=("Segoe UI", 13, "bold"),
+        ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(7, 2))
         self.objection_preview_button = self._button(
-            objection_buttons, "Preview Objection Command", self.preview_objection, 0, 0
+            objection_buttons, "Preview Command", self.preview_objection, 1, 0
         )
         self.objection_validate_button = self._button(
-            objection_buttons, "Validate", self.validate_objection, 0, 1
+            objection_buttons, "Validate", self.validate_objection, 1, 1
         )
         self.objection_attach_button = self._button(
-            objection_buttons, "Attach", lambda: self.launch_objection(False), 0, 2
+            objection_buttons, "Attach", lambda: self.launch_objection(False), 1, 2
         )
         self.objection_spawn_button = self._button(
-            objection_buttons, "Spawn", lambda: self.launch_objection(True), 0, 3
+            objection_buttons, "Spawn", lambda: self.launch_objection(True), 2, 0
         )
         self.objection_copy_button = self._button(
-            objection_buttons, "Copy Command", lambda: self.copy_preview("objection"), 0, 4
+            objection_buttons, "Copy Command", lambda: self.copy_preview("objection"), 2, 1
+        )
+        self.open_grimoire_session_button = self._button(
+            objection_buttons, "Open Grimoire", self.open_reference_window, 2, 2
         )
 
         self.command_preview = ctk.CTkTextbox(
@@ -300,8 +405,13 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
-        self.command_preview.grid(row=4, column=0, columnspan=2, sticky="ew", padx=12, pady=(6, 10))
+        self.command_preview.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=12, pady=(6, 10))
         self.command_preview.configure(state="disabled")
+        self.session_notice = ctk.CTkLabel(
+            frame, text="Select a target to preview and validate a session.",
+            text_color=self.theme["muted"], justify="left", anchor="w", wraplength=800,
+        )
+        self.session_notice.grid(row=4, column=0, columnspan=2, sticky="ew", padx=12, pady=(0, 9))
 
     def set_selected_device(self, device: Device | None):
         previous_serial = self.device.serial if self.device else None
@@ -311,14 +421,25 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             self.clear_targets("Device selection changed; target data cleared.")
         if device is None:
             self.device_warning.configure(text="No device selected. Refresh and select an online device.")
-            values = ("None", "Unknown", "Unknown", "Unknown")
+            self.summary_labels["device"].configure(text="None")
+            self.summary_labels["adb"].configure(text="No Device")
+            self.summary_labels["root"].configure(text="Unknown")
+            self.summary_labels["server"].configure(text="Unknown")
+            self.summary_labels["reachable"].configure(text="Unknown")
+            self.summary_labels["versions"].configure(text="Unknown")
+            self.summary_labels["warning"].configure(text="None", text_color=self.theme["gold"])
         else:
             self.device_warning.configure(text="" if device.connected else f"Warning: device state is {device.state}.")
-            values = (device.serial, device.display_name, device.android_version, self._state(device.root))
-        for label, value in zip(
-            (self.device_serial, self.device_model, self.device_android, self.device_root), values
-        ):
-            label.configure(text=value)
+            self.summary_labels["device"].configure(
+                text=f"{device.display_name}\n{device.serial}"
+            )
+            self.summary_labels["adb"].configure(
+                text="Connected" if device.connected else device.state.title()
+            )
+            self.summary_labels["root"].configure(text=self._state(device.root))
+            self.summary_labels["server"].configure(
+                text="Unknown" if device.frida is None else "Running" if device.frida else "Stopped"
+            )
         self.refresh_targets_button.configure(state="normal" if device and device.connected else "disabled")
 
     def diagnose_host(self):
@@ -336,6 +457,9 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             if tool.error:
                 self.log(f"[HOST TOOL ERROR] {tool.display_name}: {tool.error}")
         self._append_results("Host diagnostics", "\n".join(lines))
+        adb = tools.get("adb")
+        if adb is not None:
+            self.summary_labels["adb"].configure(text="Available" if adb.installed else "Missing")
 
     def diagnose_frida(self):
         serial = self._serial()
@@ -354,11 +478,20 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         }
         for name, value in values.items():
             self.frida_labels[name].configure(text=value)
-        self.device_root.configure(text=self._state(diagnosis.root_available))
+        self.summary_labels["root"].configure(text=self._state(diagnosis.root_available))
+        self.summary_labels["server"].configure(
+            text="Running" if diagnosis.server_running else "Stopped"
+        )
+        self.summary_labels["reachable"].configure(text=self._state(diagnosis.reachable))
+        self.summary_labels["versions"].configure(
+            text="Match" if diagnosis.versions_match is True
+            else "Mismatch" if diagnosis.versions_match is False else "Unknown"
+        )
         output = list(diagnosis.recommendations)
         if diagnosis.errors:
             output.extend(("", "Errors:", *diagnosis.errors))
         self._append_results("Frida diagnosis", "\n".join(output))
+        self.overview_notice.configure(text="\n".join(output) or "No recommendations.")
         self._update_mismatch_warning()
         for error in diagnosis.errors:
             self.log(f"[FRIDA ERROR] {error}")
@@ -515,6 +648,10 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
             )
         self.version_warning.configure(text=warning)
         self.copy_guidance_button.configure(state="normal" if warning else "disabled")
+        self.summary_labels["warning"].configure(
+            text="Version mismatch" if warning else "None",
+            text_color=self.theme["error"] if warning else self.theme["gold"],
+        )
 
     def copy_version_guidance(self):
         guidance = self.version_warning.cget("text")
@@ -593,12 +730,13 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         if not readiness.ready:
             self._report_failure("Frida session", "; ".join(readiness.errors))
             return
+        self.session_notice.configure(text="Frida readiness checks passed.", text_color=self.theme["success"])
         if not self._confirm_warning(readiness.warning):
             self.log("[FRIDA] Session launch cancelled after version warning.")
             return
         self._run_operation(
             "Launch external Frida session", lambda: self.frida_sessions.launch(command),
-            self._show_command_results,
+            self._show_session_launch_result,
         )
 
     def preview_objection(self):
@@ -615,10 +753,15 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         serial, target, transport = self._serial(), self._objection_target(), self.transport.get()
         self._run_operation(
             "Objection validation", lambda: self.objection.readiness(serial, target, transport),
-            lambda readiness: self._append_results(
-                "Objection validation", "Ready." if readiness.ready else "\n".join(readiness.errors)
-            ),
+            self._show_objection_readiness,
         )
+
+    def _show_objection_readiness(self, readiness):
+        text = "Objection readiness checks passed." if readiness.ready else "\n".join(readiness.errors)
+        self.session_notice.configure(
+            text=text, text_color=self.theme["success"] if readiness.ready else self.theme["error"]
+        )
+        self._append_results("Objection validation", text)
 
     def launch_objection(self, spawn: bool):
         serial, target, transport = self._serial(), self._objection_target(), self.transport.get()
@@ -648,12 +791,13 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         if errors:
             self._report_failure("Objection session", "; ".join(dict.fromkeys(errors)))
             return
+        self.session_notice.configure(text="Objection readiness checks passed.", text_color=self.theme["success"])
         if not self._confirm_warning(frida_ready.warning):
             self.log("[OBJECTION] Session launch cancelled after version warning.")
             return
         self._run_operation(
             "Launch external Objection session",
-            lambda: self.objection.launch_external_session(command), self._show_command_results,
+            lambda: self.objection.launch_external_session(command), self._show_session_launch_result,
         )
 
     def _confirm_warning(self, warning: str | None) -> bool:
@@ -745,6 +889,14 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         )
         self._append_results("Operation", text)
 
+    def _show_session_launch_result(self, result: CommandResult):
+        self._show_command_results(result)
+        if result.ok:
+            message = "Session launched. Open the Frida / Objection Grimoire for starter commands."
+            self.session_notice.configure(text=message, text_color=self.theme["success"])
+            self._append_results("Session", message)
+            self.log(f"[INSTRUMENTATION] {message}")
+
     @staticmethod
     def _result_failures(value) -> list[str]:
         results = value if isinstance(value, tuple) else (value,)
@@ -759,6 +911,10 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
     def _report_failure(self, title: str, error: str):
         message = error or "Operation failed."
         self._append_results(f"{title} failed", message)
+        self.overview_notice.configure(text=f"{title}: {message}")
+        if "session" in title.casefold() or "objection" in title.casefold():
+            self.session_notice.configure(text=message, text_color=self.theme["error"])
+        self.summary_labels["warning"].configure(text="Attention", text_color=self.theme["error"])
         self.log(f"[INSTRUMENTATION ERROR] {title}: {message}")
 
     def _set_busy(self, busy: bool):
@@ -773,8 +929,27 @@ class InstrumentationPanel(ctk.CTkScrollableFrame):
         self._update_target_actions()
 
     def _append_results(self, title: str, text: str):
+        self.results_source.configure(text=f"Source: {title}")
         self.results.insert("end", f"\n=== {title} ===\n{text}\n")
         self.results.see("end")
+
+    def copy_results(self):
+        text = self.results.get("1.0", "end").strip()
+        if not text:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(text)
+
+    def open_reference_window(self):
+        if self.reference_window is not None and self.reference_window.winfo_exists():
+            self.reference_window.refresh_commands()
+            self.reference_window.deiconify()
+            self.reference_window.lift()
+            self.reference_window.focus_force()
+            return
+        self.reference_window = InstrumentationReferenceWindow(
+            self, self.theme, target_provider=lambda: self.selected_target,
+        )
 
     def _serial(self) -> str | None:
         return self.device.serial if self.device else None

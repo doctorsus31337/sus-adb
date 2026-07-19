@@ -22,10 +22,12 @@ class ExternalTerminal:
         which: Callable[[str], str | None] | None = None,
         launcher: Callable[..., object] | None = None,
         platform_name: str | None = None,
+        realpath: Callable[[str], str] | None = None,
     ):
         self.which = which or shutil.which
         self.launcher = launcher or subprocess.Popen
         self.platform_name = platform_name or os.name
+        self.realpath = realpath or os.path.realpath
 
     def launch(self, command: Sequence[str]) -> CommandResult:
         args = tuple(str(part) for part in command)
@@ -35,7 +37,10 @@ class ExternalTerminal:
         if not built.ok:
             return built
         try:
-            self.launcher(built.command)
+            kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+            if self.platform_name != "nt":
+                kwargs["start_new_session"] = True
+            self.launcher(built.command, **kwargs)
         except Exception as exc:
             return CommandResult.from_command(built.command, -1, error=str(exc))
         return CommandResult.from_command(
@@ -60,9 +65,16 @@ class ExternalTerminal:
                 break
         if not terminal:
             return CommandResult.from_command(args, -1, error="No supported external terminal was found.")
-        name = os.path.basename(terminal)
-        separator = "--" if name == "gnome-terminal" else "-x" if name == "xfce4-terminal" else "-e"
-        return CommandResult.from_command((terminal, separator, *args), 0)
+        resolved_name = os.path.basename(self.realpath(terminal)).casefold()
+        if resolved_name in {"konsole", "konsole.exe"}:
+            command = (terminal, "--separate", "--hold", "-e", *args)
+        elif resolved_name == "gnome-terminal":
+            command = (terminal, "--", *args)
+        elif resolved_name == "xfce4-terminal":
+            command = (terminal, "-x", *args)
+        else:
+            command = (terminal, "-e", *args)
+        return CommandResult.from_command(command, 0)
 
     @staticmethod
     def _powershell_quote(value: str) -> str:
