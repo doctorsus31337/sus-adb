@@ -1,7 +1,7 @@
 name: Package RC
 on:
   workflow_dispatch:
-  push: {branches: ['feature/release-engineering-stabilization', 'release-candidate/**']}
+  push: {branches: ['feature/release-engineering-stabilization', 'release-candidate/**', 'release/**']}
 permissions: {contents: read}
 jobs:
   package:

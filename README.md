@@ -14,7 +14,7 @@ python main.py
 
 ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/proxy tools, and external terminals are optional and diagnosed without automatic installation. Run `python main.py --diagnostics` for local readiness, `--version` for version output, or `--self-test` for packaged-resource/configuration validation.
 
-SUS-ADB includes Console, Instrumentation, Script Studio, and an authorized Pentest workspace with ADB, Runtime, Network, Storage, APK, Findings/Reports, and local Plugin Manager sections. Generated scripts and plugins never auto-load merely because files exist.
+SUS-ADB includes Console, Instrumentation, Script Studio, and an authorized Pentest workspace with ADB, Runtime, Network, Storage, APK, Findings/Reports, and local Plugin Manager sections. Script Studio includes the local Script Library and import, edit, validate, and explicit load workflows. RC1 does not bundle a reviewed core curated script pack. The disabled hello example plugin includes a harmless demonstration asset; it does not load automatically. User-authored and third-party scripts execute only after explicit review and approval, and private/local Script Studio files are not release-package inputs.
 
 Configuration and logs use the user-local platform configuration directory. Cases and evidence are sensitive local data; back them up securely. SUS-ADB has no telemetry or automatic upload.
 
