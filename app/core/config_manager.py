@@ -25,7 +25,14 @@ class ConfigManager:
                 shutil.copy2(self.path,self.path.with_suffix(".json.bak"));self.save(merged)
             return ConfigResult(True,merged,str(self.path),migrations=applied)
         except (OSError,ValueError,TypeError,json.JSONDecodeError) as exc:
-            try:self.directory.mkdir(parents=True,exist_ok=True);q=self.directory/"config.malformed.json";self.path.replace(q)
+            try:
+                self.directory.mkdir(parents=True,exist_ok=True);index=0
+                while True:
+                    suffix="" if index==0 else f".{index}"
+                    q=self.directory/f"config.malformed{suffix}.json"
+                    if not q.exists():break
+                    index+=1
+                self.path.replace(q)
             except OSError:q=None
             return ConfigResult(True,defaults(),str(self.path),warning=f"Malformed configuration quarantined: {exc}")
     @staticmethod
@@ -36,11 +43,16 @@ class ConfigManager:
     def save(self,data):
         errors=validate(data)
         if errors:return ConfigResult(False,error="; ".join(errors))
+        tmp=None
         try:
             self.directory.mkdir(parents=True,exist_ok=True);fd,tmp=tempfile.mkstemp(prefix="config-",suffix=".tmp",dir=self.directory)
             with os.fdopen(fd,"w",encoding="utf-8") as f:json.dump(data,f,indent=2,sort_keys=True);f.write("\n");f.flush();os.fsync(f.fileno())
             os.replace(tmp,self.path);return ConfigResult(True,dict(data),str(self.path))
-        except OSError as exc:return ConfigResult(False,error=str(exc))
+        except OSError as exc:
+            if tmp:
+                try:Path(tmp).unlink(missing_ok=True)
+                except OSError:pass
+            return ConfigResult(False,error=str(exc))
     def export(self,path,data,redact_paths=False):
         out=json.loads(json.dumps(data))
         if redact_paths:

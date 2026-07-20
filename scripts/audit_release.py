@@ -18,5 +18,15 @@ def audit(root="."):
   for name,pattern in PATTERNS:
    if pattern.search(data):findings.append((rel,name))
  return tuple(findings)
+def audit_tree(root):
+ findings=[];base=Path(root)
+ for path in sorted(p for p in base.rglob("*") if p.is_file()):
+  rel=path.relative_to(base).as_posix();lower=rel.lower()
+  if lower.endswith(BLOCKED_SUFFIXES) or path.name in {"flutter_popup_bypass.js","flutter_popup_bypass.meta.json"}:findings.append((rel,"generated-artifact"));continue
+  try:data=path.read_bytes()
+  except OSError:continue
+  for name,pattern in PATTERNS:
+   if pattern.search(data):findings.append((rel,name))
+ return tuple(findings)
 if __name__=="__main__":
- found=audit();[print(f"BLOCK {kind}: {path}") for path,kind in found];raise SystemExit(1 if found else 0)
+ found=audit_tree(sys.argv[2]) if len(sys.argv)>2 and sys.argv[1]=="--tree" else audit();[print(f"BLOCK {kind}: {path}") for path,kind in found];raise SystemExit(1 if found else 0)

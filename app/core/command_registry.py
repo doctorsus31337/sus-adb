@@ -28,9 +28,8 @@ class CommandRegistry:
             CommandSpec("adb logcat -c", "Clear the Logcat buffer"),
         ),
         "FRIDA": (
-            CommandSpec("frida-ps -U", "List processes through the USB transport"),
-            CommandSpec("frida-ps -Uai", "List installed applications and identifiers"),
             CommandSpec("frida-ps -H 127.0.0.1:27042", "List processes through forwarded Frida ports"),
+            CommandSpec("frida-ps -H 127.0.0.1:27042 -ai", "List installed applications and identifiers through forwarded Frida ports"),
             CommandSpec('frida -H 127.0.0.1:27042 -n "AppName"', "Attach Frida by process name"),
         ),
         "OBJECTION": (

@@ -52,16 +52,15 @@ class CommandRunner:
             completed.stderr,
         )
 
-    def stream_shell(
+    def stream(
         self,
-        command: str,
+        command: Sequence[str],
         on_line: Callable[[str], None],
         *,
         cwd: str | None = None,
     ) -> int:
         process = subprocess.Popen(
-            command,
-            shell=True,
+            [str(part) for part in command],
             cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

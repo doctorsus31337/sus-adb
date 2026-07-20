@@ -33,7 +33,7 @@ class ActionPanel(GothicFrame):
         self._button("Reboot", "adb reboot")
 
         self._section("Frida")
-        self._button("frida-ps", "frida-ps -U")
+        self._button("frida-ps", "frida-ps -H 127.0.0.1:27042")
         self._button("Kill Server", "adb shell su -c pkill frida-server")
         self._button("Start Server", "adb shell su -c /data/local/tmp/frida-server")
 

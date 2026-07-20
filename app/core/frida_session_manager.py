@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import shutil
 import subprocess
 from dataclasses import dataclass, field
 from collections.abc import Sequence
@@ -14,6 +13,7 @@ from app.core.command_result import CommandResult
 from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
 from app.core.frida_target import FridaTarget
+from app.core.host_tool_resolver import HostToolResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,11 +35,15 @@ class FridaSessionManager:
         *,
         frida_path: str | None = None,
         frida_trace_path: str | None = None,
+        resolver: HostToolResolver | None = None,
     ):
         self.frida = frida
         self.terminal = terminal
-        self.frida_path = shutil.which("frida") if frida_path is None else frida_path
-        self.frida_trace_path = shutil.which("frida-trace") if frida_trace_path is None else frida_trace_path
+        self._frida_explicit = frida_path is not None
+        self._trace_explicit = frida_trace_path is not None
+        self.resolver = resolver or HostToolResolver()
+        self.frida_path = self.resolver.resolve("frida") if frida_path is None else frida_path
+        self.frida_trace_path = self.resolver.resolve("frida-trace") if frida_trace_path is None else frida_trace_path
 
     def build_attach_command(self, target: FridaTarget | None) -> tuple[str, ...]:
         value = self._target_name(target)
@@ -77,8 +81,17 @@ class FridaSessionManager:
     ) -> FridaSessionReadiness:
         errors: list[str] = []
         executable = self.frida_trace_path if trace else self.frida_path
+        explicit = self._trace_explicit if trace else self._frida_explicit
+        if not executable and not explicit:
+            name = "frida-trace" if trace else "frida"
+            executable = self.resolver.resolve(name)
+            if trace:
+                self.frida_trace_path = executable
+            else:
+                self.frida_path = executable
         if not executable:
-            errors.append(f"{'frida-trace' if trace else 'Frida'} was not found in PATH.")
+            name = "frida-trace" if trace else "frida"
+            errors.append(self.resolver.missing_message(name, "Frida" if not trace else None))
         if not serial:
             errors.append("No device is selected.")
         if target is None and require_target:

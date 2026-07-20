@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
 
@@ -10,6 +9,7 @@ from app.core.command_result import CommandResult
 from app.core.command_runner import CommandRunner
 from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
+from app.core.host_tool_resolver import HostToolResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,19 +32,24 @@ class ObjectionManager:
         *,
         objection_path: str | None = None,
         which: Callable[[str], str | None] | None = None,
+        resolver: HostToolResolver | None = None,
     ):
         self.runner = runner
         self.frida = frida
         self.terminal = terminal
-        self.which = which or shutil.which
-        self.objection_path = self.which("objection") if objection_path is None else objection_path
+        self._objection_explicit = objection_path is not None
+        self.resolver = resolver or HostToolResolver(**({"which": which} if which else {}))
+        self.objection_path = self.resolver.resolve("objection") if objection_path is None else objection_path
 
     def version(self) -> CommandResult:
-        if not self.objection_path:
+        executable = self.objection_path if self._objection_explicit else self.resolver.resolve("objection")
+        if not executable:
             return CommandResult.from_command(
-                ("objection", "version"), -1, error="Objection was not found in PATH."
+                ("objection", "version"), -1,
+                error=self.resolver.missing_message("objection", "Objection"),
             )
-        return self.runner.run((self.objection_path, "version"), timeout=10)
+        self.objection_path = executable
+        return self.runner.run((executable, "version"), timeout=10)
 
     @staticmethod
     def validate_target(target: str) -> CommandResult:
@@ -87,6 +92,8 @@ class ObjectionManager:
 
     def readiness(self, serial: str | None, target: str, transport: str) -> ObjectionReadiness:
         errors: list[str] = []
+        if not self.objection_path and not self._objection_explicit:
+            self.objection_path = self.resolver.resolve("objection")
         installed = bool(self.objection_path)
         device_available = bool(serial)
         target_valid = self.validate_target(target).ok
@@ -95,7 +102,7 @@ class ObjectionManager:
         reachable = False
 
         if not installed:
-            errors.append("Objection was not found in PATH.")
+            errors.append(self.resolver.missing_message("objection", "Objection"))
         if not device_available:
             errors.append("No device is selected.")
         if not target_valid:

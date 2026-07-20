@@ -12,4 +12,8 @@ class ConfigManagerTests(unittest.TestCase):
  def test_platform_paths(self):
   self.assertIn("SUS-ADB",str(ConfigManager.resolve_directory("nt",{"APPDATA":"C:/Users/Test/AppData"})))
   self.assertEqual(str(ConfigManager.resolve_directory("posix",{"XDG_CONFIG_HOME":"/tmp/config"})),"/tmp/config/sus-adb")
+ def test_nested_secrets_rejected_and_quarantines_preserved(self):
+  with tempfile.TemporaryDirectory() as d:
+   m=ConfigManager(d);data=defaults();data["plugin"]={"token":"nope"};self.assertFalse(m.save(data).ok)
+   m.path.write_text("{");m.load();m.path.write_text("{");m.load();self.assertTrue((Path(d)/"config.malformed.json").exists());self.assertTrue((Path(d)/"config.malformed.1.json").exists())
 if __name__=="__main__":unittest.main()

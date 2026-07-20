@@ -18,7 +18,7 @@ class ToolDiagnosticsTests(unittest.TestCase):
         runner = FakeRunner()
         diagnostic = ToolDiagnostics(runner, which=lambda _name: None).check("frida")
         self.assertFalse(diagnostic.installed)
-        self.assertIn("not found", diagnostic.error.lower())
+        self.assertIn("configure its executable path", diagnostic.error.lower())
         self.assertEqual(runner.commands, [])
 
     def test_frida_uses_version_flag(self):

@@ -1,6 +1,6 @@
 """Ordered startup and bounded best-effort shutdown coordination."""
 from __future__ import annotations
-import time
+import time,threading
 from dataclasses import dataclass
 @dataclass(frozen=True,slots=True)
 class LifecycleResult:
@@ -21,6 +21,12 @@ class ApplicationLifecycle:
         done=[];errors=[];started=time.monotonic();deadline=started+self.shutdown_timeout
         for name,fn in reversed(self.cleanups):
             if time.monotonic()>=deadline:errors.append("Shutdown timeout reached.");break
-            try:fn();done.append(name)
-            except Exception as exc:errors.append(f"{name}: {exc}")
+            failure=[]
+            def invoke():
+                try:fn()
+                except Exception as exc:failure.append(exc)
+            worker=threading.Thread(target=invoke,name=f"sus-adb-shutdown-{name}",daemon=True);worker.start();worker.join(max(0,deadline-time.monotonic()))
+            if worker.is_alive():errors.append(f"{name}: cleanup timed out.");break
+            if failure:errors.append(f"{name}: {failure[0]}")
+            else:done.append(name)
         return LifecycleResult(not errors,tuple(done),tuple(errors),time.monotonic()-started)
