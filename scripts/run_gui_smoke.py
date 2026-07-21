@@ -1,6 +1,7 @@
 """Headless construction and reachability checks; never contacts a device."""
 from __future__ import annotations
 import os,sys,tempfile
+from types import SimpleNamespace
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 def main():
@@ -11,7 +12,9 @@ def main():
   from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
   from app.gui.crash_dialog import CrashDialog
   from app.core.environment_diagnostics import DiagnosticRecord
+  from app.gui.customtkinter_compat import install_scroll_target_guard
   app=SusADBWindow()
+  assert not install_scroll_target_guard().installed
   top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","Tools","Addons","About"]
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
   official=app.plugin_manager.official();assert len(official)==4;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
@@ -29,7 +32,11 @@ def main():
    center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==4;assert len({card.plugin_id for card in center.cards.values()})==4
    text=" ".join(w.cget("text") for w in center.winfo_children() if hasattr(w,"cget") and "text" in w.keys());assert "Quick Tools" not in text and "Authorization must" not in text
   skeleton=next(item for item in official if not item.manifest.requested_capabilities);sid=skeleton.manifest.plugin_id;assert center.cards[sid].actions==("Details","Export Template…","Install")
+  validator=getattr(center.card_area,"_check_if_valid_scroll",getattr(center.card_area,"check_if_master_is_canvas",None));assert validator is not None;assert validator(center.cards[sid]);assert not validator(".native.file.dialog")
+  for _ in range(25):center.card_area._mouse_wheel_all(SimpleNamespace(widget=".native.file.dialog",delta=-1,num=5))
+  before=(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses));center.destination_chooser=lambda:"";center.action("Export Template…",sid);assert before==(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses))
   export_parent=Path(d)/"export";export_parent.mkdir();center.destination_chooser=lambda:str(export_parent);center.action("Export Template…",sid);assert "not installed or executed" in center.status_message;assert not app.plugin_manager.list()
+  center.geometry("980x650+0+0");center.update_idletasks();canvas=center.card_area._parent_canvas;canvas.configure(scrollregion=(0,0,1000,3000));canvas.yview_moveto(0);scroll_before=canvas.yview();center.card_area._mouse_wheel_all(SimpleNamespace(widget=center.cards[sid],delta=-1,num=5));assert canvas.yview()!=scroll_before;center.update_idletasks()
   assert app.plugin_manager.install_official(sid,skeleton.package_digest).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Trust");assert "Permissions" not in center.cards[sid].actions
   assert app.plugin_manager.trust_zero_capability(sid,True).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Enable")
   assert app.plugin_manager.enable(sid).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Load")
@@ -52,6 +59,6 @@ def main():
   assert "1.0.0-rc.1" in app.title()
   first.destroy();diagnostics.destroy();crash.destroy()
   app.shutdown()
- print("gui-smoke=PASS main=1200x760,1400x860 addons=980x650,1180x780,1400x860 cards=4 singleton-window-home-warning=PASS")
+ print("gui-smoke=PASS main=1200x760,1400x860 addons=980x650,1180x780,1400x860 cards=4 wheel-guard-export-scroll-shutdown=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

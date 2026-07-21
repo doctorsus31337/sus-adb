@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 
 import customtkinter as ctk
+from app.gui.customtkinter_compat import install_scroll_target_guard
+install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
 from app.core.device import Device
