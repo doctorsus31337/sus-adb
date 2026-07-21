@@ -1,6 +1,6 @@
 # TODO conversion checklist
 
-- [ ] New stable ID and name
+- [ ] New stable ID and display name; never reuse `susadb.skeleton-module`
 - [ ] Semantic version and supported platforms
 - [ ] Minimal explicit capabilities
 - [ ] No private core/GUI imports

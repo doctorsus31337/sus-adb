@@ -5,3 +5,11 @@ Supported types are dashboard cards, Pentest panels, Tools actions, Script Studi
 Every registered item has a stable ID and plugin owner. Duplicate IDs are rejected. A failed registration rolls back that plugin only; unload unregisters all of its contributions. Assessment actions declare capability/scope requirements, classification, preview, confirmation, execution, and rollback guidance.
 
 Plugin panel factories return immutable `PluginPanelSpec`/`PluginView` data. The host owns Tk construction and navigation, so plugins never retain a Tk root or import private GUI internals.
+
+## Addon presentation modes
+
+Public `AddonCardSpec` and `AddonWindowSpec` data select `embedded`, `window`, or `hybrid` presentation. Addons provide immutable content; the core owns every `CTkToplevel`, theme, singleton lookup, focus operation, geometry clamp, close protocol, and cleanup. Closing a window leaves the addon loaded; unload and uninstall close all owned windows.
+
+The top-level **Addons** menu and focused **Add-ons Center** preserve available, installed, capability-approved, enabled, loaded, and window-open as separate states. Opening either surface changes none of them. Plugins never receive the raw Tk root.
+
+Safe catalog actions are immutable manifest metadata executed by the host, not by plugin code. The Skeleton export action uses a host-owned destination dialog, digest revalidation, an explicit file allowlist, symlink/traversal rejection, and bounded counts/bytes. Export never installs, trusts, enables, loads, executes, or opens the copy.

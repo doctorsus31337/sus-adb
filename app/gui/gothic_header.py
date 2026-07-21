@@ -4,7 +4,7 @@ from app.core.app_metadata import METADATA
 
 class GothicHeader(ctk.CTkFrame):
 
-    def __init__(self, parent, theme):
+    def __init__(self, parent, theme, home_callback=None):
         super().__init__(
             parent,
             fg_color="transparent"
@@ -17,6 +17,14 @@ class GothicHeader(ctk.CTkFrame):
             text_color=theme["gold"]
         )
         self.title.pack(pady=(5, 2))
+        if home_callback:
+            self.title.configure(cursor="hand2")
+            self.title.bind("<Button-1>",lambda _event:home_callback())
+            self.title.bind("<Return>",lambda _event:home_callback())
+            self.title.bind("<space>",lambda _event:home_callback())
+            self.title.bind("<Enter>",lambda _event:self.title.configure(text_color=theme["text"]))
+            self.title.bind("<Leave>",lambda _event:self.title.configure(text_color=theme["gold"]))
+            self.title.tooltip_text="Return to Console Home"
 
         self.subtitle = ctk.CTkLabel(
             self,

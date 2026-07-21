@@ -8,11 +8,16 @@ All commented examples remain opt-in TODOs and register nothing by default.
 from __future__ import annotations
 from dataclasses import dataclass
 from app.plugins.plugin_api import PluginResult
+from app.plugins.contribution_registry import Contribution
+from app.plugins.plugin_ui import PluginPanelSpec,PluginView
 
 @dataclass(frozen=True,slots=True)
 class LocalState:
     """TODO: immutable plugin-local state; persist only through an approved façade."""
     message:str="inactive"
+
+def panel_spec(_context=None):
+    return PluginPanelSpec("Skeleton Module",(PluginView("Documentation","This is an inert educational template. Export a developer copy from the Add-ons Center; no device, process, network, evidence, or finding action is available."),),{"Capabilities":"0","Behavior":"No-op"})
 
 class Plugin:
     def __init__(self):
@@ -26,7 +31,7 @@ class Plugin:
         # TODO examples: dashboard-card, pentest-panel, menu-action, script-asset,
         # diagnostic-provider, evidence-processor, finding-template, report-section,
         # parser, and assessment-action. Register stable owned IDs only after opt-in.
-        return ()
+        return (Contribution("skeleton.documentation","pentest-panel","Skeleton Module Documentation",factory=panel_spec,metadata={"ui_mode":"window","singleton":True}),)
     def start(self):
         # TODO: use a bounded cancellable worker; marshal GUI results through host callbacks.
         # Read selected-device/target context and active scope through capability-gated API only.

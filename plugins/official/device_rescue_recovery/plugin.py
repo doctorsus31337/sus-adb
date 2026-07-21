@@ -79,5 +79,5 @@ def panel_spec(_context=None):
 class Plugin:
     def activate(self,api):
         self.api=api
-        return (Contribution("device-rescue.dashboard","dashboard-card","Device Rescue & Recovery",factory=panel_spec),Contribution("device-rescue.panel","pentest-panel","Device Rescue & Recovery",factory=panel_spec),Contribution("device-rescue.menu","menu-action","Open Device Rescue",metadata={"target":"device-rescue.panel"}),Contribution("device-rescue.report","report-section","Recovery Results",factory=report_section,capability_requirement="contribute-report-section"),Contribution("device-rescue.manifest","evidence-processor","Recovery Manifest Exporter"))
+        return (Contribution("device-rescue.dashboard","dashboard-card","Device Rescue & Recovery",factory=panel_spec),Contribution("device-rescue.panel","pentest-panel","Device Rescue & Recovery",factory=panel_spec,metadata={"ui_mode":"window","singleton":True}),Contribution("device-rescue.menu","menu-action","Open Device Rescue",metadata={"target":"device-rescue.panel"}),Contribution("device-rescue.report","report-section","Recovery Results",factory=report_section,capability_requirement="contribute-report-section"),Contribution("device-rescue.manifest","evidence-processor","Recovery Manifest Exporter"))
     def deactivate(self):self.api=None
