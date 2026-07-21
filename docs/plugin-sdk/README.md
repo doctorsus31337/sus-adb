@@ -1,6 +1,6 @@
 # SUS-ADB Plugin SDK v1
 
-The local Plugin SDK extends SUS-ADB without changing core files. A package is inspected and stored disabled; those steps never import it. Trust approval, capability approval, enablement, and loading are distinct explicit actions.
+The local Plugin SDK extends SUS-ADB without changing core files. A package is inspected and stored disabled; those steps never import it. Package-digest trust, requested-capability approval, enablement, loading, and window opening are distinct explicit states. A zero-capability package still needs explicit digest trust, but it has no permission grant to review.
 
 Start with `plugins/examples/hello_plugin`. Its manifest is disabled, requests no device or network capability, and contributes only local read-only UI/report/script metadata.
 

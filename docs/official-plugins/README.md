@@ -5,3 +5,5 @@ SUS-ADB bundles four inspectable source packages in an Official Catalog: Device 
 See the individual guides plus installation, trust/capabilities, privacy, testing, and uninstall documentation in this directory.
 
 The **Addons** menu opens a focused, non-modal Add-ons Center with one card per package. Device Rescue and Skeleton prefer detached windows; Rootability Advisor and WebView Inspector use hybrid presentation. Install, permission approval, enable, load, and open remain separate. Closing a window does not unload code; unload or uninstall closes owned windows. The Gothic title returns only the main workspace to Console Home.
+
+Digest trust and capability permissions are shown separately. Zero-capability addons use **Trust Required** and **Trust**. Skeleton also offers a host-managed **Export Template…** action in every lifecycle state; export does not change that state.

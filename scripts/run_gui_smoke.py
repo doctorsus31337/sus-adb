@@ -28,14 +28,22 @@ def main():
   for width,height in ((980,650),(1180,780),(1400,860)):
    center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==4;assert len({card.plugin_id for card in center.cards.values()})==4
    text=" ".join(w.cget("text") for w in center.winfo_children() if hasattr(w,"cget") and "text" in w.keys());assert "Quick Tools" not in text and "Authorization must" not in text
+  skeleton=next(item for item in official if not item.manifest.requested_capabilities);sid=skeleton.manifest.plugin_id;assert center.cards[sid].actions==("Details","Export Template…","Install")
+  export_parent=Path(d)/"export";export_parent.mkdir();center.destination_chooser=lambda:str(export_parent);center.action("Export Template…",sid);assert "not installed or executed" in center.status_message;assert not app.plugin_manager.list()
+  assert app.plugin_manager.install_official(sid,skeleton.package_digest).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Trust");assert "Permissions" not in center.cards[sid].actions
+  assert app.plugin_manager.trust_zero_capability(sid,True).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Enable")
+  assert app.plugin_manager.enable(sid).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Load")
+  assert app.plugin_manager.load(sid).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Open","Unload")
   for item in official:
+   if item.manifest.plugin_id==sid:continue
    assert app.plugin_manager.install_official(item.manifest.plugin_id,item.package_digest).ok
    assert app.plugin_manager.approve(item.manifest.plugin_id,item.manifest.requested_capabilities,confirmed=True).ok
    assert app.plugin_manager.enable(item.manifest.plugin_id).ok
    assert not app.plugin_registry.by_plugin(item.manifest.plugin_id)
    assert app.plugin_manager.load(item.manifest.plugin_id).ok
-  app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==3
-  app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==2
+  app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==4
+  app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==3
+  skeleton_panel=next(v for v in panels if v.plugin_id==sid);skeleton_window=app.open_addon_window(skeleton_panel.contribution_id);assert skeleton_window is app.open_addon_window(skeleton_panel.contribution_id);center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Focus","Unload")
   first_panel=panels[0];window=app.open_addon_window(first_panel.contribution_id);assert window is app.open_addon_window(first_panel.contribution_id);window.update_idletasks();app.addon_window_host.close(first_panel.contribution_id);assert app.plugin_manager.loader.statuses[first_panel.plugin_id].state.value=="active"
   window=app.open_addon_window(first_panel.contribution_id);assert window;app.plugin_manager.unload(first_panel.plugin_id);app.update_idletasks();assert not app.addon_window_host.is_open(first_panel.contribution_id)
   app.workspace.set("Pentest");app.go_home();assert app.workspace.get()=="Console";assert center.winfo_exists()

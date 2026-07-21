@@ -11,3 +11,5 @@ Plugin panel factories return immutable `PluginPanelSpec`/`PluginView` data. The
 Public `AddonCardSpec` and `AddonWindowSpec` data select `embedded`, `window`, or `hybrid` presentation. Addons provide immutable content; the core owns every `CTkToplevel`, theme, singleton lookup, focus operation, geometry clamp, close protocol, and cleanup. Closing a window leaves the addon loaded; unload and uninstall close all owned windows.
 
 The top-level **Addons** menu and focused **Add-ons Center** preserve available, installed, capability-approved, enabled, loaded, and window-open as separate states. Opening either surface changes none of them. Plugins never receive the raw Tk root.
+
+Safe catalog actions are immutable manifest metadata executed by the host, not by plugin code. The Skeleton export action uses a host-owned destination dialog, digest revalidation, an explicit file allowlist, symlink/traversal rejection, and bounded counts/bytes. Export never installs, trusts, enables, loads, executes, or opens the copy.

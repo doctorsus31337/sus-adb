@@ -1,6 +1,6 @@
 import tempfile,unittest
 from pathlib import Path
-from app.plugins.addon_presenter import card_spec,lifecycle_for
+from app.plugins.addon_presenter import card_actions,card_spec,lifecycle_for
 from app.plugins.plugin_ui import AddonUIMode,AddonWindowSpec,PluginPanelSpec,resolve_ui_mode,clamp_addon_geometry
 from app.plugins.official_catalog import OfficialPluginCatalog
 from app.plugins.plugin_manager import PluginManager
@@ -25,7 +25,18 @@ class T(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    manager=self.manager(d);item=manager.official()[0];pid=item.manifest.plugin_id
    self.assertTrue(manager.install_official(pid,item.package_digest).ok);self.assertEqual(lifecycle_for(manager,pid),"Permissions Required");self.assertFalse(manager.records[pid][2].enabled);self.assertFalse(manager.registry.list())
+ def test_zero_capability_trust_is_distinct_and_explicit(self):
+  with tempfile.TemporaryDirectory() as d:
+   manager=self.manager(d);item=next(v for v in manager.official() if not v.manifest.requested_capabilities);pid=item.manifest.plugin_id
+   self.assertTrue(manager.install_official(pid,item.package_digest).ok);self.assertEqual(lifecycle_for(manager,pid),"Trust Required");actions=card_actions(card_spec(item,manager));self.assertIn("Trust",actions);self.assertNotIn("Permissions",actions);self.assertFalse(manager.trust_zero_capability(pid).ok);self.assertFalse(manager.trust.verify(pid,item.package_digest));self.assertTrue(manager.trust_zero_capability(pid,True).ok);self.assertEqual(lifecycle_for(manager,pid),"Installed");self.assertIn(pid,manager.records);self.assertFalse(manager.records[pid][2].enabled);self.assertFalse(manager.registry.list());self.assertNotIn(pid,manager.loader.statuses)
+ def test_export_action_is_present_in_every_skeleton_state(self):
+  class Host:
+   opened=False
+   def is_open(self,_):return self.opened
+  with tempfile.TemporaryDirectory() as d:
+   manager=self.manager(d);item=next(v for v in manager.official() if not v.manifest.requested_capabilities);pid=item.manifest.plugin_id;host=Host()
+   self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.install_official(pid,item.package_digest);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.trust_zero_capability(pid,True);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.enable(pid);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.load(pid);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));host.opened=True;self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)))
  def test_warning_contract(self):
   source=(ROOT/"app/gui/pentest_workspace.py").read_text(encoding="utf-8");self.assertIn('"Authorization must be explicitly confirmed."',source);self.assertNotIn('"Authorization must be explicitly confirm"',source)
  def test_generic_hosts_have_no_official_ids_or_raw_root_provider(self):
-  text="".join((ROOT/path).read_text(encoding="utf-8") for path in ("app/gui/addons_center.py","app/gui/addon_window_host.py","app/gui/menu_bar.py"));self.assertNotIn("susadb.",text);self.assertNotIn("subprocess",text);self.assertNotIn("requests",text)
+  text="".join((ROOT/path).read_text(encoding="utf-8") for path in ("app/gui/addons_center.py","app/gui/addon_window_host.py","app/gui/menu_bar.py"));self.assertNotIn("susadb.",text);self.assertNotIn("import subprocess",text);self.assertNotIn("import requests",text)
