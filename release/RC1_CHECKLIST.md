@@ -13,4 +13,5 @@ Automated checks cover unit tests, compilation, startup self-test, resource veri
 - [ ] Shutdown cleanup
 - [ ] Package and checksum verification
 - [ ] Privacy audit
+- [x] Script Studio package policy reports zero core curated assets and verifies the disabled hello example asset
 - [ ] Upgrade and configuration migration

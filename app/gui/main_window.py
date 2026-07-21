@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+import sys
+from pathlib import Path
 
 import customtkinter as ctk
 
@@ -98,6 +100,7 @@ class SusADBWindow(ctk.CTk):
             target_provider=lambda: getattr(getattr(self, "instrumentation_panel", None), "selected_target", None),
             evidence_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "evidence", None),
             finding_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "findings", None),
+            official_root=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parents[2]))/"plugins"/"official",
         )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.first_run_dialog = None
@@ -424,6 +427,10 @@ class SusADBWindow(ctk.CTk):
     def open_plugin_manager(self):
         self.enter_pentest_workspace()
         self.pentest_workspace.open_plugins()
+
+    def open_plugin_contribution(self,contribution_id):
+        self.open_plugin_manager()
+        if hasattr(self.pentest_workspace,"plugin_panel"):self.pentest_workspace.plugin_panel.open_contribution(contribution_id)
 
     def open_generated_script(self, descriptor):
         self.navigate_workspace("Scripts")

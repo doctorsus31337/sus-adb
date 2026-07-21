@@ -41,3 +41,11 @@ class FridaPythonAdapterTests(unittest.TestCase):
         self.assertIn("echo", adapter.list_exports(script).value); self.assertEqual(adapter.call_export(script, "echo", ["ok"]).value, "ok")
         self.assertEqual(adapter.call_export(script, "missing").error_code, "rpc-export-missing")
         adapter.unload_script(script); self.assertTrue(adapter.detach(session).ok)
+
+    def test_fake_packaged_provider_initializes_without_device_operation(self):
+        calls = []
+        module = Frida()
+        adapter = FridaPythonAdapter(lambda: calls.append("import") or module)
+        self.assertEqual(adapter.availability().value, {"installed": True, "version": "16.7.0"})
+        self.assertEqual(calls, ["import"])
+        self.assertFalse(hasattr(module.manager, "endpoint"))

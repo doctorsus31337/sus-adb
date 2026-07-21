@@ -8,14 +8,17 @@ from app.plugins.plugin_capabilities import CAPABILITIES,HIGH_IMPACT
 from app.plugins.plugin_loader import PluginLoader,LoaderState
 from app.plugins.plugin_package import PluginPackage
 from app.plugins.plugin_validator import PluginValidator
+from app.plugins.official_catalog import OfficialPluginCatalog
 from app.core.pentest_event import EventCategory,PentestEvent
 @dataclass(frozen=True,slots=True)
 class ManagerResult:
     ok:bool;manifest:object=None;items:tuple=();status:object=None;path:str|None=None;error:str|None=None;warnings:tuple[str,...]=()
 class PluginManager:
-    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0"):
-        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.records={};self.loader=PluginLoader(registry,self.validator,trust,self._api);self.refresh()
+    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None):
+        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self.loader=PluginLoader(registry,self.validator,trust,self._api);self.refresh()
     def _api(self,manifest):return PluginAPI(manifest.plugin_id,self.trust.approved(manifest.plugin_id,manifest.package_digest),self.session_provider,self.device_provider,self.target_provider,self.timeline_provider,self.evidence_provider,self.finding_provider,self.store.root/"state")
+    def plugin_context(self,plugin_id):
+        record=self.records.get(plugin_id);return self._api(record[2]).context(self.app_version) if record else None
     def _event(self,plugin_id,title,description="",severity="info"):
         timeline=self.timeline_provider()
         if timeline:timeline.append(PentestEvent(EventCategory.SESSION,"plugin-manager",title,description,payload={"plugin_id":plugin_id},severity=severity))
@@ -31,6 +34,15 @@ class PluginManager:
         inspection=PluginPackage.inspect(source);validation=self.validator.validate(inspection,existing_ids=self.records)
         if validation.errors:return ManagerResult(False,inspection.manifest,error="; ".join(validation.errors),warnings=validation.warnings)
         result=self.store.install(source);self.refresh();self._event(inspection.manifest.plugin_id,"Plugin stored disabled","Installation did not import, enable, trust, or load code.");return ManagerResult(result.ok,inspection.manifest,path=result.path,error=result.error,warnings=validation.warnings)
+    def official(self):return self.catalog.list(self.records) if self.catalog else ()
+    def install_official(self,plugin_id,expected_digest=""):
+        item=self.catalog.get(plugin_id,self.records) if self.catalog else None
+        if not item:return ManagerResult(False,error="Official plugin was not found in the bundled catalog.")
+        if item.installed:return ManagerResult(False,item.manifest,error="Official plugin is already installed.")
+        if not item.valid:return ManagerResult(False,item.manifest,error="; ".join(item.errors))
+        current=PluginPackage.inspect(item.path)
+        if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed before installation.")
+        return self.install(item.path)
     def approve(self,plugin_id,capabilities=(),confirmed=False):
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")

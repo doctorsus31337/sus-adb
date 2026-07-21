@@ -10,3 +10,5 @@
 8. Unload to unregister contributions; disable or uninstall separately.
 
 Opening a case, discovering a directory, installing, or enabling never loads a plugin. Content changes invalidate trust and cause quarantine during verification.
+
+Official catalog discovery adds no lifecycle state: it only inspects bundled tracked source. Explicit catalog installation enters step 2 and follows the same remaining lifecycle as third-party packages.

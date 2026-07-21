@@ -1,0 +1,1 @@
+{"id":"official-webview-observer","name":"WebView Observation Agent","kind":"frida","trust":"untrusted","auto_load":false,"changes_runtime":false,"description":"Observation-only WebView metadata starter agent requiring explicit review, trust, and load."}
