@@ -32,6 +32,9 @@ class ReleaseManifestTests(unittest.TestCase):
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
         (resources / "frida-17.15.5.dist-info").mkdir()
         (resources / "frida-17.15.5.dist-info/METADATA").write_text("Name: frida\nVersion: 17.15.5\n", encoding="utf-8")
+        official_names=("device_rescue_recovery","rootability_advisor","webview_security_inspector","skeleton_module")
+        for folder,plugin_id in zip(official_names,VERIFY.OFFICIAL_IDS):
+            target=resources/"plugins/official"/folder;target.mkdir(parents=True,exist_ok=True);(target/"manifest.json").write_text(json.dumps({"plugin_id":plugin_id,"enabled":False,"requested_capabilities":VERIFY.OFFICIAL_CAPABILITIES[plugin_id]}),encoding="utf-8");(target/"plugin.py").write_text("class Plugin: pass",encoding="utf-8")
         (resources / "app/themes/gothic.json").write_text("{}", encoding="utf-8")
         (resources / "docs/README.md").write_text("docs", encoding="utf-8")
         manifest = {"enabled": False, "contributed_components": [{"contribution_type": "script-asset"}]}
@@ -102,6 +105,8 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(result["assets"]["core_curated_script_studio_assets"]["count"], 0)
             self.assertEqual(result["assets"]["example_plugin_assets"]["count"], 2)
             self.assertEqual(result["assets"]["user_local_script_studio_assets"], {"count": 0, "packaged": False})
+            self.assertEqual(result["assets"]["official_bundled_plugins"]["count"], 4)
+            self.assertEqual(result["assets"]["installed_third_party_plugins"], {"count": 0, "packaged": False})
 
     def test_fixture_curated_assets_are_required_and_counted(self):
         selected = {name: () for name in ASSETS.CATEGORIES}
@@ -133,6 +138,9 @@ class ReleaseManifestTests(unittest.TestCase):
             selected = ASSETS.select_curated_assets(root, tracked)
             self.assertEqual(selected["frida"], ("scripts/frida/reviewed.js",))
             self.assertNotIn("scripts/frida/local-only.js", selected["frida"])
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);tracked=root/"plugins/official/demo/manifest.json";local=root/"plugins/official/demo/local.log";tracked.parent.mkdir(parents=True);tracked.write_text("{}");local.write_text("private")
+            self.assertEqual(ASSETS.select_official_plugins(root,("plugins/official/demo/manifest.json",)),("plugins/official/demo/manifest.json",))
 
     def test_example_assets_private_drafts_caches_and_required_resources(self):
         with tempfile.TemporaryDirectory() as directory:

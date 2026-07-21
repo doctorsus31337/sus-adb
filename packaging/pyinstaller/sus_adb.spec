@@ -11,6 +11,8 @@ selected=policy.select_curated_assets(root)
 for category,paths in selected.items():
     for relative_text in paths:
         relative=Path(relative_text);datas.append((str(root/relative),str(relative.parent)))
+for relative_text in policy.select_official_plugins(root):
+    relative=Path(relative_text);datas.append((str(root/relative),str(relative.parent)))
 report=policy.write_asset_report(root/'build/packaging/curated-script-assets.json',selected)
 datas.append((str(report),'packaging'))
 a=Analysis([str(root/'main.py')],pathex=[str(root)],binaries=frida_binaries,datas=datas,hiddenimports=frida_hiddenimports,hookspath=[str(root/'packaging/pyinstaller/hooks')],excludes=[],noarchive=False)

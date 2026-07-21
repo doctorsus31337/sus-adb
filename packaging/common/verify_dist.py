@@ -5,6 +5,13 @@ REQUIRED=("VERSION","app/themes","docs","plugins/examples","packaging/curated-sc
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
+OFFICIAL_IDS=("susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module")
+OFFICIAL_CAPABILITIES={
+ "susadb.device-rescue-recovery":("read-selected-device","run-adb-readonly","access-active-case","append-timeline","create-evidence","contribute-report-section"),
+ "susadb.rootability-advisor":("read-selected-device","run-adb-readonly","access-active-case","append-timeline","create-findings","contribute-report-section"),
+ "susadb.webview-security-inspector":("read-selected-target","access-frida-runtime","load-frida-script","access-active-case","append-timeline","create-findings","contribute-report-section"),
+ "susadb.skeleton-module":(),
+}
 def frida_runtime_errors(resource_root,platform_name):
  metadata=tuple(resource_root.glob("frida-*.dist-info/METADATA"))
  suffix=".pyd" if platform_name=="windows" else ".so"
@@ -44,6 +51,18 @@ def verify(root):
   plugin=json.loads((resource_root/"plugins/examples/hello_plugin/manifest.json").read_text(encoding="utf-8"))
   if plugin.get("enabled",False) is not False:asset_errors.append("hello-plugin-enabled")
  except (OSError,ValueError,TypeError,json.JSONDecodeError):asset_errors.append("hello-plugin-manifest")
+ official={}
+ for directory in sorted((resource_root/"plugins/official").glob("*")):
+  if not directory.is_dir():continue
+  try:
+   data=json.loads((directory/"manifest.json").read_text(encoding="utf-8"));plugin_id=data["plugin_id"]
+   files=tuple((p.relative_to(directory).as_posix(),hashlib.sha256(p.read_bytes()).hexdigest(),p.stat().st_size) for p in sorted(directory.rglob("*")) if p.is_file())
+   digest=hashlib.sha256(json.dumps(files,separators=(",",":"),sort_keys=True).encode()).hexdigest();official[plugin_id]={"digest":digest,"capabilities":tuple(data.get("requested_capabilities",())),"enabled":data.get("enabled",False)}
+   if data.get("enabled",False) is not False:asset_errors.append(f"official-enabled:{plugin_id}")
+   if tuple(data.get("requested_capabilities",()))!=OFFICIAL_CAPABILITIES.get(plugin_id):asset_errors.append(f"official-capabilities:{plugin_id}")
+  except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError):asset_errors.append(f"official-manifest:{directory.name}")
+ for plugin_id in OFFICIAL_IDS:
+  if plugin_id not in official:missing+=(f"official plugin: {plugin_id}",)
  integrity=[];manifest_path=root/"release-manifest.json"
  try:
   manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -56,7 +75,7 @@ def verify(root):
   sums={line.split("  ",1)[1]:line.split("  ",1)[0] for line in (root/"SHA256SUMS").read_text(encoding="utf-8").splitlines() if "  " in line}
   if sums!={entry["path"]:entry["sha256"] for entry in manifest["files"]}:integrity.append("SHA256SUMS")
  except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError):integrity.append("release-manifest.json")
- assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"user_local_script_studio_assets":{"count":0,"packaged":False}}
+ assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"official_bundled_plugins":{"count":len(official),"plugins":official},"installed_third_party_plugins":{"count":0,"packaged":False},"user_created_local_plugins":{"count":0,"packaged":False},"user_local_script_studio_assets":{"count":0,"packaged":False}}
  return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
 if __name__=="__main__":
  result=verify(sys.argv[1] if len(sys.argv)>1 else "dist/sus-adb-1.0.0-rc.1-linux-x86_64");print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)

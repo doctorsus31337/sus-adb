@@ -1,0 +1,25 @@
+{
+  "plugin_id": "susadb.device-rescue-recovery",
+  "name": "Device Rescue & Recovery",
+  "version": "0.1.0",
+  "description": "Authorized recovery planning and bounded copying of explicitly selected files through existing access.",
+  "author": "SUS-ADB",
+  "license": "MIT",
+  "minimum_sus_adb_version": "1.0.0",
+  "supported_platforms": ["linux", "windows"],
+  "entry_point": "plugin.py:Plugin",
+  "plugin_api_version": "1.0",
+  "requested_capabilities": ["read-selected-device", "run-adb-readonly", "access-active-case", "append-timeline", "create-evidence", "contribute-report-section"],
+  "optional_dependencies": ["scrcpy"],
+  "required_external_tools": ["adb"],
+  "contributed_components": [
+    {"contribution_id":"device-rescue.dashboard","contribution_type":"dashboard-card","title":"Device Rescue & Recovery"},
+    {"contribution_id":"device-rescue.panel","contribution_type":"pentest-panel","title":"Device Rescue & Recovery","factory":"panel_spec"},
+    {"contribution_id":"device-rescue.menu","contribution_type":"menu-action","title":"Open Device Rescue","metadata":{"target":"device-rescue.panel"}},
+    {"contribution_id":"device-rescue.report","contribution_type":"report-section","title":"Recovery Results","factory":"report_section"},
+    {"contribution_id":"device-rescue.manifest","contribution_type":"evidence-processor","title":"Recovery Manifest Exporter"}
+  ],
+  "trust_state":"untrusted",
+  "enabled":false,
+  "caution_text":"Uses only existing authorized access. It never bypasses locks, FRP, encryption, or acquires root."
+}

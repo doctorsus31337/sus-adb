@@ -72,7 +72,7 @@ def path_finding(relative):
         return "generated-artifact"
     if any(part in BLOCKED_PARTS for part in parts):
         return "generated-artifact"
-    if len(parts) >= 2 and parts[0] == "plugins" and parts[1] != "examples":
+    if len(parts) >= 2 and parts[0] == "plugins" and parts[1] not in {"examples", "official"}:
         return "installed-plugin"
     if name.startswith(("private-", "private_", "draft-", "draft_")):
         return "private-draft"

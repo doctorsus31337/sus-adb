@@ -14,6 +14,10 @@ PRIVATE_DRAFTS = frozenset((
 ))
 BLOCKED_PARTS = frozenset(("__pycache__", ".git", ".pytest_cache"))
 BLOCKED_SUFFIXES = (".pyc", ".pyo")
+OFFICIAL_PLUGIN_IDS = (
+    "susadb.device-rescue-recovery", "susadb.rootability-advisor",
+    "susadb.webview-security-inspector", "susadb.skeleton-module",
+)
 
 
 def tracked_script_paths(root: Path) -> tuple[str, ...]:
@@ -76,3 +80,21 @@ def write_asset_report(path: Path, selected: dict[str, tuple[str, ...]]) -> Path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asset_report(selected), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def tracked_official_plugin_paths(root: Path) -> tuple[str, ...]:
+    root = Path(root).resolve()
+    if (root / ".git").exists():
+        output = subprocess.check_output(("git", "ls-files", "-z", "--", "plugins/official"), cwd=root)
+        return tuple(item for item in output.decode("utf-8").split("\0") if item)
+    return tuple(p.relative_to(root).as_posix() for p in sorted((root / "plugins/official").rglob("*")) if p.is_file())
+
+
+def select_official_plugins(root: Path, tracked_paths: Iterable[str] | None = None) -> tuple[str, ...]:
+    root = Path(root).resolve();candidates=tracked_official_plugin_paths(root) if tracked_paths is None else tuple(tracked_paths);selected=[]
+    for raw in sorted(set(candidates)):
+        relative=Path(raw);normalized=relative.as_posix()
+        if relative.is_absolute() or ".." in relative.parts or relative.parts[:2] != ("plugins","official"):continue
+        if any(part in BLOCKED_PARTS for part in relative.parts) or normalized.casefold().endswith(BLOCKED_SUFFIXES):continue
+        if (root/relative).is_file():selected.append(normalized)
+    return tuple(selected)

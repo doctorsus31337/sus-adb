@@ -38,6 +38,8 @@ class MenuBar:
         tools_menu.add_command(label="Open Report Builder", command=window.open_report_builder)
         tools_menu.add_command(label="Open Plugin Manager", command=window.open_plugin_manager)
         tools_menu.add_command(label="New Assessment Case", command=window.new_assessment_case)
+        self.tools_menu=tools_menu;self.plugin_start=tools_menu.index("end")+1;self.refresh_plugin_actions()
+        registry=getattr(window,"plugin_registry",None);self.unsubscribe=registry.subscribe(lambda _items:window.after(0,self.refresh_plugin_actions)) if registry else None
         menu.add_cascade(label="Tools", menu=tools_menu)
 
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
@@ -45,6 +47,14 @@ class MenuBar:
         menu.add_cascade(label="About", menu=about_menu)
 
         window.config(menu=menu)
+
+    def refresh_plugin_actions(self):
+        end=self.tools_menu.index("end")
+        if end is not None and end>=self.plugin_start:self.tools_menu.delete(self.plugin_start,"end")
+        actions=getattr(getattr(self.window,"plugin_registry",None),"list",lambda _type:())("menu-action")
+        if actions:self.tools_menu.add_separator()
+        for action in actions:
+            target=action.metadata.get("target","");self.tools_menu.add_command(label=action.title,command=lambda value=target:self.window.open_plugin_contribution(value))
 
     def about_box(self):
 

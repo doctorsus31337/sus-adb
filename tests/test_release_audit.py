@@ -133,6 +133,10 @@ class ReleaseAuditTests(unittest.TestCase):
             ("config/settings.ini", "developer-home"),
         ))
 
+    def test_official_source_allowed_but_installed_plugin_state_blocks(self):
+        findings = self.audit_files({"plugins/official/demo/manifest.json": b"{}", "plugins/installed/demo/plugin.py": b"safe"})
+        self.assertEqual(findings, (("plugins/installed/demo/plugin.py", "installed-plugin"),))
+
 
 if __name__ == "__main__":
     unittest.main()
