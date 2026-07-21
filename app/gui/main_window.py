@@ -54,6 +54,8 @@ from app.core.host_tool_resolver import HostToolResolver
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
 from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
+from app.gui.addons_center import AddonsCenter
+from app.gui.addon_window_host import AddonWindowHost
 
 
 class SusADBWindow(ctk.CTk):
@@ -103,6 +105,8 @@ class SusADBWindow(ctk.CTk):
             official_root=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parents[2]))/"plugins"/"official",
         )
         self.cheat_sheet: CheatSheetWindow | None = None
+        self.addons_center=None
+        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}))
         self.first_run_dialog = None
         self.crash_dialog = None
 
@@ -112,7 +116,7 @@ class SusADBWindow(ctk.CTk):
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        MenuBar(self)
+        self.menu_bar=MenuBar(self)
         self.create_widgets()
         self.after_idle(self.center_window)
         if self.config_result.warning and self.config_result.warning.startswith("First run"):
@@ -128,7 +132,8 @@ class SusADBWindow(ctk.CTk):
         super().report_callback_exception(exc_type, exc_value, exc_traceback)
 
     def create_widgets(self):
-        GothicHeader(self, self.theme).grid(
+        self.gothic_header=GothicHeader(self, self.theme, self.go_home)
+        self.gothic_header.grid(
             row=0,
             column=0,
             sticky="ew",
@@ -393,6 +398,18 @@ class SusADBWindow(ctk.CTk):
         if name in self.workspace._tab_dict:
             self.workspace.set(name)
 
+    def go_home(self):self.navigate_workspace("Console")
+
+    def open_addons_center(self):
+        if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.deiconify();self.addons_center.lift();self.addons_center.focus_force();return self.addons_center
+        self.addons_center=AddonsCenter(self,self.theme,self.plugin_manager,self.addon_window_host,on_close=lambda:setattr(self,"addons_center",None));return self.addons_center
+
+    def open_addon_window(self,contribution_id):return self.addon_window_host.open(contribution_id)
+
+    def unload_all_addons(self):
+        for plugin_id,status in tuple(self.plugin_manager.loader.statuses.items()):
+            if status.state.value=="active":self.plugin_manager.unload(plugin_id)
+
     def enter_pentest_workspace(self):
         self.navigate_workspace("Pentest")
 
@@ -429,6 +446,8 @@ class SusADBWindow(ctk.CTk):
         self.pentest_workspace.open_plugins()
 
     def open_plugin_contribution(self,contribution_id):
+        contribution=next((c for c in self.plugin_registry.list("pentest-panel") if c.contribution_id==contribution_id),None)
+        if contribution and contribution.metadata.get("ui_mode","embedded") in {"window","hybrid"}:return self.open_addon_window(contribution_id)
         self.open_plugin_manager()
         if hasattr(self.pentest_workspace,"plugin_panel"):self.pentest_workspace.plugin_panel.open_contribution(contribution_id)
 
@@ -445,7 +464,8 @@ class SusADBWindow(ctk.CTk):
     def shutdown(self):
         if getattr(self,"_shutdown_started",False):return
         self._shutdown_started=True;life=ApplicationLifecycle(shutdown_timeout=5)
-        for name,owner,method in (("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
+        if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
+        for name,owner,method in (("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         result=life.shutdown()
         if result.errors:self.logging_manager.log("ERROR","; ".join(result.errors))

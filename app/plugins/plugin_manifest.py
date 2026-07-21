@@ -20,7 +20,7 @@ class ContributionDeclaration:
     def from_dict(cls,data):return cls(**data)
 @dataclass(frozen=True,slots=True)
 class PluginManifest:
-    plugin_id:str;name:str;version:str;description:str="";author:str="";homepage_source_reference:str="";license:str="";minimum_sus_adb_version:str="0.1.0";supported_platforms:tuple[str,...]=("linux","windows");entry_point:str="plugin.py:Plugin";plugin_api_version:str="1.0";requested_capabilities:tuple[str,...]=();optional_dependencies:tuple[str,...]=();required_external_tools:tuple[str,...]=();contributed_components:tuple[ContributionDeclaration,...]=();trust_state:TrustState=TrustState.UNTRUSTED;enabled:bool=False;package_digest:str="";manifest_digest:str="";installation_timestamp:str=field(default_factory=now);modified_timestamp:str=field(default_factory=now);caution_text:str="Third-party plugins execute as trusted local code only after explicit approval."
+    plugin_id:str;name:str;version:str;description:str="";author:str="";homepage_source_reference:str="";license:str="";minimum_sus_adb_version:str="0.1.0";supported_platforms:tuple[str,...]=("linux","windows");entry_point:str="plugin.py:Plugin";plugin_api_version:str="1.0";requested_capabilities:tuple[str,...]=();optional_dependencies:tuple[str,...]=();required_external_tools:tuple[str,...]=();contributed_components:tuple[ContributionDeclaration,...]=();addon_ui:Mapping[str,Any]=field(default_factory=dict);trust_state:TrustState=TrustState.UNTRUSTED;enabled:bool=False;package_digest:str="";manifest_digest:str="";installation_timestamp:str=field(default_factory=now);modified_timestamp:str=field(default_factory=now);caution_text:str="Third-party plugins execute as trusted local code only after explicit approval."
     def __post_init__(self):
         if not PLUGIN_ID.fullmatch(self.plugin_id):raise ValueError("Plugin ID must be a stable lowercase identifier.")
         if not SEMVER.fullmatch(self.version):raise ValueError("Plugin version must use semantic versioning.")
@@ -30,6 +30,7 @@ class PluginManifest:
         object.__setattr__(self,"trust_state",TrustState(self.trust_state));
         for name in ("supported_platforms","requested_capabilities","optional_dependencies","required_external_tools"):object.__setattr__(self,name,tuple(getattr(self,name)))
         object.__setattr__(self,"contributed_components",tuple(v if isinstance(v,ContributionDeclaration) else ContributionDeclaration.from_dict(v) for v in self.contributed_components))
+        object.__setattr__(self,"addon_ui",dict(self.addon_ui))
     @property
     def display_label(self):return f"{self.name} {self.version} · {self.trust_state.value} · {'enabled' if self.enabled else 'disabled'}"
     def to_dict(self,include_digest=True):

@@ -27,7 +27,7 @@ class PluginManagerPanel(ctk.CTkFrame):
     def _header(self):
         h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=6,pady=4);h.grid_columnconfigure(0,weight=1);self.summary=ctk.CTkLabel(h,text="Plugins",text_color=self.theme["gold"],anchor="w",wraplength=760);self.summary.grid(row=0,column=0,sticky="ew",padx=7);self._button(h,"Refresh",self.refresh,0,1);self._button(h,"Install Local Plugin",self.install,0,2);self._button(h,"Verify All",self.verify_all,0,3);self._button(h,"Disable All Third-Party",self.disable_all,0,4);self.warning=ctk.CTkLabel(h,text="Third-party plugins remain disabled and untrusted by default.",text_color=self.theme["gold"],anchor="w",wraplength=900);self.warning.grid(row=1,column=0,columnspan=5,sticky="ew",padx=7)
     def _build(self):
-        p=self.views["Official Catalog"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Install Selected Official Plugin",self.install_official,0,0);self.official_view=self._text(p)
+        p=self.views["Official Catalog"];self.official_cards=ctk.CTkScrollableFrame(p,fg_color=self.theme["bg"]);self.official_cards.grid(row=0,column=0,rowspan=2,sticky="nsew");self.official_cards.grid_columnconfigure(0,weight=1)
         p=self.views["Installed"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");bar.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(bar,placeholder_text="Search plugins",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=3);self._button(bar,"Apply",self.render,0,1)
         for i,(n,c) in enumerate((("Enable",self.enable),("Disable",self.disable),("Load",self.load),("Unload",self.unload),("Reload",self.reload),("Uninstall",self.uninstall)),2):self._button(bar,n,c,0,i)
         self.installed=self._text(p)
@@ -47,23 +47,22 @@ class PluginManagerPanel(ctk.CTkFrame):
             self._set(self.details_view,json.dumps(m.to_dict(),indent=2,default=str));approved=self.manager.trust.approved(m.plugin_id,m.package_digest);self._set(self.permissions_view,"Requested:\n"+"\n".join(f"- {v}{' — HIGH IMPACT' if v in HIGH_IMPACT else ''}" for v in m.requested_capabilities)+"\n\nApproved:\n"+"\n".join(approved));self._set(self.contributions_view,"\n".join(f"{c.contribution_type} · {c.contribution_id} · {c.title}" for c in self.manager.registry.by_plugin(m.plugin_id)) or "No active contributions; contributions register only after explicit trusted load.");status=self.manager.loader.statuses.get(m.plugin_id);self._set(self.diagnostics_view,f"Digest: {m.package_digest}\nTrust: {m.trust_state.value}\nEnabled: {m.enabled}\nLoader: {getattr(status,'state','discovered')}\nLast error: {getattr(status,'last_error','')}")
         self._set(self.sdk_view,"Plugin API v1.0\n\nDocumentation: docs/plugin-sdk/README.md\nHarmless disabled example: plugins/examples/hello_plugin\n\nPython plugins are trusted code. In-process loading is not a hardened sandbox. No download, update, enable, trust, or load occurs automatically.")
     def render_official(self):
-        items=self.manager.official();self.official_selected=items[-1] if items else None;self._set(self.official_view,"\n\n".join(f"{item.manifest.name} {item.manifest.version}\nID: {item.manifest.plugin_id}\nDigest: {item.package_digest}\nCapabilities: {', '.join(item.manifest.requested_capabilities) or 'None'}\nStatus: {'installed' if item.installed else 'available, inactive'}\nDescription: {item.manifest.description}" for item in items) or "No bundled official plugins were found.")
-    def install_official(self):
-        if self.official_selected:self._run("Install official plugin",lambda:self.manager.install_official(self.official_selected.manifest.plugin_id,self.official_selected.package_digest))
+        for child in self.official_cards.winfo_children():child.destroy()
+        for row,item in enumerate(self.manager.official()):
+            card=ctk.CTkFrame(self.official_cards,fg_color=self.theme["panel_alt"],border_width=1,border_color=self.theme["border"]);card.grid(row=row,column=0,sticky="ew",padx=8,pady=6);card.grid_columnconfigure(0,weight=1);m=item.manifest
+            ctk.CTkLabel(card,text=f"{m.name} · {m.version} · Official",text_color=self.theme["gold"],anchor="w",font=self.theme["header_font"],wraplength=700).grid(row=0,column=0,sticky="ew",padx=10,pady=(8,2));ctk.CTkLabel(card,text=f"{m.description}\nCapabilities: {len(m.requested_capabilities)} · {'Installed' if item.installed else 'Available'}",text_color=self.theme["text"],anchor="w",justify="left",wraplength=760).grid(row=1,column=0,sticky="ew",padx=10,pady=(0,8));button=self._button(card,"Installed" if item.installed else "Install",lambda pid=m.plugin_id,digest=item.package_digest:self.install_official(pid,digest),0,1);button.configure(state="disabled" if item.installed else "normal")
+    def install_official(self,plugin_id=None,digest=""):
+        if plugin_id:self._run("Install official plugin",lambda:self.manager.install_official(plugin_id,digest))
     def render_active(self):
         for child in self.active_host.winfo_children():child.destroy()
-        panels=[]
-        for contribution in self.manager.registry.list("pentest-panel"):
-            try:spec=contribution.factory(self.manager.plugin_context(contribution.plugin_id)) if contribution.factory else None
-            except Exception as exc:spec=PluginPanelSpec(contribution.title,(),{"Error":str(exc)[:200]})
-            if isinstance(spec,PluginPanelSpec):panels.append((contribution,spec))
+        panels=list(self.manager.registry.list("pentest-panel"))
         if not panels:ctk.CTkLabel(self.active_host,text="No active plugin panels. Install, approve, enable, and explicitly load a plugin.",text_color=self.theme["muted"],wraplength=800).grid(row=0,column=0,sticky="nsew");return
-        self.panel_tabs=ctk.CTkTabview(self.active_host,fg_color=self.theme["panel"],segmented_button_selected_color=self.theme["red"],segmented_button_selected_hover_color=self.theme["red_hover"],text_color=self.theme["text"]);self.panel_tabs.grid(row=0,column=0,sticky="nsew")
-        for contribution,spec in panels:page=self.panel_tabs.add(contribution.title[:28]);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);PluginSpecFrame(page,self.theme,spec).grid(row=0,column=0,sticky="nsew")
+        for row,contribution in enumerate(panels):
+            line=ctk.CTkFrame(self.active_host,fg_color=self.theme["panel_alt"],border_width=1,border_color=self.theme["border"]);line.grid(row=row,column=0,sticky="ew",padx=8,pady=5);line.grid_columnconfigure(0,weight=1);host=self.winfo_toplevel();opened=bool(getattr(host,"addon_window_host",None) and host.addon_window_host.is_open(contribution.contribution_id));ctk.CTkLabel(line,text=f"{contribution.title}\nLoaded · Window {'open' if opened else 'closed'}",text_color=self.theme["gold"],anchor="w",justify="left").grid(row=0,column=0,sticky="ew",padx=8,pady=6);self._button(line,"Focus" if opened else "Open",lambda cid=contribution.contribution_id:getattr(self.winfo_toplevel(),"open_addon_window")(cid),0,1);self._button(line,"Unload",lambda pid=contribution.plugin_id:self._done("Unload",self.manager.unload(pid)),0,2)
     def open_contribution(self,contribution_id):
         item=next((value for value in self.manager.registry.list("pentest-panel") if value.contribution_id==contribution_id),None)
         self.tabs.set("Active Panels")
-        if item and hasattr(self,"panel_tabs"):self.panel_tabs.set(item.title[:28])
+        if item and hasattr(self.winfo_toplevel(),"open_addon_window"):self.winfo_toplevel().open_addon_window(item.contribution_id)
     def _run(self,title,fn):self.warning.configure(text=title+"…",text_color=self.theme["gold"]);BackgroundWorker(fn,callback=lambda r:self.after(0,self._done,title,r)).start()
     def _done(self,title,r):self.warning.configure(text=(title+" complete.") if r.ok else (r.error or title+" failed."),text_color=self.theme["success"] if r.ok else self.theme["error"]);self.refresh()
     def install(self):

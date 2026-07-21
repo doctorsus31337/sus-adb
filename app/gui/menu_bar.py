@@ -42,6 +42,16 @@ class MenuBar:
         registry=getattr(window,"plugin_registry",None);self.unsubscribe=registry.subscribe(lambda _items:window.after(0,self.refresh_plugin_actions)) if registry else None
         menu.add_cascade(label="Tools", menu=tools_menu)
 
+        addons_menu=tk.Menu(menu,tearoff=False,font=MENU_FONT)
+        addons_menu.add_command(label="Open Add-ons Center…",command=window.open_addons_center)
+        addons_menu.add_command(label="Official Addon Catalog…",command=window.open_addons_center)
+        addons_menu.add_command(label="Manage Installed Addons…",command=window.open_plugin_manager)
+        addons_menu.add_command(label="Addon Diagnostics…",command=window.open_plugin_manager)
+        addons_menu.add_separator();self.loaded_menu=tk.Menu(addons_menu,tearoff=False,font=MENU_FONT);addons_menu.add_cascade(label="Open Loaded Addon",menu=self.loaded_menu)
+        addons_menu.add_separator();addons_menu.add_command(label="Unload All Addons",command=window.unload_all_addons)
+        menu.add_cascade(label="Addons",menu=addons_menu);self.addons_menu=addons_menu;self.refresh_loaded_addons()
+        manager=getattr(window,"plugin_manager",None);self.manager_unsubscribe=manager.subscribe(lambda _event,_pid:window.after(0,self.refresh_loaded_addons)) if manager else None
+
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         about_menu.add_command(label="About SUS-ADB", command=self.about_box)
         menu.add_cascade(label="About", menu=about_menu)
@@ -55,6 +65,11 @@ class MenuBar:
         if actions:self.tools_menu.add_separator()
         for action in actions:
             target=action.metadata.get("target","");self.tools_menu.add_command(label=action.title,command=lambda value=target:self.window.open_plugin_contribution(value))
+
+    def refresh_loaded_addons(self):
+        self.loaded_menu.delete(0,"end");items=getattr(getattr(self.window,"plugin_registry",None),"list",lambda _type:())("pentest-panel")
+        if not items:self.loaded_menu.add_command(label="No loaded addons",state="disabled");return
+        for item in items:self.loaded_menu.add_command(label=item.title,command=lambda cid=item.contribution_id:self.window.open_addon_window(cid))
 
     def about_box(self):
 
