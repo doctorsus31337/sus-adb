@@ -3,3 +3,6 @@ customtkinter>=5.2,<6
 
 # System Utilities
 psutil>=5.9,<8
+
+# Direct Frida Runtime API (CLI tools and frida-server remain external)
+frida>=17.15.5,<17.16

@@ -28,6 +28,10 @@ class ReleaseManifestTests(unittest.TestCase):
             (resources / relative).mkdir(parents=True, exist_ok=True)
         (package / "sus-adb").write_text("executable", encoding="utf-8")
         (resources / "VERSION").write_text("1.0.0-rc.1\n", encoding="utf-8")
+        (resources / "frida").mkdir()
+        (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
+        (resources / "frida-17.15.5.dist-info").mkdir()
+        (resources / "frida-17.15.5.dist-info/METADATA").write_text("Name: frida\nVersion: 17.15.5\n", encoding="utf-8")
         (resources / "app/themes/gothic.json").write_text("{}", encoding="utf-8")
         (resources / "docs/README.md").write_text("docs", encoding="utf-8")
         manifest = {"enabled": False, "contributed_components": [{"contribution_type": "script-asset"}]}
@@ -55,6 +59,31 @@ class ReleaseManifestTests(unittest.TestCase):
         text = (ROOT / "packaging/pyinstaller/sus_adb.spec").read_text()
         self.assertNotIn("/home/", text)
         self.assertNotIn("C:\\Users\\", text)
+        self.assertIn("collect_all('frida')", text)
+        self.assertIn("copy_metadata('frida')", text)
+
+    def test_frida_runtime_metadata_native_component_and_manifest_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            manifest = json.loads((package / "release-manifest.json").read_text(encoding="utf-8"))
+            listed = {entry["path"] for entry in manifest["files"]}
+            self.assertIn("_internal/frida/_frida.abi3.so", listed)
+            self.assertIn("_internal/frida-17.15.5.dist-info/METADATA", listed)
+            self.assertTrue(VERIFY.verify(package)["ok"])
+            (package / "_internal/frida/_frida.abi3.so").unlink()
+            CHECKSUMS.generate(package)
+            self.assertIn("frida native runtime (*.so)", VERIFY.verify(package)["missing"])
+
+    def test_windows_frida_native_component_is_platform_appropriate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            windows = package.with_name("sus-adb-1.0.0-rc.1-windows-amd64")
+            package.rename(windows)
+            (windows / "sus-adb").rename(windows / "sus-adb.exe")
+            native = windows / "_internal/frida/_frida.abi3.so"
+            native.rename(native.with_suffix(".pyd"))
+            CHECKSUMS.generate(windows)
+            self.assertTrue(VERIFY.verify(windows)["ok"], VERIFY.verify(windows))
 
     def test_checksum_helper(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -5,12 +5,22 @@ REQUIRED=("VERSION","app/themes","docs","plugins/examples","packaging/curated-sc
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
+def frida_runtime_errors(resource_root,platform_name):
+ metadata=tuple(resource_root.glob("frida-*.dist-info/METADATA"))
+ suffix=".pyd" if platform_name=="windows" else ".so"
+ native=tuple((resource_root/"frida").glob(f"_frida*{suffix}"))
+ errors=[]
+ if not metadata:errors.append("frida distribution metadata")
+ if not native:errors.append(f"frida native runtime (*{suffix})")
+ return tuple(errors)
 def verify(root):
  root=Path(root);resource_root=root/"_internal" if (root/"_internal").is_dir() else root
  missing=tuple(v for v in REQUIRED if not (resource_root/v).exists())
  executable=next((p for p in (root/"sus-adb",root/"sus-adb.exe") if p.exists()),None)
  if executable is None:missing+=("sus-adb executable",)
  if not any(part in root.name for part in ("linux","windows")):missing+=("platform-qualified package name",)
+ platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-adb.exe").exists() else "linux"
+ missing+=frida_runtime_errors(resource_root,platform_name)
  unexpected=list(name for name in EXCLUDED if any(p.name==name for p in root.rglob("*")))
  unexpected.extend(p.relative_to(root).as_posix() for p in root.rglob("*") if any(part in BLOCKED_PARTS for part in p.relative_to(root).parts) or (p.is_file() and p.suffix.casefold() in {".pyc",".pyo"}))
  example_missing=tuple(path for path in EXAMPLE_ASSETS if not (resource_root/path).is_file())

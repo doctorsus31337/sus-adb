@@ -3,15 +3,17 @@ from __future__ import annotations
 import importlib.util,os,platform,shutil,sys
 from dataclasses import dataclass
 from pathlib import Path
+from app.core.frida_python_adapter import FridaPythonAdapter
 from app.core.host_tool_resolver import HostToolResolver
 @dataclass(frozen=True,slots=True)
 class DiagnosticRecord:
     name:str;available:bool;required:bool=False;version:str="";path:str="";guidance:str=""
 class EnvironmentDiagnostics:
     TOOLS=("adb","fastboot","frida","frida-ps","objection","java","apktool","jadx","apksigner","zipalign","keytool","bundletool","tcpdump","tshark","wireshark","mitmproxy","mitmweb","mitmdump","x-terminal-emulator","gnome-terminal","konsole","xterm")
-    def __init__(self,lookup=shutil.which,version_runner=None,module_finder=importlib.util.find_spec,resolver=None,configured=None):self.resolver=resolver or HostToolResolver(configured,which=lookup);self.version_runner=version_runner;self.module_finder=module_finder
+    def __init__(self,lookup=shutil.which,version_runner=None,module_finder=importlib.util.find_spec,resolver=None,configured=None,frida_provider=None):self.resolver=resolver or HostToolResolver(configured,which=lookup);self.version_runner=version_runner;self.module_finder=module_finder;self.frida_provider=frida_provider
     def run(self,config_dir=None,workspace_dir=None):
-        records=[DiagnosticRecord("Python",sys.version_info>=(3,11),True,platform.python_version(),sys.executable,"Python 3.11+ is required."),DiagnosticRecord("CustomTkinter",bool(self.module_finder("customtkinter")),True,guidance="Install the pinned runtime requirements."),DiagnosticRecord("Frida Python",bool(self.module_finder("frida")),False,guidance="Optional; required only for Frida runtime workflows.")]
+        frida=FridaPythonAdapter(self.frida_provider).availability() if self.frida_provider or self.module_finder("frida") else None
+        records=[DiagnosticRecord("Python",sys.version_info>=(3,11),True,platform.python_version(),sys.executable,"Python 3.11+ is required."),DiagnosticRecord("CustomTkinter",bool(self.module_finder("customtkinter")),True,guidance="Install the pinned runtime requirements."),DiagnosticRecord("Frida Python",bool(frida and frida.ok),False,(frida.value or {}).get("version","") if frida and frida.ok else "",guidance="Bundled in standalone packages; required only for direct Frida runtime workflows.")]
         for tool in self.TOOLS:
             path=self.resolver.resolve(tool);version=""
             if path and self.version_runner:
