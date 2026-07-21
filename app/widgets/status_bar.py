@@ -1,4 +1,4 @@
-"""Persistent live status display for the main SUS-ADB window."""
+"""Persistent live status display for the main SUS Companion window."""
 
 import customtkinter as ctk
 

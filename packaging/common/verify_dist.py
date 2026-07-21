@@ -1,7 +1,7 @@
 from __future__ import annotations
 import hashlib,json,sys
 from pathlib import Path
-REQUIRED=("VERSION","app/themes","docs","plugins/examples","packaging/curated-script-assets.json")
+REQUIRED=("VERSION","app/themes","app/resources/startup_tips.json","docs","plugins/examples","packaging/curated-script-assets.json")
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
@@ -23,10 +23,12 @@ def frida_runtime_errors(resource_root,platform_name):
 def verify(root):
  root=Path(root);resource_root=root/"_internal" if (root/"_internal").is_dir() else root
  missing=tuple(v for v in REQUIRED if not (resource_root/v).exists())
- executable=next((p for p in (root/"sus-adb",root/"sus-adb.exe") if p.exists()),None)
- if executable is None:missing+=("sus-adb executable",)
+ preferred=next((p for p in (root/"sus-companion",root/"sus-companion.exe") if p.exists()),None)
+ legacy=next((p for p in (root/"sus-adb",root/"sus-adb.exe",root/"sus-adb.cmd") if p.exists()),None)
+ if preferred is None:missing+=("sus-companion executable",)
+ if legacy is None:missing+=("sus-adb compatibility launcher",)
  if not any(part in root.name for part in ("linux","windows")):missing+=("platform-qualified package name",)
- platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-adb.exe").exists() else "linux"
+ platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-companion.exe").exists() else "linux"
  missing+=frida_runtime_errors(resource_root,platform_name)
  unexpected=list(name for name in EXCLUDED if any(p.name==name for p in root.rglob("*")))
  unexpected.extend(p.relative_to(root).as_posix() for p in root.rglob("*") if any(part in BLOCKED_PARTS for part in p.relative_to(root).parts) or (p.is_file() and p.suffix.casefold() in {".pyc",".pyo"}))
@@ -78,4 +80,4 @@ def verify(root):
  assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"official_bundled_plugins":{"count":len(official),"plugins":official},"installed_third_party_plugins":{"count":0,"packaged":False},"user_created_local_plugins":{"count":0,"packaged":False},"user_local_script_studio_assets":{"count":0,"packaged":False}}
  return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
 if __name__=="__main__":
- result=verify(sys.argv[1] if len(sys.argv)>1 else "dist/sus-adb-1.0.0-rc.1-linux-x86_64");print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)
+ result=verify(sys.argv[1] if len(sys.argv)>1 else "dist/sus-companion-1.0.0-rc.1-linux-x86_64");print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)

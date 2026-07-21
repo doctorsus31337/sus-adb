@@ -14,8 +14,9 @@ from app.core.pentest_event import EventCategory,PentestEvent
 class ManagerResult:
     ok:bool;manifest:object=None;items:tuple=();status:object=None;path:str|None=None;error:str|None=None;warnings:tuple[str,...]=()
 class PluginManager:
-    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None):
-        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self._listeners=[];self.loader=PluginLoader(registry,self.validator,trust,self._api);self.refresh()
+    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None,auto_refresh=True):
+        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self._listeners=[];self._refreshed=False;self.loader=PluginLoader(registry,self.validator,trust,self._api)
+        if auto_refresh:self.refresh()
     def subscribe(self,callback):
         if callback not in self._listeners:self._listeners.append(callback)
         return lambda:self._listeners.remove(callback) if callback in self._listeners else None
@@ -33,7 +34,8 @@ class PluginManager:
         self.records={}
         for path,inspection in self.store.installed():
             state=self.store.state(inspection.manifest.plugin_id);m=replace(inspection.manifest,enabled=bool(state.get("enabled")),trust_state="trusted-local" if self.trust.verify(inspection.manifest.plugin_id,inspection.package_digest) else "untrusted");self.records[m.plugin_id]=(path,inspection,m)
-        result=self.list();self._changed();return result
+        self._refreshed=True;result=self.list();self._changed();return result
+    def ensure_refreshed(self):return self.list() if self._refreshed else self.refresh()
     def inspect(self,source):
         inspection=PluginPackage.inspect(source);validation=self.validator.validate(inspection,existing_ids=self.records)
         return ManagerResult(inspection.ok and validation.valid,inspection.manifest,error="; ".join(validation.errors) or inspection.error,warnings=validation.warnings+validation.capability_cautions)
@@ -43,7 +45,7 @@ class PluginManager:
         if official and Path(source).resolve()!=official.path:return ManagerResult(False,inspection.manifest,error="Official plugin IDs are reserved; change the derivative plugin ID before installation.")
         if validation.errors:return ManagerResult(False,inspection.manifest,error="; ".join(validation.errors),warnings=validation.warnings)
         result=self.store.install(source);self.refresh();self._event(inspection.manifest.plugin_id,"Plugin stored disabled","Installation did not import, enable, trust, or load code.");return ManagerResult(result.ok,inspection.manifest,path=result.path,error=result.error,warnings=validation.warnings)
-    def official(self):return self.catalog.list(self.records) if self.catalog else ()
+    def official(self):self.ensure_refreshed();return self.catalog.list(self.records) if self.catalog else ()
     def install_official(self,plugin_id,expected_digest=""):
         item=self.catalog.get(plugin_id,self.records) if self.catalog else None
         if not item:return ManagerResult(False,error="Official plugin was not found in the bundled catalog.")

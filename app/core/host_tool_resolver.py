@@ -65,7 +65,7 @@ class HostToolResolver:
             return f"Configured {label} executable does not exist: {configured}"
         return (
             f"{label} is unavailable to the GUI process. Configure its executable path "
-            "or launch SUS-ADB from the project virtual environment."
+            "or launch SUS Companion from the project virtual environment."
         )
 
     def executable_names(self, name: str) -> tuple[str, ...]:

@@ -71,20 +71,20 @@ class DeviceProxyManager:
  def add_forward(self,local,remote,confirmed=False):return self.add_mapping(MappingDirection.FORWARD,local,remote,confirmed)
  def add_reverse(self,local,remote,confirmed=False):return self.add_mapping(MappingDirection.REVERSE,local,remote,confirmed)
  def remove_mapping(self,mapping,confirmed=False):
-  if mapping not in self.mappings:return ProxyResult(False,error="Only SUS-ADB-owned mappings can be removed.")
+  if mapping not in self.mappings:return ProxyResult(False,error="Only SUS Companion-owned mappings can be removed.")
   error=self._guard(confirmed)
   if error:return ProxyResult(False,error=error)
   result=self.adb.run(mapping.direction.value,"--remove",mapping.local_endpoint,serial=self.serial,timeout=10)
   if not result.ok:return ProxyResult(False,error=result.output)
   self.mappings.remove(mapping);self._event("ADB mapping restored",mapping.display_label);return ProxyResult(True,replace(mapping,active=False))
- def remove_forward(self,mapping,confirmed=False):return self.remove_mapping(mapping,confirmed) if mapping.direction is MappingDirection.FORWARD else ProxyResult(False,error="Select a SUS-ADB-owned forward mapping.")
- def remove_reverse(self,mapping,confirmed=False):return self.remove_mapping(mapping,confirmed) if mapping.direction is MappingDirection.REVERSE else ProxyResult(False,error="Select a SUS-ADB-owned reverse mapping.")
+ def remove_forward(self,mapping,confirmed=False):return self.remove_mapping(mapping,confirmed) if mapping.direction is MappingDirection.FORWARD else ProxyResult(False,error="Select a SUS Companion-owned forward mapping.")
+ def remove_reverse(self,mapping,confirmed=False):return self.remove_mapping(mapping,confirmed) if mapping.direction is MappingDirection.REVERSE else ProxyResult(False,error="Select a SUS Companion-owned reverse mapping.")
  def restore_all(self,confirmed=False):
   results=[self.remove_mapping(item,confirmed) for item in tuple(self.mappings)]
   if self.state and self.state.restoration_state=="required":results.append(self.restore_proxy(confirmed))
   return tuple(results)
  def owned_changes(self):return tuple(self.mappings)+(tuple((self.state,)) if self.state and self.state.restoration_state=="required" else ())
- def guidance(self):return "Restore only listed SUS-ADB mappings, then restore Android global http_proxy to the captured original value. Certificate trust and TLS pinning are separate states."
+ def guidance(self):return "Restore only listed SUS Companion mappings, then restore Android global http_proxy to the captured original value. Certificate trust and TLS pinning are separate states."
  def _record(self,title,description,restore):
   tracker=self.change_provider()
   if tracker:tracker.register(EnvironmentChange("network",title,description,self.serial,restoration_instructions="Run the visible restoration command after authorized testing.",restoration_command_preview=restore))

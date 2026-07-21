@@ -111,7 +111,7 @@ REFERENCE_COMMANDS = (
         "Frida CLI", "Discovery", "frida-ps -H {endpoint} -ai",
         "List installed and running applications.",
         "Shows application names, identifiers, and PIDs when running.",
-        "Run in a host terminal; SUS-ADB Target Refresh performs this for you.",
+        "Run in a host terminal; SUS Companion Target Refresh performs this for you.",
     ),
     ReferenceCommand(
         "Frida REPL", "Process", "Process.id",

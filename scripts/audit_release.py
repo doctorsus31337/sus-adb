@@ -51,6 +51,7 @@ PATTERNS = (
 ALLOW = (
     "docs/privacy-security.md", "scripts/audit_release.py",
     "app/core/logging_manager.py", "app/core/crash_report.py",
+    "app/core/startup_profiler.py",
     "tests/test_crash_report.py", "tests/test_logging_manager.py",
     "tests/test_release_manifest.py", "tests/test_release_audit.py",
 )

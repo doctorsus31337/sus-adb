@@ -2,6 +2,7 @@
 from __future__ import annotations
 from tkinter import filedialog,messagebox
 import customtkinter as ctk
+from app.core.app_metadata import METADATA
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.addon_presenter import card_actions,card_spec
 
@@ -19,7 +20,7 @@ class AddonCard(ctk.CTkFrame):
 
 class AddonsCenter(ctk.CTkToplevel):
     def __init__(self,parent,theme,manager,window_host,on_close=None,destination_chooser=None):
-        super().__init__(parent);self.theme=theme;self.manager=manager;self.window_host=window_host;self.on_close=on_close;self.destination_chooser=destination_chooser or (lambda:filedialog.askdirectory(parent=self,title="Choose template export destination"));self.cards={};self.status_message="";self.title("SUS-ADB — Add-ons Center");self.configure(fg_color=theme["bg"]);self.minsize(980,650);self.geometry(self._center(1180,780));self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1);self.protocol("WM_DELETE_WINDOW",self.close)
+        super().__init__(parent);self.theme=theme;self.manager=manager;self.window_host=window_host;self.on_close=on_close;self.destination_chooser=destination_chooser or (lambda:filedialog.askdirectory(parent=self,title="Choose template export destination"));self.cards={};self.status_message="";self.title(f"{METADATA.application_name} — Add-ons Center");self.configure(fg_color=theme["bg"]);self.minsize(980,650);self.geometry(self._center(1180,780));self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1);self.protocol("WM_DELETE_WINDOW",self.close)
         ctk.CTkLabel(self,text="⚙ ADD-ONS CENTER ⚙",font=("Times New Roman",28,"bold"),text_color=theme["gold"]).grid(row=0,column=0,sticky="ew",padx=18,pady=(16,6))
         row=ctk.CTkFrame(self,fg_color="transparent");row.grid(row=1,column=0,sticky="ew",padx=18,pady=5);row.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(row,placeholder_text="Search available and installed addons",fg_color=theme["terminal_bg"],border_color=theme["gold_dark"],text_color=theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=(0,8));ctk.CTkButton(row,text="Apply",width=90,fg_color=theme["red"],hover_color=theme["red_hover"],command=self.refresh).grid(row=0,column=1)
         self.card_area=ctk.CTkScrollableFrame(self,fg_color=theme["panel"],border_width=1,border_color=theme["border"]);self.card_area.grid(row=2,column=0,sticky="nsew",padx=18,pady=8);self.card_area.bind("<Configure>",lambda _e:self._layout())

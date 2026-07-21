@@ -491,7 +491,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         output = list(diagnosis.recommendations)
         if diagnosis.server_running and any("GUI process" in error for error in diagnosis.errors):
-            output.insert(0, "Device frida-server is running, but host frida-ps is unavailable to the GUI process. Configure its executable path or launch SUS-ADB from the project virtual environment.")
+            output.insert(0, "Device frida-server is running, but host frida-ps is unavailable to the GUI process. Configure its executable path or launch SUS Companion from the project virtual environment.")
         if diagnosis.errors:
             output.extend(("", "Errors:", *diagnosis.errors))
         self._append_results("Frida diagnosis", "\n".join(output))

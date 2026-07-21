@@ -24,7 +24,7 @@ class PluginManifest:
     def __post_init__(self):
         if not PLUGIN_ID.fullmatch(self.plugin_id):raise ValueError("Plugin ID must be a stable lowercase identifier.")
         if not SEMVER.fullmatch(self.version):raise ValueError("Plugin version must use semantic versioning.")
-        if not SEMVER.fullmatch(self.minimum_sus_adb_version):raise ValueError("Minimum SUS-ADB version must use semantic versioning.")
+        if not SEMVER.fullmatch(self.minimum_sus_adb_version):raise ValueError("Minimum SUS Companion version must use semantic versioning.")
         entry=PurePosixPath(self.entry_point.split(":",1)[0].replace("\\","/"))
         if entry.is_absolute() or ".." in entry.parts:raise ValueError("Entry point must be a portable relative path.")
         object.__setattr__(self,"trust_state",TrustState(self.trust_state));

@@ -53,7 +53,7 @@ class MenuBar:
         manager=getattr(window,"plugin_manager",None);self.manager_unsubscribe=manager.subscribe(lambda _event,_pid:window.after(0,self.refresh_loaded_addons)) if manager else None
 
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
-        about_menu.add_command(label="About SUS-ADB", command=self.about_box)
+        about_menu.add_command(label=f"About {METADATA.application_name}", command=self.about_box)
         menu.add_cascade(label="About", menu=about_menu)
 
         window.config(menu=menu)
@@ -74,8 +74,9 @@ class MenuBar:
     def about_box(self):
 
         messagebox.showinfo(
-            "About SUS-ADB",
+            f"About {METADATA.application_name}",
             f"{METADATA.display_version}\n\n"
-            "Cross-platform Android Reverse Engineering Companion\n\n"
+            f"{METADATA.descriptor}\n\n"
+            "Legacy sus-adb CLI and local storage remain compatible.\n\n"
             "Created by DoctorSUS & ChatGPT"
         )

@@ -1,6 +1,7 @@
 """Core-owned detachable addon windows built only from immutable SDK specs."""
 from __future__ import annotations
 import customtkinter as ctk
+from app.core.app_metadata import METADATA
 from app.gui.plugin_manager_panel import PluginSpecFrame
 from app.plugins.plugin_ui import AddonWindowSpec,PluginPanelSpec,resolve_ui_mode,clamp_addon_geometry
 
@@ -23,7 +24,7 @@ class AddonWindowHost:
         spec=self.spec_for(contribution)
         if spec is None:return None
         try:
-            window=ctk.CTkToplevel(self.parent);window.title(f"SUS-ADB — {spec.title}");window.configure(fg_color=self.theme["bg"]);window.minsize(spec.minimum_width,spec.minimum_height)
+            window=ctk.CTkToplevel(self.parent);window.title(f"{METADATA.application_name} — {spec.title}");window.configure(fg_color=self.theme["bg"]);window.minsize(spec.minimum_width,spec.minimum_height)
             window.geometry(clamp_addon_geometry(self.geometry_store.get(contribution_id),window.winfo_screenwidth(),window.winfo_screenheight(),spec));window.grid_rowconfigure(0,weight=1);window.grid_columnconfigure(0,weight=1)
             PluginSpecFrame(window,self.theme,spec.panel).grid(row=0,column=0,sticky="nsew",padx=12,pady=12)
             self.windows[contribution_id]=window;self.owners[contribution_id]=contribution.plugin_id
