@@ -67,6 +67,14 @@ class MenuBar:
             command=window.open_guided_setup,
         )
         help_menu.add_command(
+            label="Learning Center",
+            command=window.open_learning_center,
+        )
+        help_menu.add_command(
+            label="Explain This Screen",
+            command=window.explain_current_screen,
+        )
+        help_menu.add_command(
             label="Glossary",
             command=lambda: window.open_context_help("learning-center").tabs.set("Glossary"),
         )

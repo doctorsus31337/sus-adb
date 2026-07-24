@@ -1,0 +1,28 @@
+{
+  "plugin_id": "susadb.frida-tutorial",
+  "name": "Frida Foundations",
+  "version": "1.0.0",
+  "description": "Local synthetic lessons for Frida concepts, readiness, targets, scripts, RPC, cleanup, and connection-loss troubleshooting.",
+  "author": "SUS-ADB",
+  "license": "MIT",
+  "minimum_sus_adb_version": "1.0.0",
+  "supported_platforms": ["linux", "windows"],
+  "entry_point": "plugin.py:Plugin",
+  "plugin_api_version": "1.0",
+  "requested_capabilities": [],
+  "optional_dependencies": [],
+  "required_external_tools": [],
+  "contributed_components": [
+    {
+      "contribution_id": "frida-tutorial.course",
+      "contribution_type": "learning-course",
+      "title": "Frida Foundations",
+      "factory": "course_spec",
+      "metadata": {"category": "education", "synthetic_only": true}
+    }
+  ],
+  "addon_ui": {"category": "education"},
+  "trust_state": "untrusted",
+  "enabled": false,
+  "caution_text": "Educational content only. Browsing lessons performs no device, Frida, script, target, process, terminal, or network action."
+}

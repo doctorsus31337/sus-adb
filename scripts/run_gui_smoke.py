@@ -25,6 +25,14 @@ def main():
    for child in widget.winfo_children():
     yield child
     yield from descendants(child)
+  def fully_visible(widget,root):
+   left=widget.winfo_rootx();top=widget.winfo_rooty();right=left+widget.winfo_width();bottom=top+widget.winfo_height();ancestor=widget.master
+   while ancestor is not None:
+    aleft=ancestor.winfo_rootx();atop=ancestor.winfo_rooty();aright=aleft+ancestor.winfo_width();abottom=atop+ancestor.winfo_height()
+    if left<aleft or top<atop or right>aright or bottom>abottom:return False
+    if ancestor is root:return True
+    ancestor=getattr(ancestor,"master",None)
+   return False
   app=SusADBWindow()
   app._deferred_started=True
   assert app.workspace.get()=="Console"
@@ -40,7 +48,7 @@ def main():
   top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","Tools","Addons","Help","About"]
   tools=top.nametowidget(top.entrycget(cascades[labels.index("Tools")],"menu"));tool_labels=[tools.entrycget(i,"label") for i in range(tools.index("end")+1) if tools.type(i)=="command"];assert "Sessions Center" in tool_labels
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
-  official=app.plugin_manager.official();assert len(official)==4;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
+  official=app.plugin_manager.official();assert len(official)==6;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
   console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
   app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();sessions.close();assert app.sessions_center is None
@@ -50,13 +58,13 @@ def main():
    app.geometry(f"{width}x{height}+0+0");app.update_idletasks()
    assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height()
    assert all(name in app.workspace._tab_dict for name in ("Console","Instrumentation","Scripts","Pentest"))
-   app.navigate_workspace("Pentest");assert app.pentest_workspace.device is device and app.pentest_workspace.target is target;app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==4
+   app.navigate_workspace("Pentest");assert app.pentest_workspace.device is device and app.pentest_workspace.target is target;app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==6
    assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
   center=app.open_addons_center();assert app.open_addons_center() is center
   for width,height in ((980,650),(1180,780),(1400,860)):
-   center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==4;assert len({card.plugin_id for card in center.cards.values()})==4
+   center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==6;assert len({card.plugin_id for card in center.cards.values()})==6
    text=" ".join(w.cget("text") for w in center.winfo_children() if hasattr(w,"cget") and "text" in w.keys());assert "Quick Tools" not in text and "Authorization must" not in text
-  skeleton=next(item for item in official if not item.manifest.requested_capabilities);sid=skeleton.manifest.plugin_id;assert center.cards[sid].actions==("Details","Export Template…","Install")
+  skeleton=next(item for item in official if item.manifest.plugin_id=="susadb.skeleton-module");sid=skeleton.manifest.plugin_id;assert center.cards[sid].actions==("Details","Export Template…","Install")
   validator=getattr(center.card_area,"_check_if_valid_scroll",getattr(center.card_area,"check_if_master_is_canvas",None));assert validator is not None;assert validator(center.cards[sid]);assert not validator(".native.file.dialog")
   for _ in range(25):center.card_area._mouse_wheel_all(SimpleNamespace(widget=".native.file.dialog",delta=-1,num=5))
   before=(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses));center.destination_chooser=lambda:"";center.action("Export Template…",sid);assert before==(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses))
@@ -70,11 +78,16 @@ def main():
   for item in official:
    if item.manifest.plugin_id==sid:continue
    assert app.plugin_manager.install_official(item.manifest.plugin_id,item.package_digest).ok
-   assert app.plugin_manager.approve(item.manifest.plugin_id,item.manifest.requested_capabilities,confirmed=True).ok
+   if item.manifest.requested_capabilities:assert app.plugin_manager.approve(item.manifest.plugin_id,item.manifest.requested_capabilities,confirmed=True).ok
+   else:assert app.plugin_manager.trust_zero_capability(item.manifest.plugin_id,True).ok
    assert app.plugin_manager.enable(item.manifest.plugin_id).ok
    assert not app.plugin_registry.by_plugin(item.manifest.plugin_id)
    assert app.plugin_manager.load(item.manifest.plugin_id).ok
   app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==4
+  courses=app.learning_service.courses();assert len(courses)==2 and {len(course.lessons) for course in courses}=={14,15};learning=app.open_learning_center("instrumentation-overview");assert app.open_learning_center() is learning;assert "Instrumentation Overview" in learning.recommendation.cget("text")
+  learning.select_course(next(course for course in courses if course.course_id=="frida-foundations"));lesson=learning.current_lesson;learning.toggle_complete();learning.toggle_bookmark();progress=app.learning_service.course_progress("frida-foundations");assert lesson.lesson_id in progress.completed and lesson.lesson_id in progress.bookmarks
+  for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
+   learning.geometry(f"{width}x{height}+0+0");learning.update_idletasks();assert learning.winfo_width()==width and learning.winfo_height()==height;mapped=[widget for widget in descendants(learning) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped() and fully_visible(widget,learning)];assert all(widget.winfo_rootx()>=learning.winfo_rootx() and widget.winfo_rooty()>=learning.winfo_rooty() and widget.winfo_rootx()+widget.winfo_width()<=learning.winfo_rootx()+learning.winfo_width()+2 and widget.winfo_rooty()+widget.winfo_height()<=learning.winfo_rooty()+learning.winfo_height()+2 for widget in mapped)
   rescue_panel=next(v for v in panels if v.contribution_id=="device-rescue.panel");rescue_window=app.open_addon_window(rescue_panel.contribution_id);rescue_selector=app.addon_window_host.selectors[rescue_panel.contribution_id];assert rescue_selector.selector.get().startswith("Fixture — fixture-serial");assert "device" in rescue_selector.status.cget("text").casefold();app.addon_window_host.close(rescue_panel.contribution_id)
   readiness_contribution=next(v for v in panels if v.contribution_id=="rootability.panel");readiness_window=app.open_addon_window(readiness_contribution.contribution_id);readiness=app.addon_window_host.frames[readiness_contribution.contribution_id];readiness_selector=app.addon_window_host.selectors[readiness_contribution.contribution_id];assert readiness_selector.selector.get().startswith("Fixture — fixture-serial");assert tuple(readiness.tabs._tab_dict)==readiness.SECTIONS;readiness._apply_assessment(device.serial,InstrumentationReadinessService.classify(serial=device.serial,adb_state="device",architecture="arm64",root_available=True));assert readiness.header_values["route"].cget("text")=="ROOTED_SERVER_SETUP_AVAILABLE"
   for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
@@ -99,6 +112,6 @@ def main():
   assert not any(worker.is_alive() for worker in app._background_workers)
   first.destroy();diagnostics.destroy();crash.destroy()
   app.shutdown()
- print("gui-smoke=PASS main=1200x760,1400x860 splash=600x360,720x430 addons=980x650,1180x780,1400x860 lazy-workspaces=PASS cards=4 wheel-guard-export-scroll-shutdown=PASS")
+ print("gui-smoke=PASS main=1200x760,1400x860 splash=600x360,720x430 addons=980x650,1180x780,1400x860 learning=900x650,980x650,1180x780,1400x860 lazy-workspaces=PASS cards=6 wheel-guard-export-scroll-shutdown=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

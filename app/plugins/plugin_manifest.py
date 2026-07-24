@@ -9,7 +9,7 @@ from app.core.assessment_scope import now
 
 SEMVER=re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 PLUGIN_ID=re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
-CONTRIBUTION_TYPES=("dashboard-card","pentest-panel","menu-action","script-asset","objection-recipe","diagnostic-provider","evidence-processor","finding-template","report-section","report-profile","parser","assessment-action")
+CONTRIBUTION_TYPES=("dashboard-card","pentest-panel","menu-action","script-asset","objection-recipe","diagnostic-provider","evidence-processor","finding-template","report-section","report-profile","parser","assessment-action","learning-course")
 class TrustState(str,Enum): BUILT_IN="built-in";TRUSTED_LOCAL="trusted-local";UNTRUSTED="untrusted";BLOCKED="blocked"
 @dataclass(frozen=True,slots=True)
 class ContributionDeclaration:

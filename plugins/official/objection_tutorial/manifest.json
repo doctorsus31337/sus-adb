@@ -1,0 +1,28 @@
+{
+  "plugin_id": "susadb.objection-tutorial",
+  "name": "Objection Foundations",
+  "version": "1.0.0",
+  "description": "Local synthetic lessons for Objection sessions, prompt concepts, contextual help, jobs, cleanup, notes, and device-gone troubleshooting.",
+  "author": "SUS-ADB",
+  "license": "MIT",
+  "minimum_sus_adb_version": "1.0.0",
+  "supported_platforms": ["linux", "windows"],
+  "entry_point": "plugin.py:Plugin",
+  "plugin_api_version": "1.0",
+  "requested_capabilities": [],
+  "optional_dependencies": [],
+  "required_external_tools": [],
+  "contributed_components": [
+    {
+      "contribution_id": "objection-tutorial.course",
+      "contribution_type": "learning-course",
+      "title": "Objection Foundations",
+      "factory": "course_spec",
+      "metadata": {"category": "education", "synthetic_only": true}
+    }
+  ],
+  "addon_ui": {"category": "education"},
+  "trust_state": "untrusted",
+  "enabled": false,
+  "caution_text": "Educational content only. Browsing lessons performs no device, Objection, Frida, command, target, terminal, or network action."
+}

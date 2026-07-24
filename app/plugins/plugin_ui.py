@@ -28,7 +28,7 @@ class AddonWindowSpec:
 @dataclass(frozen=True,slots=True)
 class AddonCardSpec:
     plugin_id:str;name:str;version:str;description:str;capability_count:int;official:bool=True
-    high_impact:bool=False;lifecycle_status:str="Available";diagnostic:str="";preferred_mode:AddonUIMode=AddonUIMode.WINDOW;privacy_note:str="";catalog_actions:tuple["AddonCatalogAction",...]=()
+    high_impact:bool=False;lifecycle_status:str="Available";diagnostic:str="";preferred_mode:AddonUIMode=AddonUIMode.WINDOW;privacy_note:str="";catalog_actions:tuple["AddonCatalogAction",...]=();openable:bool=True
     def __post_init__(self):object.__setattr__(self,"preferred_mode",AddonUIMode(self.preferred_mode));object.__setattr__(self,"catalog_actions",tuple(v if isinstance(v,AddonCatalogAction) else AddonCatalogAction(**v) for v in self.catalog_actions))
 
 @dataclass(frozen=True,slots=True)

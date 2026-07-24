@@ -17,8 +17,9 @@ def lifecycle_for(manager,plugin_id,window_host=None):
 def card_spec(item,manager,window_host=None):
     manifest=item.manifest;panel=next((c for c in manifest.contributed_components if c.contribution_type=="pentest-panel"),None);meta={**manifest.addon_ui,**(panel.metadata if panel else {})}
     actions=tuple(AddonCatalogAction(v["action_id"],v["label"],v["kind"]) for v in meta.get("catalog_actions",()) if isinstance(v,dict) and all(k in v for k in ("action_id","label","kind")))
-    return AddonCardSpec(manifest.plugin_id,manifest.name,manifest.version,manifest.description,len(manifest.requested_capabilities),True,bool(set(manifest.requested_capabilities)&HIGH_IMPACT),lifecycle_for(manager,manifest.plugin_id,window_host),preferred_mode=resolve_ui_mode(meta.get("ui_mode")),privacy_note=manifest.caution_text,catalog_actions=actions)
+    return AddonCardSpec(manifest.plugin_id,manifest.name,manifest.version,manifest.description,len(manifest.requested_capabilities),True,bool(set(manifest.requested_capabilities)&HIGH_IMPACT),lifecycle_for(manager,manifest.plugin_id,window_host),preferred_mode=resolve_ui_mode(meta.get("ui_mode")),privacy_note=manifest.caution_text,catalog_actions=actions,openable=panel is not None)
 
 def card_actions(spec):
     lifecycle={"Available":("Details","Install"),"Trust Required":("Details","Trust"),"Permissions Required":("Details","Permissions"),"Installed":("Details","Enable"),"Enabled":("Details","Load"),"Loaded":("Details","Open","Unload"),"Window Open":("Details","Focus","Unload"),"Error":("Details",)}[spec.lifecycle_status]
+    if spec.lifecycle_status=="Loaded" and not spec.openable:lifecycle=("Details","Unload")
     return (lifecycle[0],)+tuple(v.label for v in spec.catalog_actions)+lifecycle[1:]

@@ -63,6 +63,7 @@ from app.core.host_tool_resolver import HostToolResolver
 from app.core.interactive_sessions import InteractiveSessionManager
 from app.core.guide_engine import GuideEngine,GuideState
 from app.core.installed_app_discovery import ADBInstalledAppDiscovery
+from app.core.learning_center import LearningCenterService,LearningProgressStore
 from app.core.objection_session_recovery import ObjectionSessionRecovery
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
@@ -208,9 +209,16 @@ class SusADBWindow(ctk.CTk):
             auto_refresh=False,
             host_state=self.host_state,
         )
+        self.learning_service=LearningCenterService(
+            self.plugin_manager,self.plugin_registry,
+            LearningProgressStore(
+                self.config_manager.directory/"learning-progress.json"
+            ),
+        )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.context_help_window=None
         self.guided_setup_window=None
+        self.learning_center_window=None
         self.addons_center=None
         self.sessions_center=None
         self.addon_window_host=AddonWindowHost(
@@ -837,6 +845,29 @@ class SusADBWindow(ctk.CTk):
         )
         return self.guided_setup_window
 
+    def open_learning_center(self,topic_id=None):
+        if (
+            self.learning_center_window is None
+            or not self.learning_center_window.winfo_exists()
+        ):
+            from app.gui.learning_center_window import LearningCenterWindow
+            self.learning_center_window=LearningCenterWindow(
+                self,self.theme,self.learning_service,self.help_registry,
+                open_addons=self.open_addons_center,
+                open_help=self.open_context_help,
+                interface_mode_provider=lambda:self.interface_mode,
+                on_close=lambda:setattr(self,"learning_center_window",None),
+            )
+        if topic_id is not None:
+            self.learning_center_window.show_context(topic_id)
+        else:
+            self.learning_center_window.deiconify()
+            self.learning_center_window.lift()
+        return self.learning_center_window
+
+    def explain_current_screen(self):
+        return self.open_learning_center(self.current_help_topic())
+
     def open_guide_destination(self,destination):
         if destination in {"console"}:return self.navigate_workspace("Console")
         if destination in {"targets","targets-installed","instrumentation-overview"}:
@@ -941,6 +972,7 @@ class SusADBWindow(ctk.CTk):
         if self.sessions_center is not None and self.sessions_center.winfo_exists():self.sessions_center.close()
         if self.context_help_window is not None and self.context_help_window.winfo_exists():self.context_help_window.close()
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
+        if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         life.add_cleanup("deferred-workers",self._join_background_workers)

@@ -16,10 +16,10 @@ class T(unittest.TestCase):
   self.assertEqual(resolve_ui_mode("embedded"),AddonUIMode.EMBEDDED);self.assertEqual(resolve_ui_mode("bad"),AddonUIMode.WINDOW)
   self.assertEqual(clamp_addon_geometry("bad",1200,800,spec),"1000x700+100+50")
   self.assertEqual(clamp_addon_geometry("1000x700+5000+5000",1200,800,spec),"1000x700+200+100")
- def test_four_independent_cards_and_no_discovery_transition(self):
+ def test_six_independent_cards_and_no_discovery_transition(self):
   with tempfile.TemporaryDirectory() as d:
    manager=self.manager(d);items=manager.official();cards=[card_spec(item,manager) for item in items]
-   self.assertEqual(len(cards),4);self.assertEqual(len({v.plugin_id for v in cards}),4);self.assertTrue(all(v.lifecycle_status=="Available" for v in cards));self.assertFalse(manager.list());self.assertFalse(manager.registry.list())
+   self.assertEqual(len(cards),6);self.assertEqual(len({v.plugin_id for v in cards}),6);self.assertTrue(all(v.lifecycle_status=="Available" for v in cards));self.assertFalse(manager.list());self.assertFalse(manager.registry.list())
    modes={v.plugin_id:v.preferred_mode.value for v in cards};self.assertEqual(modes["susadb.device-rescue-recovery"],"window");self.assertEqual(modes["susadb.rootability-advisor"],"hybrid");self.assertEqual(modes["susadb.webview-security-inspector"],"hybrid");self.assertEqual(modes["susadb.skeleton-module"],"window")
  def test_lifecycle_is_not_chained(self):
   with tempfile.TemporaryDirectory() as d:
@@ -34,8 +34,13 @@ class T(unittest.TestCase):
    opened=False
    def is_open(self,_):return self.opened
   with tempfile.TemporaryDirectory() as d:
-   manager=self.manager(d);item=next(v for v in manager.official() if not v.manifest.requested_capabilities);pid=item.manifest.plugin_id;host=Host()
+   manager=self.manager(d);item=next(v for v in manager.official() if v.manifest.plugin_id=="susadb.skeleton-module");pid=item.manifest.plugin_id;host=Host()
    self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.install_official(pid,item.package_digest);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.trust_zero_capability(pid,True);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.enable(pid);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));manager.load(pid);self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)));host.opened=True;self.assertIn("Export Template…",card_actions(card_spec(item,manager,host)))
+ def test_loaded_educational_addon_opens_through_learning_center_only(self):
+  with tempfile.TemporaryDirectory() as d:
+   manager=self.manager(d);item=next(v for v in manager.official() if v.manifest.plugin_id=="susadb.frida-tutorial");pid=item.manifest.plugin_id
+   manager.install_official(pid,item.package_digest);manager.trust_zero_capability(pid,True);manager.enable(pid);manager.load(pid)
+   spec=card_spec(item,manager);self.assertFalse(spec.openable);self.assertEqual(card_actions(spec),("Details","Unload"))
  def test_warning_contract(self):
   source=(ROOT/"app/gui/pentest_workspace.py").read_text(encoding="utf-8");self.assertIn('"Authorization must be explicitly confirmed."',source);self.assertNotIn('"Authorization must be explicitly confirm"',source)
  def test_generic_hosts_have_no_official_ids_or_raw_root_provider(self):
