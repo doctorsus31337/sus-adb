@@ -1,5 +1,7 @@
-import tempfile,unittest,zipfile
+import json,tempfile,unittest,zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from app.plugins.plugin_trust import PluginTrustStore
 from official_plugin_helpers import load
 M=load("official_rootability","rootability_advisor")
 class T(unittest.TestCase):
@@ -15,3 +17,19 @@ class T(unittest.TestCase):
    self.assertRaises(ValueError,M.inspect_firmware,bad,"lynx")
  def test_readiness_recovery_warning_and_preview_only(self):
   matrix=M.readiness({"codename":"x"},{"locked":True,"verified_boot":"unknown"},True);self.assertTrue(matrix.blockers);self.assertTrue(matrix.data_wipe_likely);self.assertIn("preview only",matrix.command_previews[-1]);source=Path(M.__file__).read_text();self.assertNotIn("subprocess",source);self.assertNotIn("shell=True",source)
+ def test_stable_id_new_name_views_and_host_owned_workspace(self):
+  manifest=json.loads((Path(M.__file__).parent/"manifest.json").read_text())
+  self.assertEqual(manifest["plugin_id"],"susadb.rootability-advisor")
+  self.assertEqual(manifest["name"],"Instrumentation & Root Readiness Advisor")
+  self.assertEqual(manifest["version"],"0.2.0")
+  panel=M.panel_spec(SimpleNamespace(selected_device={"serial":"S","state":"device","root_available":True},adb_state="device"))
+  self.assertEqual(tuple(v.name for v in panel.views),("Overview","Device Identity","Root & Boot Chain","Frida Routes","Frida Server Setup","Gadget Readiness","Firmware Inputs","Compatibility","Plan"))
+  metadata=manifest["contributed_components"][1]["metadata"]
+  self.assertEqual(metadata["workspace_kind"],"readiness-advisor")
+  self.assertTrue(metadata["device_selector"])
+ def test_changed_digest_requires_explicit_retrust(self):
+  with tempfile.TemporaryDirectory() as d:
+   store=PluginTrustStore(Path(d)/"trust.json")
+   store.approve("susadb.rootability-advisor","a"*64,("read-selected-device",))
+   self.assertTrue(store.verify("susadb.rootability-advisor","a"*64))
+   self.assertFalse(store.verify("susadb.rootability-advisor","b"*64))

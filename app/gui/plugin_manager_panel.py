@@ -4,24 +4,36 @@ import json
 from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog
 import customtkinter as ctk
+from app.core.responsive_layout import estimated_button_width
 from app.core.worker import BackgroundWorker
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.plugin_ui import PluginPanelSpec
 class PluginSpecFrame(ctk.CTkFrame):
     def __init__(self,parent,theme,spec):
-        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.spec=spec;self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1)
-        ctk.CTkLabel(self,text=spec.title,text_color=theme["gold"],font=theme["header_font"],anchor="w",wraplength=760).grid(row=0,column=0,sticky="ew",padx=8,pady=4)
-        status=ctk.CTkLabel(self,text=" · ".join(f"{k}: {v}" for k,v in spec.status.items()),text_color=theme["muted"],anchor="w",wraplength=900);status.grid(row=1,column=0,sticky="ew",padx=8)
-        tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);tabs.grid(row=2,column=0,sticky="nsew",padx=5,pady=5)
+        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.spec=None;self.pages={};self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1)
+        self.title_label=ctk.CTkLabel(self,text="",text_color=theme["gold"],font=theme["header_font"],anchor="w",wraplength=760);self.title_label.grid(row=0,column=0,sticky="ew",padx=8,pady=4)
+        self.status_label=ctk.CTkLabel(self,text="",text_color=theme["muted"],anchor="w",wraplength=900);self.status_label.grid(row=1,column=0,sticky="ew",padx=8)
+        self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=2,column=0,sticky="nsew",padx=5,pady=5)
+        self.update_spec(spec)
+    def update_spec(self,spec):
+        if spec==self.spec:return
+        selected=self.tabs.get() if self.pages else ""
+        self.spec=spec;self.title_label.configure(text=spec.title);self.status_label.configure(text=" · ".join(f"{k}: {v}" for k,v in spec.status.items()))
+        existing=set(self.pages);wanted={view.name for view in spec.views}
+        for name in existing-wanted:self.tabs.delete(name);self.pages.pop(name,None)
         for view in spec.views:
-            page=tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ctk.CTkTextbox(page,fg_color=theme["terminal_bg"],text_color=theme["terminal_text"],border_color=theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.insert("1.0",text);body.configure(state="disabled")
+            body=self.pages.get(view.name)
+            if body is None:
+                page=self.tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ctk.CTkTextbox(page,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_color=self.theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);self.pages[view.name]=body
+            text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.configure(state="normal");body.delete("1.0","end");body.insert("1.0",text);body.configure(state="disabled")
+        if selected in self.pages:self.tabs.set(selected)
 class PluginManagerPanel(ctk.CTkFrame):
     SECTIONS=("Official Catalog","Installed","Active Panels","Details","Permissions","Contributions","Diagnostics","SDK")
     def __init__(self,parent,theme,manager,log,confirm=None):
         super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
         for v in self.views.values():v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1);v.grid_rowconfigure(1,weight=1)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
-    def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30);b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
+    def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
     def _text(self,p):t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);t.configure(state="disabled");return t
     def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",text);w.configure(state="disabled")
     def _header(self):

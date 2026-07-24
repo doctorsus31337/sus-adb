@@ -15,7 +15,7 @@ class RebrandTests(unittest.TestCase):
         self.assertEqual(str(ConfigManager.resolve_directory("posix",{"XDG_CONFIG_HOME":"/tmp/config"})),"/tmp/config/sus-adb");self.assertIn("SUS-ADB",str(ConfigManager.resolve_directory("nt",{"APPDATA":"C:/Users/Test/AppData"})))
 
     def test_plugin_ids_and_public_api_remain_stable(self):
-        ids={json.loads(path.read_text(encoding="utf-8"))["plugin_id"] for path in (ROOT/"plugins/official").glob("*/manifest.json")};self.assertEqual(ids,{"susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module"});self.assertEqual(METADATA.plugin_api_version,"1.0")
+        ids={json.loads(path.read_text(encoding="utf-8"))["plugin_id"] for path in (ROOT/"plugins/official").glob("*/manifest.json")};self.assertEqual(ids,{"susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module","susadb.frida-tutorial","susadb.objection-tutorial"});self.assertEqual(METADATA.plugin_api_version,"1.0")
 
     def test_gui_and_package_metadata_use_new_brand(self):
         header=(ROOT/"app/gui/gothic_header.py").read_text(encoding="utf-8");desktop=(ROOT/"packaging/linux/sus-adb.desktop").read_text(encoding="utf-8");windows=(ROOT/"packaging/windows/version_info.txt").read_text(encoding="utf-8");spec=(ROOT/"packaging/pyinstaller/sus_adb.spec").read_text(encoding="utf-8")

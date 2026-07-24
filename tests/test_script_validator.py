@@ -17,12 +17,17 @@ class ScriptValidatorTests(unittest.TestCase):
         result = ScriptValidator().validate(self.descriptor(), "Java.perform(()=>{}); send(1); recv('x',()=>{}); rpc.exports={x(){}}; Interceptor.attach(ptr('1'),{});")
         self.assertIn("rpc.exports", result.features); self.assertIn("send", result.features); self.assertIn("recv", result.features); self.assertTrue(result.changes_runtime)
         self.assertTrue(result.valid); self.assertEqual((), result.errors)
-        self.assertTrue(any("Java.available" in item for item in result.warnings))
+        self.assertTrue(any("Java.available" in item for item in result.suggestions))
     def test_java_available_advice_is_warning_only(self):
         source = "Java.perform(function () { console.log('ready'); });"
         result = ScriptValidator().validate(self.descriptor(), source)
         self.assertTrue(result.valid); self.assertEqual((), result.errors)
-        self.assertIn("Java APIs are used without checking Java.available.", result.warnings)
+        self.assertIn("Java APIs are used without checking Java.available.", result.suggestions)
+        self.assertNotIn("Java.available", " ".join(result.warnings))
+        self.assertIn(
+            "Static validation is advisory and cannot prove third-party code is safe.",
+            result.advisories,
+        )
     def test_injected_compiler_never_needs_device(self):
         result = ScriptValidator(lambda _source: (_ for _ in ()).throw(ValueError("syntax"))).validate(self.descriptor(), "send(1)")
         self.assertFalse(result.valid); self.assertIn("syntax", result.errors[0])

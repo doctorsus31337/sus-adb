@@ -17,6 +17,8 @@ class ScriptValidation:
     warnings: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
     changes_runtime: bool = False
+    suggestions: tuple[str, ...] = ()
+    advisories: tuple[str, ...] = ()
 
 
 class ScriptValidator:
@@ -28,7 +30,7 @@ class ScriptValidator:
         self.max_size = max_size
 
     def validate(self, descriptor: ScriptDescriptor, source: str | None) -> ScriptValidation:
-        errors, warnings, features = [], [], []
+        errors, warnings, features, suggestions, advisories = [], [], [], [], []
         text = source or ""
         if not text.strip():
             errors.append("The script source is empty.")
@@ -57,11 +59,19 @@ class ScriptValidator:
         if "recv(" in text:
             features.append("recv")
         if "Java." in text and "Java.available" not in text:
-            warnings.append("Java APIs are used without checking Java.available.")
+            suggestions.append("Java APIs are used without checking Java.available.")
         if self.compiler and not errors:
             try:
                 self.compiler(text)
             except Exception as exc:
                 errors.append(f"Frida compile validation failed: {exc}")
-        warnings.append("Static validation is advisory and cannot prove third-party code is safe.")
-        return ScriptValidation(not errors, tuple(errors), tuple(dict.fromkeys(warnings)), tuple(features), changes)
+        advisories.append("Static validation is advisory and cannot prove third-party code is safe.")
+        return ScriptValidation(
+            not errors,
+            tuple(errors),
+            tuple(dict.fromkeys(warnings)),
+            tuple(features),
+            changes,
+            tuple(dict.fromkeys(suggestions)),
+            tuple(dict.fromkeys(advisories)),
+        )

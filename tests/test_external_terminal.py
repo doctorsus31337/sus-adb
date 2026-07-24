@@ -42,6 +42,32 @@ class ExternalTerminalTests(unittest.TestCase):
         self.assertEqual(result.command[:3], ("C:/PowerShell.exe", "-NoExit", "-Command"))
         self.assertIn("'Doctor''s App'", result.command[3])
 
+    def test_windows_terminal_is_preferred_and_preserves_space_arguments(self):
+        terminal = ExternalTerminal(
+            which=lambda name: "C:/Program Files/WindowsApps/wt.exe" if name == "wt.exe" else None,
+            launcher=lambda _command, **_kwargs: object(), platform_name="nt",
+        )
+        result = terminal.build_command(
+            ("C:/Program Files/Frida/frida.exe", "-l", "C:/My Scripts/test.js")
+        )
+        self.assertEqual(
+            result.command,
+            (
+                "C:/Program Files/WindowsApps/wt.exe", "new-tab", "--title",
+                "SUS Companion Session", "C:/Program Files/Frida/frida.exe",
+                "-l", "C:/My Scripts/test.js",
+            ),
+        )
+
+    def test_windows_cmd_is_last_fallback(self):
+        terminal = ExternalTerminal(
+            which=lambda name: "C:/Windows/System32/cmd.exe" if name == "cmd.exe" else None,
+            launcher=lambda _command, **_kwargs: object(), platform_name="nt",
+        )
+        result = terminal.build_command(("C:/Tools/adb.exe", "-s", "SERIAL", "shell"))
+        self.assertEqual(result.command[:2], ("C:/Windows/System32/cmd.exe", "/K"))
+        self.assertIn("SERIAL", result.command[2])
+
     def test_missing_terminal_is_structured(self):
         result = ExternalTerminal(which=lambda _name: None, platform_name="posix").build_command(("frida",))
         self.assertFalse(result.ok)
@@ -61,6 +87,18 @@ class ExternalTerminalTests(unittest.TestCase):
         self.assertIs(launch_options[0]["stdout"], subprocess.DEVNULL)
         self.assertIs(launch_options[0]["stderr"], subprocess.DEVNULL)
         self.assertTrue(launch_options[0]["start_new_session"])
+
+    def test_tracked_launch_returns_process_and_backend(self):
+        process = object()
+        terminal = ExternalTerminal(
+            which=lambda name: "/usr/bin/konsole" if name == "konsole" else None,
+            launcher=lambda _command, **_kwargs: process,
+            platform_name="posix", realpath=lambda path: path,
+        )
+        launched = terminal.launch_tracked(("adb", "-s", "SERIAL", "shell"))
+        self.assertTrue(launched.result.ok)
+        self.assertIs(launched.process, process)
+        self.assertEqual(launched.backend, "konsole")
 
     def test_x_terminal_emulator_resolving_to_konsole_uses_konsole_form(self):
         terminal = ExternalTerminal(

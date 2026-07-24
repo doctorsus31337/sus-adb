@@ -2,7 +2,7 @@ import importlib.util,os,platform
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all,collect_data_files,copy_metadata
 root=Path(SPEC).resolve().parents[2]
-datas=collect_data_files('customtkinter')+[(str(root/'app/themes/gothic.json'),'app/themes'),(str(root/'app/resources/startup_tips.json'),'app/resources'),(str(root/'docs'),'docs'),(str(root/'plugins/examples'),'plugins/examples'),(str(root/'VERSION'),'.')]
+datas=collect_data_files('customtkinter')+[(str(root/'app/themes/gothic.json'),'app/themes'),(str(root/'app/resources/startup_tips.json'),'app/resources'),(str(root/'docs'),'docs'),(str(root/'plugins/examples'),'plugins/examples'),(str(root/'VERSION'),'.'),(str(root/'build/packaging/build-info.json'),'.')]
 frida_datas,frida_binaries,frida_hiddenimports=collect_all('frida')
 datas+=frida_datas+copy_metadata('frida')
 policy_spec=importlib.util.spec_from_file_location('sus_adb_release_assets',root/'packaging/common/release_assets.py')
