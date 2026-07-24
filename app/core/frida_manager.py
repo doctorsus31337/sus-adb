@@ -20,6 +20,20 @@ class ForwardingStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class ManagedForwardingRepair:
+    serial: str | None
+    managed_ports: tuple[str, ...] = ()
+    repaired_ports: tuple[str, ...] = ()
+    preserved_ports: tuple[str, ...] = ()
+    results: tuple[CommandResult, ...] = ()
+    errors: tuple[str, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors and all(result.ok for result in self.results)
+
+
+@dataclass(frozen=True, slots=True)
 class FridaDiagnosis:
     serial: str | None
     adb_available: bool
@@ -58,6 +72,7 @@ class FridaManager:
         self.resolver = resolver or HostToolResolver()
         self.frida_path = self.resolver.resolve("frida") if frida_path is None else frida_path
         self.frida_ps_path = self.resolver.resolve("frida-ps") if frida_ps_path is None else frida_ps_path
+        self._managed_forwarding: set[tuple[str, str]] = set()
 
     @staticmethod
     def _serial_error(operation: str) -> CommandResult:
@@ -138,9 +153,71 @@ class FridaManager:
         if not serial:
             error = self._serial_error("adb forward")
             return error, error
-        return (
+        results = (
             self.adb.run("forward", "tcp:27042", "tcp:27042", serial=serial, timeout=10),
             self.adb.run("forward", "tcp:27043", "tcp:27043", serial=serial, timeout=10),
+        )
+        for port, result in zip(("tcp:27042", "tcp:27043"), results):
+            if result.ok:
+                self._managed_forwarding.add((serial, port))
+        return results
+
+    def managed_forwarding_ports(self, serial: str | None) -> tuple[str, ...]:
+        if not serial:
+            return ()
+        return tuple(
+            sorted(port for owner, port in self._managed_forwarding if owner == serial)
+        )
+
+    def repair_managed_forwarding(self, serial: str | None) -> ManagedForwardingRepair:
+        if not serial:
+            return ManagedForwardingRepair(
+                None, errors=("No device is selected.",)
+            )
+        managed = self.managed_forwarding_ports(serial)
+        if not managed:
+            return ManagedForwardingRepair(
+                serial,
+                errors=(
+                    "No SUS Companion-managed Frida forwarding exists for this serial.",
+                ),
+            )
+        status = self.forwarding_status(serial)
+        if not status.result or not status.result.ok:
+            return ManagedForwardingRepair(
+                serial,
+                managed_ports=managed,
+                errors=(
+                    status.result.output
+                    if status.result and status.result.output
+                    else "Unable to inspect ADB forwarding.",
+                ),
+            )
+        present = {
+            "tcp:27042" if status.port_27042 else "",
+            "tcp:27043" if status.port_27043 else "",
+        }
+        repaired = []
+        preserved = []
+        results = []
+        errors = []
+        for port in managed:
+            if port in present:
+                preserved.append(port)
+                continue
+            result = self.adb.run("forward", port, port, serial=serial, timeout=10)
+            results.append(result)
+            if result.ok:
+                repaired.append(port)
+            else:
+                errors.append(result.output or f"Unable to repair {port}.")
+        return ManagedForwardingRepair(
+            serial,
+            managed,
+            tuple(repaired),
+            tuple(preserved),
+            tuple(results),
+            tuple(errors),
         )
 
     def list_processes(self, serial: str | None) -> CommandResult:

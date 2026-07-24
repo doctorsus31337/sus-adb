@@ -83,6 +83,8 @@ class InteractiveSessionRecord:
     last_error: str = ""
     diagnostics: tuple[str, ...] = ()
     stages: tuple[tuple[str, str], ...] = ()
+    technical_details: str = ""
+    command_history: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +112,7 @@ class InteractiveSessionManager:
         adb_path_provider: Callable[[], str | None] = lambda: None,
         objection_manager=None,
         frida_sessions=None,
+        objection_recovery=None,
         clock: Callable[[], str] = utc_now,
         id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
         singleton_types: Sequence[str] = (),
@@ -120,6 +123,7 @@ class InteractiveSessionManager:
         self.adb_path_provider = adb_path_provider
         self.objection_manager = objection_manager
         self.frida_sessions = frida_sessions
+        self.objection_recovery = objection_recovery
         self.clock = clock
         self.id_factory = id_factory
         self.singleton_types = frozenset(InteractiveSessionType(value) for value in singleton_types)
@@ -432,12 +436,112 @@ class InteractiveSessionManager:
     def refresh_states(self):
         for session_id, process in tuple(self._processes.items()):
             poll = getattr(process, "poll", None)
-            if callable(poll) and poll() is not None:
+            returncode = poll() if callable(poll) else None
+            if returncode is not None:
                 record = self.records.get(session_id)
                 if record and record.state in self.ACTIVE:
-                    self._put(replace(record, state=InteractiveSessionState.EXITED))
+                    if (
+                        returncode
+                        and record.session_type is InteractiveSessionType.OBJECTION
+                        and self.objection_recovery is not None
+                    ):
+                        report = self.objection_recovery.analyze(
+                            record.serial,
+                            record.target,
+                            "Objection external terminal exited unexpectedly.",
+                            command_history=record.command_history,
+                        )
+                        self._put(
+                            replace(
+                                record,
+                                state=InteractiveSessionState.DISCONNECTED,
+                                last_error=report.message,
+                                diagnostics=(
+                                    *record.diagnostics,
+                                    report.concise(),
+                                )[-12:],
+                                technical_details=report.technical_details,
+                            )
+                        )
+                    else:
+                        self._put(replace(record, state=InteractiveSessionState.EXITED))
                 self._processes.pop(session_id, None)
         return self.list()
+
+    def report_objection_failure(
+        self,
+        session_id: str,
+        details: str,
+        *,
+        command_history: Sequence[str] = (),
+    ):
+        record = self.records.get(session_id)
+        if (
+            not record
+            or record.session_type is not InteractiveSessionType.OBJECTION
+            or self.objection_recovery is None
+        ):
+            return None
+        report = self.objection_recovery.analyze(
+            record.serial,
+            record.target,
+            details,
+            command_history=command_history or record.command_history,
+        )
+        history = tuple(command_history or record.command_history)[-100:]
+        self._put(
+            replace(
+                record,
+                state=(
+                    InteractiveSessionState.DISCONNECTED
+                    if report.kind in self.objection_recovery.CONNECTION_KINDS
+                    else InteractiveSessionState.FAILED
+                ),
+                last_error=report.message,
+                diagnostics=(*record.diagnostics, report.concise())[-12:],
+                technical_details=report.technical_details,
+                command_history=history,
+            )
+        )
+        return report
+
+    def check_objection_connection(self, session_id: str):
+        record = self.records.get(session_id)
+        if (
+            not record
+            or record.session_type is not InteractiveSessionType.OBJECTION
+            or self.objection_recovery is None
+        ):
+            return None
+        report = self.objection_recovery.check_connection(
+            record.serial, record.target
+        )
+        self._put(
+            replace(
+                record,
+                diagnostics=(*record.diagnostics, report.concise())[-12:],
+            )
+        )
+        return report
+
+    def repair_objection_forwarding(self, session_id: str):
+        record = self.records.get(session_id)
+        if (
+            not record
+            or record.session_type is not InteractiveSessionType.OBJECTION
+            or self.objection_recovery is None
+        ):
+            return None
+        repair, report = self.objection_recovery.repair_managed_forwarding(
+            record.serial, record.target
+        )
+        self._put(
+            replace(
+                record,
+                diagnostics=(*record.diagnostics, report.concise())[-12:],
+            )
+        )
+        return repair, report
 
     def interrupt(self, session_id: str) -> SessionOperationResult:
         record = self.records.get(session_id)
@@ -493,7 +597,17 @@ class InteractiveSessionManager:
             *(f"- {name}: {value}" for name, value in record.stages),
             f"Command: {SessionLaunchPlan(record.session_type, record.command).preview()}",
             f"Last error: {record.last_error or 'None'}",
+            f"Command history: {len(record.command_history)} preserved entr{'y' if len(record.command_history) == 1 else 'ies'}",
+            *(f"- {entry}" for entry in record.command_history),
             *record.diagnostics,
+            *(
+                (
+                    "Technical Details:",
+                    record.technical_details,
+                )
+                if record.technical_details
+                else ()
+            ),
         )
         return "\n".join(lines)
 

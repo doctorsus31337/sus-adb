@@ -96,6 +96,45 @@ class FridaManagerTests(unittest.TestCase):
         self.assertEqual(adb.calls[1][0], ("forward", "tcp:27043", "tcp:27043"))
         self.assertEqual([call[1] for call in adb.calls], ["SERIAL", "SERIAL"])
 
+    def test_managed_forwarding_repair_only_restores_owned_missing_ports(self):
+        state = {"listed": ""}
+
+        def handler(args, serial, _kwargs):
+            if args[:2] == ("forward", "--list"):
+                return CommandResult.from_command(
+                    args,
+                    0,
+                    stdout=state["listed"],
+                )
+            return CommandResult.from_command(args, 0)
+
+        adb = FakeADB(handler)
+        manager = self.make_manager(adb=adb)
+        self.assertTrue(all(result.ok for result in manager.repair_forwarding("SERIAL")))
+        state["listed"] = (
+            "SERIAL tcp:27042 tcp:27042\n"
+            "SERIAL tcp:9999 tcp:9999\n"
+            "OTHER tcp:27043 tcp:27043"
+        )
+        adb.calls.clear()
+        repair = manager.repair_managed_forwarding("SERIAL")
+        self.assertTrue(repair.ok)
+        self.assertEqual(repair.repaired_ports, ("tcp:27043",))
+        self.assertEqual(repair.preserved_ports, ("tcp:27042",))
+        write_calls = [call for call in adb.calls if call[0][:2] != ("forward", "--list")]
+        self.assertEqual(
+            [call[0] for call in write_calls],
+            [("forward", "tcp:27043", "tcp:27043")],
+        )
+        self.assertFalse(any("9999" in " ".join(call[0]) for call in adb.calls))
+
+    def test_unmanaged_forwarding_is_never_repaired(self):
+        adb = FakeADB()
+        repair = self.make_manager(adb=adb).repair_managed_forwarding("SERIAL")
+        self.assertFalse(repair.ok)
+        self.assertIn("No SUS Companion-managed", repair.errors[0])
+        self.assertEqual(adb.calls, [])
+
     def test_no_hidden_fallback_to_host_executable(self):
         runner = FakeRunner()
         manager = FridaManager(FakeADB(), runner, frida_path="", frida_ps_path="")

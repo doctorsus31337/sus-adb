@@ -11,6 +11,7 @@ from app.core.interactive_sessions import (
     InteractiveSessionState,
     InteractiveSessionType,
 )
+from app.core.objection_session_recovery import ObjectionSessionRecovery
 
 
 class Resolver:
@@ -81,6 +82,11 @@ class Objection:
 class FridaSessions:
     frida_path = "/opt/tools/frida"
     frida_trace_path = "/opt/tools/frida-trace"
+
+
+class RecoveryFrida:
+    def managed_forwarding_ports(self, _serial):
+        return ()
 
 
 class InteractiveSessionTests(unittest.TestCase):
@@ -255,6 +261,31 @@ class InteractiveSessionTests(unittest.TestCase):
         self.assertEqual(stages["Frida connection"], "Observe in external terminal")
         self.assertEqual(stages["agent load"], "Observe in external terminal")
         self.assertEqual(stages["prompt ready"], "Not observable by external backend")
+
+    def test_objection_device_gone_is_actionable_bounded_and_preserves_history(self):
+        manager, _terminal, selected = self.manager()
+        manager.objection_recovery = ObjectionSessionRecovery(
+            RecoveryFrida(),
+            selected_serial_provider=lambda: selected["value"],
+            adb_state_provider=lambda _serial: "device",
+        )
+        launched = manager.launch(
+            manager.build_objection("SERIAL", "org.example.fixture")
+        )
+        report = None
+        for _index in range(20):
+            report = manager.report_objection_failure(
+                launched.record.session_id,
+                "frida.InvalidOperationError: device is gone\n"
+                "Unable to run cleanups: script is destroyed",
+                command_history=("help", "help android sslpinning"),
+            )
+        record = manager.records[launched.record.session_id]
+        self.assertEqual(record.state, InteractiveSessionState.DISCONNECTED)
+        self.assertEqual(record.command_history[-1], "help android sslpinning")
+        self.assertEqual(report.repeat_count, 20)
+        self.assertLessEqual(len(record.diagnostics), 12)
+        self.assertIn("Technical Details:", manager.diagnostics(record.session_id))
 
 
 if __name__ == "__main__":

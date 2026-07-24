@@ -347,7 +347,7 @@ class SessionsCenter(ctk.CTkToplevel):
         body = ctk.CTkFrame(page, fg_color=self.theme["panel_alt"])
         body.grid(row=1, column=0, sticky="nsew", padx=8, pady=5)
         body.grid_columnconfigure(0, weight=1)
-        body.grid_rowconfigure(2, weight=1)
+        body.grid_rowconfigure(3, weight=1)
         self.session_selector = self._combo(body, ("No sessions",))
         self.session_selector.grid(row=0, column=0, sticky="ew", padx=8, pady=5)
         actions = ctk.CTkFrame(body, fg_color="transparent")
@@ -359,12 +359,28 @@ class SessionsCenter(ctk.CTkToplevel):
         self._button(actions, "Terminate", self.terminate_selected, 2)
         self._button(actions, "Close Record", self.close_selected, 3)
         self._button(actions, "Copy Diagnostics", self.copy_diagnostics, 4)
+        recovery_actions = ctk.CTkFrame(body, fg_color="transparent")
+        recovery_actions.grid(row=2, column=0, sticky="ew", padx=5)
+        for column in range(3):
+            recovery_actions.grid_columnconfigure(column, weight=1)
+        self._button(
+            recovery_actions, "Check Connection",
+            self.check_selected_connection, 0,
+        )
+        self._button(
+            recovery_actions, "Repair Managed Forwarding",
+            self.repair_selected_forwarding, 1,
+        )
+        self._button(
+            recovery_actions, "Technical Details",
+            self.show_technical_details, 2,
+        )
         self.sessions_text = ctk.CTkTextbox(
             body, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
-        self.sessions_text.grid(row=2, column=0, sticky="nsew", padx=8, pady=7)
+        self.sessions_text.grid(row=3, column=0, sticky="nsew", padx=8, pady=7)
         self.sessions_text.configure(state="disabled")
 
     def _selected(self):
@@ -649,6 +665,54 @@ class SessionsCenter(ctk.CTkToplevel):
         if session_id:
             self.clipboard_clear()
             self.clipboard_append(self.manager.diagnostics(session_id))
+
+    def check_selected_connection(self):
+        session_id = self._selected_session_id()
+        if session_id:
+            self._run(
+                lambda: self.manager.check_objection_connection(session_id),
+                self._recovery_done,
+            )
+
+    def repair_selected_forwarding(self):
+        session_id = self._selected_session_id()
+        if session_id:
+            self._run(
+                lambda: self.manager.repair_objection_forwarding(session_id),
+                self._repair_done,
+            )
+
+    def _recovery_done(self, report):
+        if report is None:
+            self._set_text(
+                self.sessions_text,
+                "Select an Objection session to check its connection.",
+            )
+            return
+        self._set_text(self.sessions_text, report.concise())
+
+    def _repair_done(self, value):
+        if value is None:
+            self._set_text(
+                self.sessions_text,
+                "Select an Objection session before repairing managed forwarding.",
+            )
+            return
+        repair, report = value
+        prefix = (
+            f"Managed ports: {', '.join(repair.managed_ports) or 'None'}\n"
+            f"Repaired: {', '.join(repair.repaired_ports) or 'None'}\n"
+            f"Preserved unchanged: {', '.join(repair.preserved_ports) or 'None'}\n\n"
+        )
+        self._set_text(self.sessions_text, prefix + report.concise())
+
+    def show_technical_details(self):
+        session_id = self._selected_session_id()
+        if session_id:
+            self._set_text(
+                self.sessions_text,
+                self.manager.diagnostics(session_id),
+            )
 
     def _poll_sessions(self):
         if self._closed:

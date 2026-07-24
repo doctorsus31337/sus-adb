@@ -21,6 +21,7 @@ def main():
         from app.core.frida_target import FridaTarget, TargetType
         from app.core.host_state import DeviceState, HostStateSnapshot, HostStateStore
         from app.core.interactive_sessions import InteractiveSessionManager
+        from app.core.objection_session_recovery import ObjectionSessionRecovery
         from app.core.script_descriptor import ScriptKind
         from app.core.script_library import ScriptLibrary
         from app.gui.sessions_center import SessionsCenter
@@ -76,12 +77,22 @@ def main():
             frida_path = "/opt/fake tools/frida"
             frida_trace_path = "/opt/fake tools/frida-trace"
 
+        class RecoveryFrida:
+            def managed_forwarding_ports(self, _serial):
+                return ("tcp:27042", "tcp:27043")
+
         selected = {"value": "fixture-serial"}
+        recovery = ObjectionSessionRecovery(
+            RecoveryFrida(),
+            selected_serial_provider=lambda: selected["value"],
+            adb_state_provider=lambda _serial: "device",
+        )
         manager = InteractiveSessionManager(
             terminal, Resolver(),
             selected_serial_provider=lambda: selected["value"],
             adb_path_provider=lambda: "/opt/fake tools/adb",
             objection_manager=Objection(), frida_sessions=Frida(),
+            objection_recovery=recovery,
             id_factory=lambda: f"fixture-{len(processes)+1}",
         )
         target = FridaTarget(
@@ -167,6 +178,25 @@ def main():
         assert manager.list()[0].state.value == "connected"
         assert "fixture-serial" in center.sessions_text.get("1.0", "end")
         manager.terminate(manager.list()[0].session_id)
+        objection = manager.launch(
+            manager.build_objection(
+                "fixture-serial", "org.example.fixture"
+            )
+        )
+        assert objection.ok
+        report = manager.report_objection_failure(
+            objection.record.session_id,
+            "frida.InvalidOperationError: device is gone\n"
+            "Unable to run cleanups: script is destroyed",
+            command_history=("help", "help android sslpinning"),
+        )
+        assert report.kind.value == "device-gone"
+        center.render_sessions()
+        assert "lost its connection" in center.sessions_text.get("1.0", "end")
+        assert "help android sslpinning" in manager.diagnostics(
+            objection.record.session_id
+        )
+        manager.terminate(objection.record.session_id)
         center.close()
         manager.shutdown()
         assert all(process.terminated for process in processes)

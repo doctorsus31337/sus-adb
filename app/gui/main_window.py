@@ -57,6 +57,7 @@ from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
 from app.core.host_tool_resolver import HostToolResolver
 from app.core.interactive_sessions import InteractiveSessionManager
+from app.core.objection_session_recovery import ObjectionSessionRecovery
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
@@ -151,6 +152,15 @@ class SusADBWindow(ctk.CTk):
                 (self.objection_manager.objection_path or "objection", "--help"), timeout=10
             ),
         )
+        self.objection_recovery = ObjectionSessionRecovery(
+            self.frida_manager,
+            selected_serial_provider=lambda: self.devices.selected_serial,
+            adb_state_provider=lambda serial: (
+                self.devices.selected.state
+                if self.devices.selected and self.devices.selected.serial == serial
+                else "disconnected"
+            ),
+        )
         self.script_library = ScriptLibrary(self.app_config.get("script_library_root","scripts"))
         self.frida_python = FridaPythonAdapter()
         self.script_validator = ScriptValidator()
@@ -165,6 +175,7 @@ class SusADBWindow(ctk.CTk):
             adb_path_provider=lambda:self.devices.adb.adb_path,
             objection_manager=self.objection_manager,
             frida_sessions=self.frida_sessions,
+            objection_recovery=self.objection_recovery,
         )
         self.terminal = TerminalManager(
             self.log,self.clear_console,self.host_tools,
