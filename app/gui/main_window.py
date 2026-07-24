@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from tkinter import messagebox
 
 import customtkinter as ctk
 from app.gui.customtkinter_compat import install_scroll_target_guard
@@ -20,7 +21,7 @@ from app.core.command_router import CommandRouter
 from app.core.context_help import HelpRegistry
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
-from app.core.host_state import DeviceState,HostStateSnapshot,HostStateStore,ScopeState,TargetState
+from app.core.host_state import HostStateStore,snapshot_from_runtime
 from app.core.file_manager import FileManager
 from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
@@ -72,6 +73,7 @@ from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
 from app.gui.addons_center import AddonsCenter
 from app.gui.addon_window_host import AddonWindowHost
+from app.plugins.host_workspace import HostWorkspaceBinding
 
 
 class SusADBWindow(ctk.CTk):
@@ -226,8 +228,22 @@ class SusADBWindow(ctk.CTk):
             self.app_config.setdefault("addon_windows",{}),
             self.refresh_devices,self.select_device,
             {
-                "device-recovery":self._build_device_recovery_workspace,
-                "readiness-advisor":self._build_readiness_advisor_workspace,
+                "device-recovery":HostWorkspaceBinding(
+                    self._build_device_recovery_workspace,
+                    "read-selected-device",True,
+                ),
+                "device-rescue.panel":HostWorkspaceBinding(
+                    self._build_device_recovery_workspace,
+                    "read-selected-device",True,
+                ),
+                "readiness-advisor":HostWorkspaceBinding(
+                    self._build_readiness_advisor_workspace,
+                    "read-selected-device",True,
+                ),
+                "rootability.panel":HostWorkspaceBinding(
+                    self._build_readiness_advisor_workspace,
+                    "read-selected-device",True,
+                ),
             },
         )
         self.first_run_dialog = None
@@ -248,6 +264,9 @@ class SusADBWindow(ctk.CTk):
         return DeviceRecoveryPanel(
             parent,self.theme,service,ui_dispatch=self.call_on_ui,
             help_callback=self.open_context_help,
+            confirm_device_change=lambda title,message:messagebox.askyesno(
+                title,message,parent=parent.winfo_toplevel()
+            ),
         )
 
     def _build_readiness_advisor_workspace(self,parent):
@@ -685,17 +704,25 @@ class SusADBWindow(ctk.CTk):
     def connect_device(self, serial: str | None):
         if not serial:
             self.log("[ADB] Select or refresh a device first.")
-            return
+            return False
+        if (
+            self.devices.selected_serial
+            and serial != self.devices.selected_serial
+            and not self.addon_window_host.confirm_device_change(serial)
+        ):
+            self._publish_host_state("device-selection-preserved")
+            return False
         device = self.devices.select(serial)
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
-            return
+            return False
         self._apply_device_to_workspaces(device)
         self.log(f"[ADB] Selecting {device.display_name} ({serial})...")
         BackgroundWorker(
             lambda: self.devices.adb.forward_frida_ports(serial),
             callback=lambda results: self.after(0, self._apply_connection, device, results),
         ).start()
+        return True
 
     def _apply_connection(self, device: Device, results):
         first, second = results
@@ -716,12 +743,19 @@ class SusADBWindow(ctk.CTk):
         self._publish_host_state("device-connected")
 
     def select_device(self, serial: str):
+        if (
+            self.devices.selected_serial
+            and serial != self.devices.selected_serial
+            and not self.addon_window_host.confirm_device_change(serial)
+        ):
+            self._publish_host_state("device-selection-preserved")
+            return False
         device = self.devices.select(serial)
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
             self._apply_device_to_workspaces(None)
             self._publish_host_state("device-selection-cleared")
-            return
+            return False
         self._apply_device_to_workspaces(device)
         self.status_bar.set_status(
             adb="Connected" if device.connected else device.state,
@@ -731,6 +765,7 @@ class SusADBWindow(ctk.CTk):
         )
         self._publish_host_state("device-selected")
         self.log(f"[ADB] Selected {device.display_name} ({serial}).")
+        return True
 
     def _sync_script_target(self, target):
         self.selected_target=target
@@ -742,15 +777,16 @@ class SusADBWindow(ctk.CTk):
 
     def _publish_host_state(self,lifecycle="ready"):
         if not hasattr(self,"host_state"):return
-        devices=tuple(DeviceState(device.serial,device.model,device.manufacturer,device.state,device.display_name,bool(device.root)) for device in self.devices.all()) if hasattr(self,"devices") else ()
-        selected=self.devices.selected if hasattr(self,"devices") else None
-        selected_state=DeviceState(selected.serial,selected.model,selected.manufacturer,selected.state,selected.display_name,bool(selected.root)) if selected else None
         target=getattr(self,"selected_target",None)
-        target_state=TargetState(getattr(target,"name",""),getattr(target,"identifier","") or "",getattr(target,"pid",None),getattr(getattr(target,"target_type",None),"value","")) if target else None
         session=getattr(getattr(self,"pentest_workspace",None),"session",None);scope=getattr(session,"scope",None)
-        scope_state=ScopeState(scope.scope_id,scope.case_name,scope.authorization_confirmed,tuple(scope.allowed_actions),tuple(scope.excluded_actions)) if scope else None
-        adb_state=selected.state if selected else ("available" if devices else "unavailable")
-        self.host_state.publish(HostStateSnapshot(selected_state,devices,adb_state,target_state,scope_state,getattr(getattr(session,"state",None),"value","none"),self.interface_mode,lifecycle))
+        self.host_state.publish(snapshot_from_runtime(
+            self.devices,
+            selected_target=target,
+            assessment_scope=scope,
+            session_state=getattr(getattr(session,"state",None),"value","none"),
+            interface_mode=self.interface_mode,
+            lifecycle=lifecycle,
+        ))
 
     @property
     def interface_mode(self):

@@ -1,14 +1,23 @@
 """Core-owned detachable addon windows built only from immutable SDK specs."""
 from __future__ import annotations
+
 import customtkinter as ctk
+
 from app.core.app_metadata import METADATA
 from app.gui.plugin_manager_panel import PluginSpecFrame
+from app.plugins.host_workspace import (
+    HostWorkspaceBinding,
+    normalize_host_workspace_bindings,
+    resolve_host_workspace,
+)
 from app.plugins.plugin_ui import AddonWindowSpec,PluginPanelSpec,resolve_ui_mode,clamp_addon_geometry
 from app.widgets.addon_device_selector import AddonDeviceSelector
 
 class AddonWindowHost:
     def __init__(self,parent,theme,manager,geometry_store=None,refresh_devices=None,select_device=None,workspace_factories=None):
-        self.parent=parent;self.theme=theme;self.manager=manager;self.geometry_store=geometry_store if geometry_store is not None else {};self.refresh_devices=refresh_devices or (lambda:False);self.select_device=select_device or (lambda _serial:None);self.workspace_factories=dict(workspace_factories or {});self.windows={};self.frames={};self.selectors={};self.state_subscriptions={};self.owners={};self.errors={};self.unsubscribe=manager.subscribe(self._manager_event)
+        self.parent=parent;self.theme=theme;self.manager=manager;self.geometry_store=geometry_store if geometry_store is not None else {};self.refresh_devices=refresh_devices or (lambda:False);self.select_device=select_device or (lambda _serial:None)
+        self.workspace_factories=normalize_host_workspace_bindings(workspace_factories)
+        self.windows={};self.frames={};self.selectors={};self.state_subscriptions={};self.owners={};self.errors={};self.unsubscribe=manager.subscribe(self._manager_event)
     def _manager_event(self,event,plugin_id):
         if event in {"unload","uninstall"}:self.close_plugin(plugin_id)
     def spec_for(self,contribution):
@@ -17,6 +26,16 @@ class AddonWindowHost:
             if not isinstance(panel,PluginPanelSpec):raise TypeError("Addon factory did not return PluginPanelSpec.")
             meta=contribution.metadata;return AddonWindowSpec(contribution.contribution_id,contribution.title,panel,resolve_ui_mode(meta.get("ui_mode")),int(meta.get("default_width",1080)),int(meta.get("default_height",720)),int(meta.get("minimum_width",820)),int(meta.get("minimum_height",560)),bool(meta.get("singleton",True)),bool(meta.get("embedded_summary",False)),str(meta.get("icon","⚙")),device_selector=bool(meta.get("device_selector",False)),workspace_kind=str(meta.get("workspace_kind","")))
         except Exception as exc:self.errors[contribution.contribution_id]=str(exc)[:240];return None
+    def _binding_for(self,contribution,spec):
+        context=self.manager.plugin_context(contribution.plugin_id)
+        binding,error=resolve_host_workspace(
+            self.workspace_factories,
+            workspace_kind=spec.workspace_kind,
+            contribution_id=contribution.contribution_id,
+            approved_capabilities=getattr(context,"approved_capabilities",()),
+        )
+        if error:self.errors[contribution.contribution_id]=error
+        return binding
     def open(self,contribution_id):
         existing=self.windows.get(contribution_id)
         if existing is not None and existing.winfo_exists():existing.deiconify();existing.lift();existing.focus_force();return existing
@@ -25,12 +44,13 @@ class AddonWindowHost:
         spec=self.spec_for(contribution)
         if spec is None:return None
         try:
+            binding=self._binding_for(contribution,spec)
             window=ctk.CTkToplevel(self.parent);window.title(f"{METADATA.application_name} — {spec.title}");window.configure(fg_color=self.theme["bg"]);window.minsize(spec.minimum_width,spec.minimum_height)
             window.geometry(clamp_addon_geometry(self.geometry_store.get(contribution_id),window.winfo_screenwidth(),window.winfo_screenheight(),spec));window.grid_columnconfigure(0,weight=1)
             row=0
-            if spec.device_selector:
+            if spec.device_selector or bool(binding and binding.device_selector):
                 selector=AddonDeviceSelector(window,self.theme,select_callback=self.select_device,refresh_callback=self.refresh_devices);selector.grid(row=0,column=0,sticky="ew",padx=12,pady=(12,0));self.selectors[contribution_id]=selector;row=1
-            window.grid_rowconfigure(row,weight=1);workspace_factory=self.workspace_factories.get(spec.workspace_kind);frame=workspace_factory(window) if workspace_factory else PluginSpecFrame(window,self.theme,spec.panel);frame.grid(row=row,column=0,sticky="nsew",padx=12,pady=12)
+            window.grid_rowconfigure(row,weight=1);frame=binding.factory(window) if binding else PluginSpecFrame(window,self.theme,spec.panel);frame.grid(row=row,column=0,sticky="nsew",padx=12,pady=12)
             self.windows[contribution_id]=window;self.frames[contribution_id]=frame;self.owners[contribution_id]=contribution.plugin_id
             def state_changed(context):
                 current=self.windows.get(contribution_id)
@@ -48,6 +68,11 @@ class AddonWindowHost:
             if hasattr(frame,"apply_context"):frame.apply_context(self.manager.plugin_context(contribution.plugin_id))
             window.protocol("WM_DELETE_WINDOW",lambda:self.close(contribution_id));return window
         except Exception as exc:self.errors[contribution_id]=str(exc)[:240];return None
+    def confirm_device_change(self,serial):
+        for frame in tuple(self.frames.values()):
+            confirm=getattr(frame,"can_change_device",None)
+            if callable(confirm) and not confirm(serial):return False
+        return True
     def close(self,contribution_id):
         subscription=self.state_subscriptions.pop(contribution_id,None)
         if subscription is not None:subscription.cancel()

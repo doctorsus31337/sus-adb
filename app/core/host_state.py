@@ -94,6 +94,71 @@ class HostStateSnapshot:
         return self.selected_device.serial if self.selected_device else ""
 
 
+def snapshot_from_runtime(
+    devices,
+    *,
+    selected_target=None,
+    assessment_scope=None,
+    session_state="none",
+    interface_mode="guided",
+    lifecycle="ready",
+) -> HostStateSnapshot:
+    """Build the immutable snapshot used by the real application publisher."""
+
+    listed = tuple(
+        DeviceState(
+            device.serial,
+            device.model,
+            device.manufacturer,
+            device.state,
+            device.display_name,
+            bool(device.root),
+        )
+        for device in devices.all()
+    )
+    selected = devices.selected
+    selected_state = (
+        DeviceState(
+            selected.serial,
+            selected.model,
+            selected.manufacturer,
+            selected.state,
+            selected.display_name,
+            bool(selected.root),
+        )
+        if selected else None
+    )
+    target_state = (
+        TargetState(
+            getattr(selected_target, "name", ""),
+            getattr(selected_target, "identifier", "") or "",
+            getattr(selected_target, "pid", None),
+            getattr(getattr(selected_target, "target_type", None), "value", ""),
+        )
+        if selected_target else None
+    )
+    scope_state = (
+        ScopeState(
+            assessment_scope.scope_id,
+            assessment_scope.case_name,
+            assessment_scope.authorization_confirmed,
+            tuple(assessment_scope.allowed_actions),
+            tuple(assessment_scope.excluded_actions),
+        )
+        if assessment_scope else None
+    )
+    return HostStateSnapshot(
+        selected_state,
+        listed,
+        selected.state if selected else ("available" if listed else "unavailable"),
+        target_state,
+        scope_state,
+        session_state,
+        interface_mode,
+        lifecycle,
+    )
+
+
 class StateSubscription:
     """Idempotent host-owned cancellation handle."""
 

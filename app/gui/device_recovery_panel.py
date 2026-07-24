@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import queue
 from pathlib import PurePosixPath
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -48,6 +48,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         destination_chooser=None,
         manifest_chooser=None,
         help_callback=None,
+        confirm_device_change=None,
         ui_dispatch=None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
@@ -64,6 +65,11 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
             )
         )
         self.help_callback = help_callback
+        self.confirm_device_change = confirm_device_change or (
+            lambda title, message: messagebox.askyesno(
+                title, message, parent=self.winfo_toplevel()
+            )
+        )
         self._local_ui_queue = None
         self._poll_id = None
         if ui_dispatch is None:
@@ -81,6 +87,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         self.result = None
         self.cancellation = None
         self.worker = None
+        self._active_serial = ""
         self._closed = False
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -163,6 +170,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         )
         self.tabs.grid(row=1, column=0, sticky="nsew", padx=5, pady=(2, 5))
         self.pages = {name: self.tabs.add(name) for name in self.SECTIONS}
+        self.section_serial_labels = {}
         for page in self.pages.values():
             page.configure(fg_color=self.theme["bg"])
             page.grid_columnconfigure(0, weight=1)
@@ -189,10 +197,19 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         return text
 
     def _title(self, page, value):
+        title_bar = ctk.CTkFrame(page, fg_color="transparent")
+        title_bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(7, 2))
+        title_bar.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            page, text=value, text_color=self.theme["gold"],
+            title_bar, text=value, text_color=self.theme["gold"],
             font=self.theme["header_font"], anchor="w",
-        ).grid(row=0, column=0, sticky="ew", padx=8, pady=(7, 2))
+        ).grid(row=0, column=0, sticky="ew")
+        identity = ctk.CTkLabel(
+            title_bar, text="Serial: None", text_color=self.theme["gold"],
+            font=("Consolas", 11, "bold"), anchor="e",
+        )
+        identity.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        self.section_serial_labels[value] = identity
 
     def _button(self, parent, text, command, column=0):
         button = ctk.CTkButton(
@@ -373,12 +390,11 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         if self.serial and serial != self.serial and self.worker is not None:
             self.cancel_recovery(interrupted=True)
         if serial != self.serial:
-            self.scan = None
-            self.plan = None
-            self.result = None
-            self._set_text(self.scan_text, "Run a storage scan for the explicitly selected device.")
-            self._set_text(self.plan_text, "No recovery plan has been built.")
-            self._set_text(self.files_text, "No files are selected.")
+            self._clear_recovery_state(
+                "Device disconnected; completed state remains only in its manifest."
+                if not serial and self.serial else
+                "Selected serial changed; stale scan, plan, queue, and results were cleared."
+            )
         self.context = context
         self.serial = serial
         self.device_state = selected.get("state", "unavailable")
@@ -409,6 +425,8 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         }
         for key, value in values.items():
             self.header_values[key].configure(text=value)
+        for label in self.section_serial_labels.values():
+            label.configure(text=f"Serial: {serial or 'None'}")
         if authorized:
             connection = f"Selected device {serial} is available through {values['mode']}."
         elif self.device_state == "unauthorized":
@@ -425,6 +443,33 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
             "Refresh and device selection never start a scan or copy action.",
         )
         self._sync_actions()
+
+    def has_recovery_work(self):
+        return bool(self.worker or self.scan or self.plan or self.result)
+
+    def can_change_device(self, serial):
+        if not self.serial or serial == self.serial or not self.has_recovery_work():
+            return True
+        return bool(self.confirm_device_change(
+            "Change Recovery Device",
+            f"Device Rescue contains scan, queue, or result state for {self.serial}.\n\n"
+            f"Changing to {serial or 'no device'} clears that state and never transfers it "
+            "to the new serial. Completed files and an existing manifest remain on disk.\n\n"
+            "Change the selected device?",
+        ))
+
+    def _clear_recovery_state(self, reason):
+        self.scan = None
+        self.plan = None
+        self.result = None
+        self.cancellation = None
+        self.progress.set(0)
+        self.current_path.configure(text=reason)
+        self._set_text(self.scan_text, "Run a storage scan for the explicitly selected device.")
+        self._set_text(self.plan_text, "No recovery plan has been built.")
+        self._set_text(self.files_text, "No files are selected.")
+        self._set_text(self.queue_text, reason)
+        self._set_text(self.results_text, "No results for the current selected serial.")
 
     def _custom_paths(self):
         raw = self.custom_entry.get().replace("\n", ",")
@@ -460,6 +505,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         if not self._usable():
             return
         serial = self.serial
+        self._active_serial = serial
         root = self.source_entry.get().strip() or "/sdcard"
         self.header_values["scan"].configure(text="Scanning…")
         self._set_text(self.scan_text, f"Scanning {root} on {serial}…")
@@ -473,6 +519,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
 
     def _finish_scan(self, result):
         self.worker = None
+        self._active_serial = ""
         if self._closed:
             return
         if result.serial != self.serial:
@@ -582,6 +629,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
             self._set_text(self.queue_text, "Selected serial changed. Rebuild the recovery plan.")
             return
         self.cancellation = RecoveryCancellation()
+        self._active_serial = self.plan.serial
         self.tabs.set("Copy Queue")
         self._set_text(self.queue_text, "Starting bounded recovery queue…")
         self._launch(
@@ -599,6 +647,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         if not manifest:
             return
         self.cancellation = RecoveryCancellation()
+        self._active_serial = self.plan.serial
         self.tabs.set("Copy Queue")
         self._set_text(self.queue_text, "Validating same-serial recovery manifest…")
         self._launch(
@@ -630,6 +679,14 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         self.worker = None
         self.cancellation = None
         if self._closed:
+            return
+        active_serial,self._active_serial=self._active_serial,""
+        if active_serial != self.serial:
+            self._set_text(
+                self.results_text,
+                "A stale recovery result was ignored after the selected serial changed.",
+            )
+            self._sync_actions()
             return
         self.result = result
         recovered = sum(item.state in {"recovered", "resumed"} for item in result.items)
