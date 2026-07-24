@@ -19,7 +19,12 @@ def main():
   from app.core.device import Device
   from app.core.frida_target import FridaTarget,TargetType
   from app.core.installed_app_discovery import InstalledApplication,InstalledAppResult
+  from app.core.instrumentation_readiness import InstrumentationReadinessService
   from app.gui.customtkinter_compat import install_scroll_target_guard
+  def descendants(widget):
+   for child in widget.winfo_children():
+    yield child
+    yield from descendants(child)
   app=SusADBWindow()
   app._deferred_started=True
   assert app.workspace.get()=="Console"
@@ -71,6 +76,12 @@ def main():
    assert app.plugin_manager.load(item.manifest.plugin_id).ok
   app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==4
   rescue_panel=next(v for v in panels if v.contribution_id=="device-rescue.panel");rescue_window=app.open_addon_window(rescue_panel.contribution_id);rescue_selector=app.addon_window_host.selectors[rescue_panel.contribution_id];assert rescue_selector.selector.get().startswith("Fixture — fixture-serial");assert "device" in rescue_selector.status.cget("text").casefold();app.addon_window_host.close(rescue_panel.contribution_id)
+  readiness_contribution=next(v for v in panels if v.contribution_id=="rootability.panel");readiness_window=app.open_addon_window(readiness_contribution.contribution_id);readiness=app.addon_window_host.frames[readiness_contribution.contribution_id];readiness_selector=app.addon_window_host.selectors[readiness_contribution.contribution_id];assert readiness_selector.selector.get().startswith("Fixture — fixture-serial");assert tuple(readiness.tabs._tab_dict)==readiness.SECTIONS;readiness._apply_assessment(device.serial,InstrumentationReadinessService.classify(serial=device.serial,adb_state="device",architecture="arm64",root_available=True));assert readiness.header_values["route"].cget("text")=="ROOTED_SERVER_SETUP_AVAILABLE"
+  for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
+   readiness_window.geometry(f"{width}x{height}+0+0");readiness_window.update_idletasks();assert readiness_window.winfo_width()==width and readiness_window.winfo_height()==height
+   for section in readiness.SECTIONS:
+    readiness.tabs.set(section);readiness_window.update_idletasks();mapped=[widget for widget in descendants(readiness_window) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped()];assert all(widget.winfo_rootx()>=readiness_window.winfo_rootx() and widget.winfo_rooty()>=readiness_window.winfo_rooty() and widget.winfo_rootx()+widget.winfo_width()<=readiness_window.winfo_rootx()+readiness_window.winfo_width()+2 and widget.winfo_rooty()+widget.winfo_height()<=readiness_window.winfo_rooty()+readiness_window.winfo_height()+2 for widget in mapped)
+  app.addon_window_host.close(readiness_contribution.contribution_id)
   app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==3
   skeleton_panel=next(v for v in panels if v.plugin_id==sid);skeleton_window=app.open_addon_window(skeleton_panel.contribution_id);assert skeleton_window is app.open_addon_window(skeleton_panel.contribution_id);center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Focus","Unload")
   first_panel=panels[0];window=app.open_addon_window(first_panel.contribution_id);assert window is app.open_addon_window(first_panel.contribution_id);window.update_idletasks();app.addon_window_host.close(first_panel.contribution_id);assert app.plugin_manager.loader.statuses[first_panel.plugin_id].state.value=="active"

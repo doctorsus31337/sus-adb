@@ -213,7 +213,15 @@ class SusADBWindow(ctk.CTk):
         self.guided_setup_window=None
         self.addons_center=None
         self.sessions_center=None
-        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device,{"device-recovery":self._build_device_recovery_workspace})
+        self.addon_window_host=AddonWindowHost(
+            self,self.theme,self.plugin_manager,
+            self.app_config.setdefault("addon_windows",{}),
+            self.refresh_devices,self.select_device,
+            {
+                "device-recovery":self._build_device_recovery_workspace,
+                "readiness-advisor":self._build_readiness_advisor_workspace,
+            },
+        )
         self.first_run_dialog = None
         self.crash_dialog = None
         self.instrumentation_panel = None
@@ -232,6 +240,27 @@ class SusADBWindow(ctk.CTk):
         return DeviceRecoveryPanel(
             parent,self.theme,service,ui_dispatch=self.call_on_ui,
             help_callback=self.open_context_help,
+        )
+
+    def _build_readiness_advisor_workspace(self,parent):
+        from app.core.instrumentation_readiness import (
+            InstrumentationReadinessService,
+        )
+        from app.gui.instrumentation_readiness_panel import (
+            InstrumentationReadinessPanel,
+        )
+        service=InstrumentationReadinessService(
+            self.devices.adb,self.frida_manager,
+            selected_serial_provider=lambda:self.devices.selected_serial,
+            session_provider=lambda:getattr(
+                getattr(self,"pentest_workspace",None),"session",None
+            ),
+        )
+        return InstrumentationReadinessPanel(
+            parent,self.theme,service,
+            open_apk_lab=self.open_apk_laboratory,
+            help_callback=self.open_context_help,
+            ui_dispatch=self.call_on_ui,
         )
 
     def _initialize_shell(self):

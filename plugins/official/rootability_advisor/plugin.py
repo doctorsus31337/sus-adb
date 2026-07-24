@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib,json,zipfile
 from dataclasses import asdict,dataclass
 from pathlib import Path,PurePosixPath
+from app.core.instrumentation_readiness import InstrumentationReadinessService
 from app.plugins.contribution_registry import Contribution
 from app.plugins.plugin_ui import PluginPanelSpec,PluginView
 
@@ -53,12 +54,14 @@ def readiness(identity,boot,recovery_goal=False):
     if boot.get("verified_boot")=="unknown":unknowns.append("verified boot state")
     return ReadinessMatrix(tuple(passed),tuple(blockers),tuple(warnings),tuple(unknowns),boot.get("locked") is not False,("adb shell getprop","fastboot getvar all  # preview only"))
 def deterministic_report(identity,boot,matrix):return json.dumps({"identity":identity,"boot":boot,"readiness":asdict(matrix)},indent=2,sort_keys=True)+"\n"
-def report_section(_context=None):return {"title":"Bootloader Readiness","body":"Read-only observations and operator-reviewed prerequisites; no command execution."}
+def report_section(_context=None):return {"title":"Instrumentation Readiness","body":"Evidence-based route observations and operator-reviewed prerequisites; no automatic command execution."}
 def panel_spec(context=None):
-    names=("Device Identity","Boot Chain","Partitions","Root State","Firmware Inputs","Readiness","Plan")
+    names=("Overview","Device Identity","Root & Boot Chain","Frida Routes","Frida Server Setup","Gadget Readiness","Firmware Inputs","Compatibility","Plan")
     selected=getattr(context,"selected_device",{}) or {};serial=selected.get("serial","")
-    body=f"Selected device: {selected.get('display_name') or serial}\nSerial: {serial}\nADB state: {selected.get('state','unknown')}" if serial else "No device is explicitly selected. Refresh and choose a device to inspect readiness."
-    return PluginPanelSpec("Rootability & Bootloader Readiness Advisor",tuple(PluginView(n,body,warning="Unlocking commonly wipes data and is never a recovery step.") for n in names),{"Selected device":selected.get("display_name") or serial or "None","Serial":serial or "None","ADB state":getattr(context,"adb_state","unavailable").title(),"Mode":"Advisory only","Execution":"Disabled"})
+    assessment=InstrumentationReadinessService.classify(serial=serial,adb_state=selected.get("state",getattr(context,"adb_state","unavailable")),architecture=selected.get("architecture",""),root_available=bool(selected.get("root_available")))
+    body=(f"Selected device: {selected.get('display_name') or serial}\nSerial: {serial}\nADB state: {selected.get('state','unknown')}\nRoute: {assessment.route.value}\nNext action: {assessment.next_action}" if serial else "No device is explicitly selected. Refresh and choose a device to inspect readiness.")
+    warning="Bootloader unlocking commonly wipes user data and must not be used as a recovery technique."
+    return PluginPanelSpec("Instrumentation & Root Readiness Advisor",tuple(PluginView(n,body,warning=warning) for n in names),{"Selected device":selected.get("display_name") or serial or "None","Serial":serial or "None","ADB state":getattr(context,"adb_state","unavailable").title(),"Route":assessment.route.value,"Execution":"Every action is separate"})
 class Plugin:
-    def activate(self,api):self.api=api;return (Contribution("rootability.dashboard","dashboard-card","Rootability Advisor",factory=panel_spec),Contribution("rootability.panel","pentest-panel","Rootability Advisor",factory=panel_spec,metadata={"ui_mode":"hybrid","singleton":True,"embedded_summary":True,"device_selector":True}),Contribution("rootability.menu","menu-action","Open Rootability Advisor",metadata={"target":"rootability.panel"}),Contribution("rootability.report","report-section","Bootloader Readiness",factory=report_section,capability_requirement="contribute-report-section"),Contribution("rootability.finding","finding-template","Device Hardening Observation"))
+    def activate(self,api):self.api=api;return (Contribution("rootability.dashboard","dashboard-card","Instrumentation & Root Readiness Advisor",factory=panel_spec),Contribution("rootability.panel","pentest-panel","Instrumentation & Root Readiness Advisor",factory=panel_spec,metadata={"ui_mode":"hybrid","singleton":True,"embedded_summary":True,"device_selector":True,"workspace_kind":"readiness-advisor","default_width":1180,"default_height":780,"minimum_width":900,"minimum_height":650}),Contribution("rootability.menu","menu-action","Open Instrumentation & Root Readiness Advisor",metadata={"target":"rootability.panel"}),Contribution("rootability.report","report-section","Instrumentation Readiness",factory=report_section,capability_requirement="contribute-report-section"),Contribution("rootability.finding","finding-template","Instrumentation Readiness Observation"))
     def deactivate(self):self.api=None
