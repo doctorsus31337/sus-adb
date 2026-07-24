@@ -1,8 +1,7 @@
-# SUS Companion 1.0.0-rc.2 publication plan
+# SUS Companion 1.0.0 RC2 publication plan
 
-This document prepares a later `release/1.0.0-rc.2` publication after live
-Linux and Windows acceptance. It does not authorize or create a branch, tag,
-GitHub Release, or public artifact.
+This document records the gated publication sequence for the explicitly
+authorized `release/1.0.0-rc.2` prerelease.
 
 ## Acceptance prerequisites
 
@@ -19,17 +18,16 @@ GitHub Release, or public artifact.
   user configuration, plugin state, local scripts, cases, evidence, reports,
   logs, APKs, firmware, Frida binaries, recovered files, or caches are present.
 
-## Later publication sequence
+## Publication sequence
 
-1. Obtain explicit authorization after live acceptance.
-2. Create `release/1.0.0-rc.2` from the accepted commit.
+1. Create `release/1.0.0-rc.2` from the verified recovery merge.
+2. Run all source, GUI, local Linux package, integrity, and privacy gates.
 3. Run the manual **Package Current Testing Build** workflow against that exact
    ref and retain its Linux/Windows verification reports.
 4. Verify checksums, manifests, build-info JSON, legacy `sus-adb` launchers,
    and SUS Companion branding on both platforms.
-5. Prepare release notes and a final manual checklist from the verified
-   artifacts.
-6. Only with separate authorization, create the RC2 tag and GitHub Release and
-   attach the already-verified artifacts.
+5. Promote the exact passing source commit to `main`.
+6. Tag the exact packaged commit as `v1.0.0-rc.2`.
+7. Create a GitHub prerelease and attach only the validated publication files.
 
-No publication step is automated by the current-testing workflow.
+No tagging or GitHub Release step is automated by the packaging workflow.

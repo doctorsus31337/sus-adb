@@ -137,7 +137,7 @@ def main():
   guide=app.open_guided_setup();assert app.open_guided_setup() is guide;assert len(guide.STEPS)==10 and not guide.plan.executes_automatically
   app.navigate_workspace("Scripts");scripts=app.script_studio_panel;assert scripts is not None and scripts.device is device and scripts.target is target;assert app.navigate_workspace("Scripts") is scripts;assert no_question_help(app)
   assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded addons"
-  assert "SUS Companion" in app.title() and "1.0.0-rc.1" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
+  assert "SUS Companion" in app.title() and "1.0.0-rc.2" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
   assert all(not value.casefold().startswith("blue") for value in app.theme.values() if isinstance(value,str))
   assert not any(worker.is_alive() for worker in app._background_workers)
   first.destroy();diagnostics.destroy();crash.destroy()

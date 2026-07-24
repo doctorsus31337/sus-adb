@@ -22,22 +22,22 @@ ASSETS = load("release_assets", "packaging/common/release_assets.py")
 
 class ReleaseManifestTests(unittest.TestCase):
     def make_package(self, directory, selected=None):
-        package = Path(directory) / "sus-companion-1.0.0-rc.1-linux-x86_64"
+        package = Path(directory) / "sus-companion-1.0.0-rc.2-linux-x86_64"
         resources = package / "_internal"
         for relative in ("app/themes", "app/resources", "docs", "plugins/examples/hello_plugin/assets", "packaging"):
             (resources / relative).mkdir(parents=True, exist_ok=True)
         (package / "sus-companion").write_text("executable", encoding="utf-8")
         (package / "sus-adb").write_text("compatibility launcher", encoding="utf-8")
-        (resources / "VERSION").write_text("1.0.0-rc.1\n", encoding="utf-8")
+        (resources / "VERSION").write_text("1.0.0-rc.2\n", encoding="utf-8")
         (resources / "build-info.json").write_text(json.dumps({
             "format": 1,
             "product": "SUS Companion",
-            "version": "1.0.0-rc.1",
+            "version": "1.0.0-rc.2",
             "commit": "1234567890abcdef",
             "short_commit": "1234567890ab",
             "ref": "feature/testing",
             "timestamp": "2026-07-24T12:00:00Z",
-            "channel": "current-testing",
+            "channel": "rc",
         }), encoding="utf-8")
         (resources / "frida").mkdir()
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
@@ -68,7 +68,7 @@ class ReleaseManifestTests(unittest.TestCase):
         required = (
             "VERSION", "packaging/pyinstaller/sus_adb.spec",
             "packaging/common/release_assets.py", "packaging/linux/build_linux.sh",
-            "packaging/windows/build_windows.ps1", "release/RC1_CHECKLIST.md",
+            "packaging/windows/build_windows.ps1", "release/RC2_CHECKLIST.md",
         )
         self.assertTrue(all((ROOT / item).exists() for item in required))
         text = (ROOT / "packaging/pyinstaller/sus_adb.spec").read_text()
@@ -94,7 +94,7 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_windows_frida_native_component_is_platform_appropriate(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
-            windows = package.with_name("sus-companion-1.0.0-rc.1-windows-amd64")
+            windows = package.with_name("sus-companion-1.0.0-rc.2-windows-amd64")
             package.rename(windows)
             (windows / "sus-companion").rename(windows / "sus-companion.exe")
             (windows / "sus-adb").rename(windows / "sus-adb.cmd")
@@ -121,7 +121,7 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(result["assets"]["example_plugin_assets"]["count"], 2)
             self.assertEqual(result["assets"]["user_local_script_studio_assets"], {"count": 0, "packaged": False})
             self.assertEqual(result["assets"]["official_bundled_plugins"]["count"], 6)
-            self.assertEqual(result["build"]["channel"], "current-testing")
+            self.assertEqual(result["build"]["channel"], "rc")
             self.assertEqual(result["assets"]["installed_third_party_plugins"], {"count": 0, "packaged": False})
 
     def test_fixture_curated_assets_are_required_and_counted(self):

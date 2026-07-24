@@ -1,4 +1,4 @@
-# SUS Companion 1.0.0-rc.1
+# SUS Companion 1.0.0 RC2
 
 **Android Security & Recovery Workstation**
 
@@ -19,7 +19,7 @@ ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/p
 ## Current tested builds
 
 - Latest tested development branch: `feature/operator-experience-reliability`
-- Stable RC branch: `release/1.0.0-rc.1`
+- Stable RC branch: `release/1.0.0-rc.2`
 
 For a source checkout, select the intended branch or commit and run:
 
@@ -32,9 +32,8 @@ The manually dispatched GitHub Actions workflow **Package Current Testing Build*
 accepts a branch, tag, or commit ref and produces separate Linux and Windows
 artifacts. Artifact names include the selected ref and short commit hash.
 Every artifact includes build identity metadata, SHA-256 checksums, a file
-manifest, and a verification report. The workflow never creates a tag or
-publishes a GitHub Release. Treat current-testing artifacts as acceptance
-builds, not as a replacement for the stable RC branch.
+manifest, a verification report, and a platform publication archive. The
+workflow never creates a tag or publishes a GitHub Release.
 
 SUS Companion shows a responsive local splash while constructing the Console shell. Instrumentation, Script Studio, Pentest, Plugin Manager, and Pentest's operational sections are built only on first explicit access. Script Studio includes the local Script Library and import, edit, validate, and explicit load workflows. Official addons and third-party code remain inactive until their separate lifecycle approvals are completed.
 

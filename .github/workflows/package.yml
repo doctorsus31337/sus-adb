@@ -6,7 +6,7 @@ on:
       ref:
         description: Branch, tag, or commit to package
         required: true
-        default: feature/operator-experience-reliability
+        default: release/1.0.0-rc.2
         type: string
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       SUS_ADB_REF: ${{ inputs.ref }}
-      SUS_ADB_BUILD_CHANNEL: current-testing
+      SUS_ADB_BUILD_CHANNEL: rc
     steps:
       - name: Check out selected ref
         uses: actions/checkout@v4
