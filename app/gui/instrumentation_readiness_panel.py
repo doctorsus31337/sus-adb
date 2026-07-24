@@ -124,7 +124,7 @@ class InstrumentationReadinessPanel(ctk.CTkFrame):
             actions, "Scan Capabilities", self.scan_capabilities, 0
         )
         self._button(
-            actions, "? Help",
+            actions, "Help",
             lambda: self.help_callback("readiness-advisor")
             if self.help_callback else None,
             1,

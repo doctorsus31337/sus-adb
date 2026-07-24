@@ -149,7 +149,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         )
         self.warning.grid(row=3, column=0, columnspan=4, sticky="ew", padx=7, pady=(3, 7))
         ctk.CTkButton(
-            header, text="? Help",
+            header, text="Help",
             command=lambda: self.help_callback("device-rescue")
             if self.help_callback else None,
             fg_color=self.theme["red"], hover_color=self.theme["red_hover"],

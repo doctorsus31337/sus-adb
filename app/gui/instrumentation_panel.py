@@ -128,7 +128,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.device_warning.grid(row=1, column=0, columnspan=5, sticky="ew", padx=10, pady=(1, 7))
         ctk.CTkButton(
-            header, text="? Help",
+            header, text="Help",
             command=lambda: self._open_help("instrumentation-overview"),
             fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
             text_color=self.theme["text"], border_width=1,
@@ -413,7 +413,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._button(
             toolbar, "Guided Instrumentation Setup", self._open_guided_setup, 0, 3
         )
-        self._button(toolbar, "? Help", lambda: self._open_help("targets"), 0, 4)
+        self._button(toolbar, "Help", lambda: self._open_help("targets"), 0, 4)
 
         filters = ctk.CTkFrame(frame, fg_color="transparent")
         filters.grid(row=2, column=0, columnspan=2, sticky="ew", padx=12, pady=2)

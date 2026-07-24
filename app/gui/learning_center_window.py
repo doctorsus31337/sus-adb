@@ -74,6 +74,15 @@ class LearningCenterWindow(ctk.CTkToplevel):
             header, text="", text_color=self.theme["muted"], anchor="e"
         )
         self.mode.grid(row=0, column=1, padx=8)
+        ctk.CTkButton(
+            header, text="Help",
+            command=lambda: self.open_help("learning-center")
+            if self.open_help else None,
+            width=90, fg_color=self.theme["red"],
+            hover_color=self.theme["red_hover"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"],
+        ).grid(row=0, column=2, padx=8)
         self.search = ctk.CTkEntry(
             header, placeholder_text="Search courses, lessons, and glossary…",
             fg_color=self.theme["terminal_bg"],
@@ -152,7 +161,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
             actions, "Record Synthetic Exercise", self.record_exercise, 2
         )
         self._button(
-            actions, "? Explain This Screen",
+            actions, "Help",
             lambda: self.open_help(self.context_topic or "learning-center")
             if self.open_help else None,
             3,

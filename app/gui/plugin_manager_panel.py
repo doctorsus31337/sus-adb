@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog
 import customtkinter as ctk
+from app.core.responsive_layout import estimated_button_width
 from app.core.worker import BackgroundWorker
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.plugin_ui import PluginPanelSpec
@@ -32,7 +33,7 @@ class PluginManagerPanel(ctk.CTkFrame):
         super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
         for v in self.views.values():v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1);v.grid_rowconfigure(1,weight=1)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
-    def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30);b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
+    def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
     def _text(self,p):t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);t.configure(state="disabled");return t
     def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",text);w.configure(state="disabled")
     def _header(self):

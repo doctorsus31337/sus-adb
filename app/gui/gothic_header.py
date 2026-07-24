@@ -63,7 +63,7 @@ class GothicHeader(ctk.CTkFrame):
         )
         self.help_button = ctk.CTkButton(
             controls,
-            text="? Help",
+            text="Help",
             command=help_callback,
             width=90,
             fg_color=theme["red"],

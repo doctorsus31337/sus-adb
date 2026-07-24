@@ -36,7 +36,6 @@ from app.core.target_discovery import TargetDiscovery
 from app.core.script_library import ScriptLibrary
 from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
-from app.gui.action_panel import ActionPanel
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
 from app.gui.device_panel import DevicePanel
@@ -351,26 +350,16 @@ class SusADBWindow(ctk.CTk):
         body.grid_columnconfigure(1, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        left = ctk.CTkScrollableFrame(
+        left = ctk.CTkFrame(
             body,
-            width=320,
+            width=270,
             fg_color=self.theme["panel"],
             border_width=1,
             border_color=self.theme["border"],
             corner_radius=12,
         )
-        left.grid(row=0, column=0, sticky="ns", padx=(0, 18))
-
-        ctk.CTkButton(
-            left,
-            text="⚔ Advanced Command Reference",
-            command=self.open_cheat_sheet,
-            fg_color=self.theme["red"],
-            hover_color=self.theme["red_hover"],
-            text_color=self.theme["text"],
-            font=self.theme["button_font"],
-            height=44,
-        ).pack(fill="x", padx=10, pady=(15, 32))
+        left.grid(row=0, column=0, sticky="ns", padx=(0, 12))
+        left.grid_propagate(False)
 
         self.device_panel = DevicePanel(
             left,
@@ -379,10 +368,7 @@ class SusADBWindow(ctk.CTk):
             self.connect_device,
             self.select_device,
         )
-        self.device_panel.pack(fill="x", padx=10, pady=(0, 18))
-
-        self.action_panel = ActionPanel(left, self.execute_command)
-        self.action_panel.pack(fill="x", padx=10, pady=(0, 15))
+        self.device_panel.pack(fill="both", expand=True, padx=8, pady=8)
         self.startup_profiler.record_interval("device-sidebar-shell",started,time.perf_counter())
 
         started=time.perf_counter()
@@ -494,6 +480,7 @@ class SusADBWindow(ctk.CTk):
             setting_callback=self._set_script_advisories,
             launch_session_callback=self.open_script_session,
             open_folder_callback=self.open_local_directory,
+            help_callback=self.open_context_help,
             ui_dispatch=self.call_on_ui,
         )
 
@@ -535,7 +522,7 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_pentest(self, parent):
         from app.gui.pentest_workspace import PentestWorkspace
-        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler,state_changed_callback=self._publish_host_state)
+        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler,state_changed_callback=self._publish_host_state,help_callback=self.open_context_help)
 
     def _hydrate_instrumentation(self, panel):
         target=self.selected_target

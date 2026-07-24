@@ -28,7 +28,7 @@ class DevicePanel(GothicFrame):
 
         self.device_list = ctk.CTkScrollableFrame(
             self,
-            width=285,
+            width=230,
             height=220,
             fg_color=theme["terminal_bg"],
             border_width=1,

@@ -117,7 +117,7 @@ class SessionsCenter(ctk.CTkToplevel):
             font=("Times New Roman", 24, "bold"),
         ).grid(row=0, column=0, columnspan=5, sticky="w", padx=10, pady=(7, 3))
         ctk.CTkButton(
-            header, text="? Help",
+            header, text="Help",
             command=lambda: self.help_callback("sessions-center")
             if self.help_callback else None,
             fg_color=self.theme["red"], hover_color=self.theme["red_hover"],

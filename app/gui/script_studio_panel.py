@@ -51,6 +51,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         setting_callback=None,
         launch_session_callback=None,
         open_folder_callback=None,
+        help_callback=None,
         ui_dispatch=None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
@@ -61,6 +62,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.setting_callback = setting_callback
         self.launch_session_callback = launch_session_callback
         self.open_folder_callback = open_folder_callback
+        self.help_callback = help_callback
         self.dispatch = ui_dispatch or (
             lambda callback, *args: self.after(0, callback, *args)
         )
@@ -101,6 +103,14 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.spawn_button = self._button(controls, "Spawn", lambda: self._session("spawn"), 0, 2)
         self.resume_button = self._button(controls, "Resume", lambda: self._run("Resume", self.runtime.resume, self._show_result), 0, 3)
         self.detach_button = self._button(controls, "Detach", lambda: self._run("Detach", self.runtime.detach, self._show_result), 0, 4)
+        self._button(
+            controls,
+            "Help",
+            lambda: self.help_callback("script-studio")
+            if self.help_callback else None,
+            0,
+            5,
+        )
 
     def _build_workspace(self):
         self.workspace = ctk.CTkTabview(self, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["border"], segmented_button_fg_color=self.theme["panel_alt"], segmented_button_selected_color=self.theme["red"], segmented_button_selected_hover_color=self.theme["red_hover"], segmented_button_unselected_color=self.theme["panel_alt"], segmented_button_unselected_hover_color=self.theme["gold_dark"], text_color=self.theme["text"])
