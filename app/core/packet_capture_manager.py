@@ -42,7 +42,7 @@ class PacketCaptureManager:
         if not started.running:self.state=CaptureState.FAILED;return CaptureResult(False,error=started.error or "Capture process failed to start.")
         self.active=PacketCaptureArtifact(config.device_serial,config.target_identifier,config.remote_path,config.local_destination,start_timestamp=str(self.clock()),capture_state=CaptureState.CAPTURING);self.state=CaptureState.CAPTURING
         tracker=self.change_provider()
-        if tracker:tracker.register(EnvironmentChange("network-capture","Remote packet capture temporary file",config.remote_path,config.device_serial,config.target_identifier,restoration_instructions="Remove only this SUS-ADB-created temporary capture after successful pull.",restoration_command_preview=f"adb -s {config.device_serial} shell rm {config.remote_path}"))
+        if tracker:tracker.register(EnvironmentChange("network-capture","Remote packet capture temporary file",config.remote_path,config.device_serial,config.target_identifier,restoration_instructions="Remove only this SUS Companion-created temporary capture after successful pull.",restoration_command_preview=f"adb -s {config.device_serial} shell rm {config.remote_path}"))
         self._event("Packet capture started",config.display_label);return CaptureResult(True,self.active,preview=prepared.preview)
     def stop(self):
         if not self.active:return CaptureResult(False,error="No capture is active.")

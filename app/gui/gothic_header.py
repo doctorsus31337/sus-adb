@@ -12,7 +12,7 @@ class GothicHeader(ctk.CTkFrame):
 
         self.title = ctk.CTkLabel(
             self,
-            text="⚔ SUS-ADB COMPANION ⚔",
+            text=f"⚔ {METADATA.display_mark} ⚔",
             font=("Times New Roman", 34, "bold"),
             text_color=theme["gold"]
         )
@@ -28,7 +28,7 @@ class GothicHeader(ctk.CTkFrame):
 
         self.subtitle = ctk.CTkLabel(
             self,
-            text=f"Medieval Gothic Blackhat Console · {METADATA.version}",
+            text=f"{METADATA.descriptor} · {METADATA.version}",
             font=("Times New Roman", 16, "italic"),
             text_color=theme["muted"]
         )

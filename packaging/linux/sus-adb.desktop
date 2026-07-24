@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=SUS-ADB Companion
-Exec=sus-adb
+Name=SUS Companion
+GenericName=Android Security & Recovery Workstation
+Comment=Authorized Android security, recovery, and instrumentation workstation
+Exec=sus-companion
 Terminal=false
 Categories=Development;Utility;

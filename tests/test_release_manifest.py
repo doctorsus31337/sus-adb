@@ -22,11 +22,12 @@ ASSETS = load("release_assets", "packaging/common/release_assets.py")
 
 class ReleaseManifestTests(unittest.TestCase):
     def make_package(self, directory, selected=None):
-        package = Path(directory) / "sus-adb-1.0.0-rc.1-linux-x86_64"
+        package = Path(directory) / "sus-companion-1.0.0-rc.1-linux-x86_64"
         resources = package / "_internal"
-        for relative in ("app/themes", "docs", "plugins/examples/hello_plugin/assets", "packaging"):
+        for relative in ("app/themes", "app/resources", "docs", "plugins/examples/hello_plugin/assets", "packaging"):
             (resources / relative).mkdir(parents=True, exist_ok=True)
-        (package / "sus-adb").write_text("executable", encoding="utf-8")
+        (package / "sus-companion").write_text("executable", encoding="utf-8")
+        (package / "sus-adb").write_text("compatibility launcher", encoding="utf-8")
         (resources / "VERSION").write_text("1.0.0-rc.1\n", encoding="utf-8")
         (resources / "frida").mkdir()
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
@@ -36,6 +37,7 @@ class ReleaseManifestTests(unittest.TestCase):
         for folder,plugin_id in zip(official_names,VERIFY.OFFICIAL_IDS):
             target=resources/"plugins/official"/folder;target.mkdir(parents=True,exist_ok=True);(target/"manifest.json").write_text(json.dumps({"plugin_id":plugin_id,"enabled":False,"requested_capabilities":VERIFY.OFFICIAL_CAPABILITIES[plugin_id]}),encoding="utf-8");(target/"plugin.py").write_text("class Plugin: pass",encoding="utf-8")
         (resources / "app/themes/gothic.json").write_text("{}", encoding="utf-8")
+        (resources / "app/resources/startup_tips.json").write_text('{"format":1,"tips":["A local packaged startup tip long enough for validation."]}', encoding="utf-8")
         (resources / "docs/README.md").write_text("docs", encoding="utf-8")
         manifest = {"enabled": False, "contributed_components": [{"contribution_type": "script-asset"}]}
         (resources / "plugins/examples/hello_plugin/manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -80,9 +82,10 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_windows_frida_native_component_is_platform_appropriate(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
-            windows = package.with_name("sus-adb-1.0.0-rc.1-windows-amd64")
+            windows = package.with_name("sus-companion-1.0.0-rc.1-windows-amd64")
             package.rename(windows)
-            (windows / "sus-adb").rename(windows / "sus-adb.exe")
+            (windows / "sus-companion").rename(windows / "sus-companion.exe")
+            (windows / "sus-adb").rename(windows / "sus-adb.cmd")
             native = windows / "_internal/frida/_frida.abi3.so"
             native.rename(native.with_suffix(".pyd"))
             CHECKSUMS.generate(windows)

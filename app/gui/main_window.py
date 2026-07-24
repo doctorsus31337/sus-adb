@@ -1,9 +1,11 @@
-"""Main SUS-ADB application window."""
+"""Responsive SUS Companion application shell and lazy workspace host."""
 
 from __future__ import annotations
 
 import threading
 import sys
+import time
+import queue
 from pathlib import Path
 
 import customtkinter as ctk
@@ -32,10 +34,9 @@ from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
 from app.gui.device_panel import DevicePanel
 from app.gui.gothic_header import GothicHeader
-from app.gui.instrumentation_panel import InstrumentationPanel
-from app.gui.script_studio_panel import ScriptStudioPanel
-from app.gui.pentest_workspace import PentestWorkspace
 from app.gui.menu_bar import MenuBar
+from app.gui.lazy_panel_host import LazyPanelHost
+from app.gui.splash_screen import SplashScreen
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
 from app.utils.clipboard import ClipboardManager
@@ -53,6 +54,8 @@ from app.core.application_lifecycle import ApplicationLifecycle
 from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
 from app.core.host_tool_resolver import HostToolResolver
+from app.core.startup_profiler import StartupProfiler
+from app.core.startup_tips import load_startup_tips
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
 from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
@@ -61,10 +64,68 @@ from app.gui.addon_window_host import AddonWindowHost
 
 
 class SusADBWindow(ctk.CTk):
-    def __init__(self):
+    BOOTSTRAP_STAGES = ("Tk root", "Splash", "Configuration", "Core services", "Console shell")
+
+    def __init__(self, *, startup_origin=None, startup_intervals=()):
+        self.startup_profiler = StartupProfiler(origin=startup_origin)
+        for name, started, finished in startup_intervals:
+            self.startup_profiler.record_interval(name, started, finished)
+        root_started = time.perf_counter()
         super().__init__()
-        self.config_manager=ConfigManager();self.config_result=self.config_manager.load();self.app_config=self.config_result.data or {};self.logging_manager=LoggingManager(self.config_manager.directory/"logs",**{"level":self.app_config.get("privacy",{}).get("log_level","INFO"),"structured":self.app_config.get("privacy",{}).get("structured_logs",True)});self.recovery_manager=RecoveryManager(self.config_manager.directory);self.previous_unclean_shutdown=self.recovery_manager.begin_startup();self.crash_reporter=CrashReporter(self.config_manager.directory/"crashes",METADATA,self.logging_manager.tail);self.diagnostics_window=None
+        self.startup_profiler.record_interval("tk-root", root_started, time.perf_counter())
+        self.withdraw()
         self.theme = get_theme()
+        tip_catalog = load_startup_tips()
+        splash_started=time.perf_counter()
+        with self.startup_profiler.stage("splash-construction"):
+            self.splash = SplashScreen(self, self.theme, tip_catalog)
+            self.splash.paint_now()
+        self.startup_profiler.record_interval("first-splash-paint",splash_started,time.perf_counter(),note="Local typographic splash")
+        self.splash.update_stage(2, len(self.BOOTSTRAP_STAGES), "Loading local configuration…")
+        try:
+            with self.startup_profiler.stage("configuration-and-logging"):
+                self._initialize_configuration()
+            self.splash.update_stage(3, len(self.BOOTSTRAP_STAGES), "Preparing core services…", rotate_tip=True)
+            with self.startup_profiler.stage("core-services"):
+                self._initialize_core_services()
+            self.splash.update_stage(4, len(self.BOOTSTRAP_STAGES), "Constructing responsive Console shell…")
+            with self.startup_profiler.stage("console-shell"):
+                self._initialize_shell()
+            self.splash.update_stage(5, len(self.BOOTSTRAP_STAGES), "Console Home is ready.")
+            responsive_started = time.perf_counter()
+            responsive = []
+            self.after_idle(lambda: responsive.append(time.perf_counter()))
+            self.deiconify()
+            self.update_idletasks()
+            self.update()
+            if responsive:
+                self.startup_profiler.record_interval(
+                    "first-responsive-idle", responsive_started, responsive[0], note="Console shell visible"
+                )
+            self.splash.close()
+            self.logging_manager.log("INFO", self.startup_profiler.summary())
+        except Exception as exc:
+            self.splash.show_failure(type(exc).__name__,self.startup_profiler.summary())
+            if hasattr(self, "logging_manager"):
+                self.logging_manager.exception(f"Essential bootstrap failed: {exc}")
+            self.protocol("WM_DELETE_WINDOW", self.shutdown)
+            return
+        if self.config_result.warning and self.config_result.warning.startswith("First run"):
+            self.after(50, self.open_first_run)
+        if self.previous_unclean_shutdown:
+            self.after(75, self.open_recovery_dialog)
+        self.after_idle(lambda: self.after(25, self.startup_check))
+        self.protocol("WM_DELETE_WINDOW", self.shutdown)
+
+    def _initialize_configuration(self):
+        with self.startup_profiler.stage("configuration-load"):
+            self.config_manager=ConfigManager();self.config_result=self.config_manager.load();self.app_config=self.config_result.data or {}
+        with self.startup_profiler.stage("logging-initialization"):
+            self.logging_manager=LoggingManager(self.config_manager.directory/"logs",**{"level":self.app_config.get("privacy",{}).get("log_level","INFO"),"structured":self.app_config.get("privacy",{}).get("structured_logs",True)})
+        with self.startup_profiler.stage("recovery-initialization"):
+            self.recovery_manager=RecoveryManager(self.config_manager.directory);self.previous_unclean_shutdown=self.recovery_manager.begin_startup();self.crash_reporter=CrashReporter(self.config_manager.directory/"crashes",METADATA,self.logging_manager.tail);self.diagnostics_window=None
+
+    def _initialize_core_services(self):
         self.devices = DeviceManager()
         self.command_runner = CommandRunner()
         self.host_tools = HostToolResolver(self.app_config.get("executables", {}))
@@ -105,12 +166,25 @@ class SusADBWindow(ctk.CTk):
             evidence_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "evidence", None),
             finding_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "findings", None),
             official_root=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parents[2]))/"plugins"/"official",
+            auto_refresh=False,
         )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.addons_center=None
         self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}))
         self.first_run_dialog = None
         self.crash_dialog = None
+        self.instrumentation_panel = None
+        self.script_studio_panel = None
+        self.pentest_workspace = None
+        self.selected_target = None
+        self._deferred_started = False
+        self._device_refresh_active = False
+        self._diagnostics_loading = False
+        self._ui_queue = queue.Queue()
+        self._ui_poll_id = None
+        self._background_workers = set()
+
+    def _initialize_shell(self):
 
         self.title(METADATA.display_version)
         self.minsize(1100, 700)
@@ -118,15 +192,32 @@ class SusADBWindow(ctk.CTk):
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        self.menu_bar=MenuBar(self)
+        with self.startup_profiler.stage("menu-bar"):
+            self.menu_bar=MenuBar(self)
         self.create_widgets()
-        self.after_idle(self.center_window)
-        if self.config_result.warning and self.config_result.warning.startswith("First run"):
-            self.after(50, self.open_first_run)
-        if self.previous_unclean_shutdown:
-            self.after(75, self.open_recovery_dialog)
-        self.after(250, self.startup_check)
-        self.protocol("WM_DELETE_WINDOW", self.shutdown)
+        self.center_window()
+        self._ui_poll_id=self.after(15,self._poll_ui_queue)
+
+    def call_on_ui(self,callback,*args):
+        if not getattr(self,"_shutdown_started",False):self._ui_queue.put((callback,args))
+
+    def _start_background(self,target,callback):
+        worker=None
+        def finished(result):
+            self._background_workers.discard(worker);callback(result)
+        worker=BackgroundWorker(target,callback=finished);self._background_workers.add(worker);worker.start();return worker
+
+    def _join_background_workers(self):
+        for worker in tuple(self._background_workers):worker.join(1)
+
+    def _poll_ui_queue(self):
+        if getattr(self,"_shutdown_started",False):return
+        while True:
+            try:callback,args=self._ui_queue.get_nowait()
+            except queue.Empty:break
+            try:callback(*args)
+            except Exception as exc:self.report_callback_exception(type(exc),exc,exc.__traceback__)
+        self._ui_poll_id=self.after(15,self._poll_ui_queue)
 
     def report_callback_exception(self, exc_type, exc_value, exc_traceback):
         self.logging_manager.exception(f"Unhandled GUI exception: {exc_value}")
@@ -134,6 +225,7 @@ class SusADBWindow(ctk.CTk):
         super().report_callback_exception(exc_type, exc_value, exc_traceback)
 
     def create_widgets(self):
+        started=time.perf_counter()
         self.gothic_header=GothicHeader(self, self.theme, self.go_home)
         self.gothic_header.grid(
             row=0,
@@ -142,7 +234,9 @@ class SusADBWindow(ctk.CTk):
             padx=20,
             pady=(12, 6),
         )
+        self.startup_profiler.record_interval("gothic-header",started,time.perf_counter())
 
+        started=time.perf_counter()
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
         body.grid_columnconfigure(1, weight=1)
@@ -180,7 +274,9 @@ class SusADBWindow(ctk.CTk):
 
         self.action_panel = ActionPanel(left, self.execute_command)
         self.action_panel.pack(fill="x", padx=10, pady=(0, 15))
+        self.startup_profiler.record_interval("device-sidebar-shell",started,time.perf_counter())
 
+        started=time.perf_counter()
         self.workspace = ctk.CTkTabview(
             body,
             fg_color=self.theme["panel"],
@@ -192,6 +288,7 @@ class SusADBWindow(ctk.CTk):
             text_color=self.theme["text"],
             border_width=1,
             border_color=self.theme["border"],
+            command=self._workspace_selected,
         )
         self.workspace.grid(row=0, column=1, sticky="nsew")
         console_tab = self.workspace.add("Console")
@@ -224,39 +321,33 @@ class SusADBWindow(ctk.CTk):
             border_color=self.theme["border"],
         )
         self.console.grid(row=1, column=0, sticky="nsew")
-        self.console.insert("end", "sus-adb > Ready.\n\n")
+        self.console.insert("end", "sus-companion > Ready.\n\n")
         self.console.bind("<Control-c>", self.copy_console_selection)
+        self.startup_profiler.record_interval("console-workspace",started,time.perf_counter())
 
-        self.instrumentation_panel = InstrumentationPanel(
-            instrumentation_tab,
-            self.theme,
-            self.tool_diagnostics,
-            self.frida_manager,
-            self.objection_manager,
-            self.target_discovery,
-            self.frida_sessions,
-            self.log,
-            self._sync_script_target,
-        )
-        self.instrumentation_panel.grid(row=0, column=0, sticky="nsew")
+        started=time.perf_counter()
+        self.workspace_hosts = {
+            "Instrumentation": LazyPanelHost(
+                instrumentation_tab, self.theme, "Instrumentation", self._construct_instrumentation,
+                self._hydrate_instrumentation,
+            ),
+            "Scripts": LazyPanelHost(
+                scripts_tab, self.theme, "Script Studio", self._construct_scripts,
+                self._hydrate_scripts,
+            ),
+            "Pentest": LazyPanelHost(
+                pentest_tab, self.theme, "Pentest Workspace", self._construct_pentest,
+                self._hydrate_pentest,
+            ),
+        }
+        for host in self.workspace_hosts.values():
+            host.grid(row=0, column=0, sticky="nsew")
+        self.startup_profiler.record_interval("lazy-workspace-placeholders",started,time.perf_counter())
 
-        self.script_studio_panel = ScriptStudioPanel(
-            scripts_tab, self.theme, self.script_library, self.frida_runtime,
-            self.script_validator, self.log, objection_recipes=self.objection_recipes,
-        )
-        self.script_studio_panel.grid(row=0, column=0, sticky="nsew")
-
-        self.pentest_workspace = PentestWorkspace(
-            pentest_tab, self.theme, "workspaces", self.frida_manager,
-            self.frida_runtime, self.tool_diagnostics, self.log, self.navigate_workspace,
-            adb=self.devices.adb, script_library=self.script_library,
-            open_script_callback=self.open_generated_script,
-            plugin_manager=self.plugin_manager,
-        )
-        self.pentest_workspace.grid(row=0, column=0, sticky="nsew")
-
+        started=time.perf_counter()
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
+        self.startup_profiler.record_interval("status-bar",started,time.perf_counter())
 
     def center_window(self):
         self.update_idletasks()
@@ -268,12 +359,66 @@ class SusADBWindow(ctk.CTk):
         y = max(0, (screen_h - height) // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _construct_instrumentation(self, parent):
+        from app.gui.instrumentation_panel import InstrumentationPanel
+        return InstrumentationPanel(parent,self.theme,self.tool_diagnostics,self.frida_manager,self.objection_manager,self.target_discovery,self.frida_sessions,self.log,self._sync_script_target)
+
+    def _construct_scripts(self, parent):
+        from app.gui.script_studio_panel import ScriptStudioPanel
+        return ScriptStudioPanel(parent,self.theme,self.script_library,self.frida_runtime,self.script_validator,self.log,objection_recipes=self.objection_recipes)
+
+    def _construct_pentest(self, parent):
+        from app.gui.pentest_workspace import PentestWorkspace
+        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler)
+
+    def _hydrate_instrumentation(self, panel):
+        target=self.selected_target
+        self.instrumentation_panel = panel
+        panel.set_selected_device(self.devices.selected)
+        if target is not None:
+            panel.targets=(target,);panel.select_target(target)
+
+    def _hydrate_scripts(self, panel):
+        self.script_studio_panel = panel
+        panel.set_selected_device(self.devices.selected)
+        panel.set_selected_target(self.selected_target)
+
+    def _hydrate_pentest(self, panel):
+        self.pentest_workspace = panel
+        panel.set_selected_device(self.devices.selected)
+        panel.set_selected_target(self.selected_target)
+
+    def _workspace_selected(self):
+        self._ensure_workspace(self.workspace.get())
+
+    def _ensure_workspace(self, name):
+        host = self.workspace_hosts.get(name)
+        if host is None or host.panel is not None:
+            return host.panel if host else None
+        with self.startup_profiler.stage(f"workspace:{name.casefold()}", classification="on-demand"):
+            panel = host.ensure()
+        if panel is None and host.error:
+            self.status_bar.set_status(adb=f"{name} failed")
+        return panel
+
     def startup_check(self):
-        info = SystemInfo.get()
-        self.log(f"[SYSTEM] {info['platform']} {info['release']} — Python {info['python']}")
-        for tool, found in EnvironmentModule.check().items():
-            self.log(f"[{'OK' if found else 'MISSING'}] {tool}")
-        self.refresh_devices()
+        if self._deferred_started or getattr(self,"_shutdown_started",False):return
+        self._deferred_started=True;self.status_bar.set_status(adb="Deferred checks")
+        def collect():
+            try:
+                with self.startup_profiler.stage("environment-diagnostics",classification="deferred"):
+                    return True,SystemInfo.get(),EnvironmentModule.check()
+            except Exception as exc:return False,exc,{}
+        self._start_background(collect,lambda result:self.call_on_ui(self._apply_startup_check,result))
+
+    def _apply_startup_check(self,result):
+        if getattr(self,"_shutdown_started",False):return
+        ok,info,tools=result
+        if ok:
+            self.log(f"[SYSTEM] {info['platform']} {info['release']} — Python {info['python']}")
+            for tool,found in tools.items():self.log(f"[{'OK' if found else 'MISSING'}] {tool}")
+        else:self.log(f"[STARTUP] Deferred diagnostics failed: {type(info).__name__}")
+        self.status_bar.set_status(adb="Ready");self.refresh_devices()
 
     def open_cheat_sheet(self):
         if self.cheat_sheet is not None and self.cheat_sheet.winfo_exists():
@@ -285,8 +430,19 @@ class SusADBWindow(ctk.CTk):
         if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
             self.diagnostics_window.lift()
             return
-        results = EnvironmentDiagnostics(resolver=self.host_tools).run(self.config_manager.directory, self.app_config.get("workspace_root", "workspaces"))
-        self.diagnostics_window = EnvironmentDiagnosticsWindow(self, self.theme, results)
+        if self._diagnostics_loading:return
+        self._diagnostics_loading=True;self.status_bar.set_status(adb="Diagnostics")
+        def collect():
+            try:return True,EnvironmentDiagnostics(resolver=self.host_tools).run(self.config_manager.directory,self.app_config.get("workspace_root","workspaces"))
+            except Exception as exc:return False,exc
+        self._start_background(collect,lambda result:self.call_on_ui(self._show_environment_diagnostics,result))
+
+    def _show_environment_diagnostics(self,result):
+        self._diagnostics_loading=False
+        if getattr(self,"_shutdown_started",False):return
+        ok,value=result
+        if not ok:self.log(f"[DIAGNOSTICS] {type(value).__name__}");self.status_bar.set_status(adb="Diagnostics failed");return
+        self.diagnostics_window=EnvironmentDiagnosticsWindow(self,self.theme,value,self.startup_profiler.summary());self.status_bar.set_status(adb="Ready")
 
     def open_first_run(self):
         if self.first_run_dialog is None or not self.first_run_dialog.winfo_exists():
@@ -298,37 +454,52 @@ class SusADBWindow(ctk.CTk):
 
     def log(self, text: str):
         if threading.current_thread() is not threading.main_thread():
-            self.after(0, self.log, text)
+            self.call_on_ui(self.log,text)
             return
-        self.logging_manager.log("INFO",text);self.console.insert("end", f"{text}\n")
-        self.console.see("end")
+        if hasattr(self,"logging_manager"):self.logging_manager.log("INFO",text)
+        if hasattr(self,"console"):
+            self.console.insert("end", f"{text}\n");self.console.see("end")
 
     def execute_command(self, command: str):
         self.terminal.execute(command)
 
     def refresh_devices(self):
+        if self._device_refresh_active or getattr(self,"_shutdown_started",False):return
+        self._device_refresh_active=True
         self.status_bar.set_status(adb="Scanning")
         self.log("[ADB] Scanning for devices...")
-        BackgroundWorker(
-            lambda: self.devices.refresh(enrich=True),
-            callback=lambda devices: self.after(0, self._apply_devices, devices),
-        ).start()
+        def scan():
+            try:
+                with self.startup_profiler.stage("device-discovery",classification="deferred"):
+                    return True,self.devices.refresh(enrich=True)
+            except Exception as exc:return False,exc
+        self._start_background(
+            scan,
+            lambda result: self.call_on_ui(self._finish_device_refresh,result),
+        )
+
+    def _finish_device_refresh(self,result):
+        self._device_refresh_active=False
+        if getattr(self,"_shutdown_started",False):return
+        ok,value=result
+        if not ok:self.status_bar.set_status(adb="Scan failed");self.log(f"[ADB] Discovery failed: {type(value).__name__}");return
+        self._apply_devices(value)
+
+    def _apply_device_to_workspaces(self,device):
+        for panel in (self.instrumentation_panel,self.script_studio_panel,self.pentest_workspace):
+            if panel is not None:panel.set_selected_device(device)
 
     def _apply_devices(self, devices: list[Device]):
         self.device_panel.update_devices(devices)
         if not devices:
-            self.instrumentation_panel.set_selected_device(None)
-            self.script_studio_panel.set_selected_device(None)
-            self.pentest_workspace.set_selected_device(None)
+            self._apply_device_to_workspaces(None)
             self.status_bar.set_status(adb="No Devices", device="None", root="Unknown", frida="Unknown")
             self.log("[ADB] No devices detected.")
             return
 
         selected = self.devices.selected or devices[0]
         self.device_panel.selected_serial = selected.serial
-        self.instrumentation_panel.set_selected_device(selected)
-        self.script_studio_panel.set_selected_device(selected)
-        self.pentest_workspace.set_selected_device(selected)
+        self._apply_device_to_workspaces(selected)
         self.status_bar.set_status(
             adb="Connected",
             device=selected.display_name,
@@ -345,9 +516,7 @@ class SusADBWindow(ctk.CTk):
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
             return
-        self.instrumentation_panel.set_selected_device(device)
-        self.script_studio_panel.set_selected_device(device)
-        self.pentest_workspace.set_selected_device(device)
+        self._apply_device_to_workspaces(device)
         self.log(f"[ADB] Selecting {device.display_name} ({serial})...")
         BackgroundWorker(
             lambda: self.devices.adb.forward_frida_ports(serial),
@@ -375,13 +544,9 @@ class SusADBWindow(ctk.CTk):
         device = self.devices.select(serial)
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
-            self.instrumentation_panel.set_selected_device(None)
-            self.script_studio_panel.set_selected_device(None)
-            self.pentest_workspace.set_selected_device(None)
+            self._apply_device_to_workspaces(None)
             return
-        self.instrumentation_panel.set_selected_device(device)
-        self.script_studio_panel.set_selected_device(device)
-        self.pentest_workspace.set_selected_device(device)
+        self._apply_device_to_workspaces(device)
         self.status_bar.set_status(
             adb="Connected" if device.connected else device.state,
             device=device.display_name,
@@ -391,14 +556,16 @@ class SusADBWindow(ctk.CTk):
         self.log(f"[ADB] Selected {device.display_name} ({serial}).")
 
     def _sync_script_target(self, target):
-        if hasattr(self, "script_studio_panel"):
+        self.selected_target=target
+        if self.script_studio_panel is not None:
             self.script_studio_panel.set_selected_target(target)
-        if hasattr(self, "pentest_workspace"):
+        if self.pentest_workspace is not None:
             self.pentest_workspace.set_selected_target(target)
 
     def navigate_workspace(self, name: str):
         if name in self.workspace._tab_dict:
             self.workspace.set(name)
+            return self._ensure_workspace(name)
 
     def go_home(self):self.navigate_workspace("Console")
 
@@ -413,39 +580,39 @@ class SusADBWindow(ctk.CTk):
             if status.state.value=="active":self.plugin_manager.unload(plugin_id)
 
     def enter_pentest_workspace(self):
-        self.navigate_workspace("Pentest")
+        return self.navigate_workspace("Pentest")
 
     def open_adb_explorer(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_adb_explorer()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_adb_explorer()
 
     def open_runtime_explorer(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_runtime_explorer()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_runtime_explorer()
 
     def open_network_workspace(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_network()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_network()
 
     def open_storage_explorer(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_storage()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_storage()
 
     def open_apk_laboratory(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_apk_lab()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_apk_lab()
 
     def open_findings(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_findings()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_findings()
 
     def open_report_builder(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_report_builder()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_report_builder()
 
     def open_plugin_manager(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_plugins()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_plugins()
 
     def open_plugin_contribution(self,contribution_id):
         contribution=next((c for c in self.plugin_registry.list("pentest-panel") if c.contribution_id==contribution_id),None)
@@ -454,25 +621,35 @@ class SusADBWindow(ctk.CTk):
         if hasattr(self.pentest_workspace,"plugin_panel"):self.pentest_workspace.plugin_panel.open_contribution(contribution_id)
 
     def open_generated_script(self, descriptor):
-        self.navigate_workspace("Scripts")
-        self.script_studio_panel.refresh_library()
-        selected = next((item for item in self.script_studio_panel.descriptors if item.script_id == descriptor.script_id), descriptor)
-        self.script_studio_panel.select_descriptor(selected)
+        panel=self.navigate_workspace("Scripts")
+        if not panel:return
+        panel.refresh_library();selected=next((item for item in panel.descriptors if item.script_id==descriptor.script_id),descriptor);panel.select_descriptor(selected)
 
     def new_assessment_case(self):
-        self.enter_pentest_workspace()
-        self.pentest_workspace.open_scope_dialog()
+        panel=self.enter_pentest_workspace()
+        if panel:panel.open_scope_dialog()
 
     def shutdown(self):
         if getattr(self,"_shutdown_started",False):return
+        shutdown_started=time.perf_counter()
         self._shutdown_started=True;life=ApplicationLifecycle(shutdown_timeout=5)
+        if getattr(self,"_ui_poll_id",None):
+            try:self.after_cancel(self._ui_poll_id)
+            except Exception:pass
+            self._ui_poll_id=None
+        for host in getattr(self,"workspace_hosts",{}).values():host.shutdown()
+        if getattr(self,"splash",None) is not None and self.splash.winfo_exists():self.splash.close()
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
         for name,owner,method in (("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
+        life.add_cleanup("deferred-workers",self._join_background_workers)
         result=life.shutdown()
-        if result.errors:self.logging_manager.log("ERROR","; ".join(result.errors))
-        self.app_config["window"]["geometry"]=self.geometry();self.config_manager.save(self.app_config)
-        self.recovery_manager.mark_clean_shutdown();self.logging_manager.close()
+        if result.errors and hasattr(self,"logging_manager"):self.logging_manager.log("ERROR","; ".join(result.errors))
+        if hasattr(self,"app_config"):
+            self.app_config["window"]["geometry"]=self.geometry();self.config_manager.save(self.app_config)
+        if hasattr(self,"recovery_manager"):self.recovery_manager.mark_clean_shutdown()
+        self.startup_profiler.record_interval("shutdown",shutdown_started,time.perf_counter(),classification="on-demand")
+        if hasattr(self,"logging_manager"):self.logging_manager.close()
         self.destroy()
 
     def copy_console_selection(self, _event=None):
@@ -483,7 +660,7 @@ class SusADBWindow(ctk.CTk):
             self.after(0, self.clear_console)
             return
         self.console.delete("1.0", "end")
-        self.console.insert("end", "sus-adb > Console cleared.\n\n")
+        self.console.insert("end", "sus-companion > Console cleared.\n\n")
 
     def save_console(self):
         FileManager.save_console(self.console.get("1.0", "end"))

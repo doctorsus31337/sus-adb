@@ -54,7 +54,7 @@ class RuntimeScriptBuilder:
             if spec.target_type is not HookTarget.JAVA_METHOD or mode not in {"replace-argument", "replace-return", "throw-exception"}: return ScriptBuildResult(False, error="Only explicit Java argument, return replacement, or supported test exceptions are supported.")
             if mode == "throw-exception":
                 if modification.get("exceptionClass") not in self.TEST_EXCEPTIONS:return ScriptBuildResult(False,error="Select a supported Java test exception class.")
-                modification["message"] = str(modification.get("message", "SUS-ADB authorized test exception"))[:512]
+                modification["message"] = str(modification.get("message", "SUS Companion authorized test exception"))[:512]
             else:
                 try: modification["value"] = self._safe_value(modification.get("value"))
                 except ValueError as exc: return ScriptBuildResult(False, error=str(exc))
@@ -69,5 +69,5 @@ class RuntimeScriptBuilder:
         filename = f"{stem}-{digest[:12]}.js"
         metadata = {"hookId": spec.hook_id, "target": spec.selected_target, "classification": spec.classification, "specDigest": digest}
         source = templates.java_observation(metadata, spec.owner_name, spec.member_name, spec.overload, observation, modification) if spec.target_type is HookTarget.JAVA_METHOD else templates.native_observation(metadata, spec.owner_name, spec.member_name, observation)
-        descriptor = ScriptDescriptor(f"runtime-{digest[:20]}", Path(filename).stem, ScriptKind.FRIDA, f"frida/generated/{filename}", description=f"Runtime Explorer hook for {spec.owner_name}!{spec.member_name}", source="SUS-ADB Runtime Explorer", tags=("runtime-explorer", spec.classification), target_requirements=(spec.selected_target,), runtime_requirements=("frida",), changes_runtime=spec.changes_runtime, trust=TrustState.TRUSTED_LOCAL, sha256=hashlib.sha256(source.encode()).hexdigest(), caution=spec.caution, parameters={"hook_id": spec.hook_id, "required_scope": spec.required_scope_category}, metadata_path=f"metadata/{Path(filename).stem}.meta.json")
+        descriptor = ScriptDescriptor(f"runtime-{digest[:20]}", Path(filename).stem, ScriptKind.FRIDA, f"frida/generated/{filename}", description=f"Runtime Explorer hook for {spec.owner_name}!{spec.member_name}", source="SUS Companion Runtime Explorer", tags=("runtime-explorer", spec.classification), target_requirements=(spec.selected_target,), runtime_requirements=("frida",), changes_runtime=spec.changes_runtime, trust=TrustState.TRUSTED_LOCAL, sha256=hashlib.sha256(source.encode()).hexdigest(), caution=spec.caution, parameters={"hook_id": spec.hook_id, "required_scope": spec.required_scope_category}, metadata_path=f"metadata/{Path(filename).stem}.meta.json")
         return ScriptBuildResult(True, source, filename, descriptor)

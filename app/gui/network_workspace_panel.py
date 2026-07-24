@@ -69,12 +69,12 @@ class NetworkWorkspacePanel(ctk.CTkFrame):
     def toggle_pause(self):self.ingestor.paused=not self.ingestor.paused;self.refresh()
     def clear_events(self):self.event_view.delete("1.0","end")
     def restore_all(self):
-        if self.confirm("Restore SUS-ADB Network Changes","Restore only Network Workspace-owned proxy and mapping changes?"):self._run(lambda:self.proxy.restore_all(True),lambda r:self.refresh())
+        if self.confirm("Restore SUS Companion Network Changes","Restore only Network Workspace-owned proxy and mapping changes?"):self._run(lambda:self.proxy.restore_all(True),lambda r:self.refresh())
     def refresh_current(self):self.refresh()
     def refresh(self):
         self.status.configure(text=f"Device: {getattr(self.device,'serial','None')} · Target: {getattr(self.target,'identifier','None')} · Proxy changes: {len(self.proxy.proxy_manager.owned_changes())} · Capture: {self.capture.state.value} · Events: {len(self.ingestor.events)} · Dropped: {self.ingestor.dropped}")
         self._show(self.overview,"Host readiness is diagnostic only.\nProxy configured: device state only\nProxy reachable: diagnose the explicit listener\nCertificate trusted: manual verification required\nTLS pinning bypassed: never automatic\n\n"+self.proxy.proxy_manager.guidance())
-        self._show(self.restore_view,"\n\n".join(getattr(x,"display_label",str(x)) for x in self.proxy.proxy_manager.owned_changes()) or "No unresolved SUS-ADB network changes.")
+        self._show(self.restore_view,"\n\n".join(getattr(x,"display_label",str(x)) for x in self.proxy.proxy_manager.owned_changes()) or "No unresolved SUS Companion network changes.")
     def _show(self,w,text):w.delete("1.0","end");w.insert("1.0",str(text or ""))
     def _result(self,w,r):self._show(w,str(getattr(r,"value",None)) if getattr(r,"ok",False) else getattr(r,"error",r));self.refresh()
     def cleanup(self):self.capture.shutdown();self.ingestor.close()

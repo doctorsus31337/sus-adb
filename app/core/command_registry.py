@@ -1,4 +1,4 @@
-"""Single source of truth for commands shown by SUS-ADB."""
+"""Single source of truth for commands shown by SUS Companion."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class CommandSpec:
 
 class CommandRegistry:
     COMMANDS: dict[str, tuple[CommandSpec, ...]] = {
-        "SUS-ADB": (
+        "SUS COMPANION": (
             CommandSpec("help", "Show this command reference"),
             CommandSpec("clear", "Clear the integrated console"),
             CommandSpec("stop", "Stop the currently running terminal command"),
@@ -48,12 +48,12 @@ class CommandRegistry:
 
     @classmethod
     def render_text(cls) -> str:
-        lines = ["SUS-ADB QUICK COMMANDS", ""]
+        lines = ["SUS COMPANION QUICK COMMANDS", ""]
         for group_name, commands in cls.COMMANDS.items():
             lines.append(f"=== {group_name} ===")
             for spec in commands:
                 lines.append(spec.command)
                 lines.append(f"  {spec.description}")
             lines.append("")
-        lines.extend(("Prompt: sus-adb >", "", "⚔ Hack the Castle ⚔"))
+        lines.extend(("Prompt: sus-companion >", "Legacy CLI: sus-adb", "", "⚔ Hack the Castle ⚔"))
         return "\n".join(lines)

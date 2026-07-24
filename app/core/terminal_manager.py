@@ -14,7 +14,7 @@ from app.core.host_tool_resolver import HostToolResolver
 
 
 class TerminalManager:
-    PROMPT = "sus-adb > "
+    PROMPT = "sus-companion > "
 
     def __init__(
         self,

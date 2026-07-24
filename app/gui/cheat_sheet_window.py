@@ -3,6 +3,7 @@
 import customtkinter as ctk
 
 from app.core.command_registry import CommandRegistry
+from app.core.app_metadata import METADATA
 
 
 class CheatSheetWindow(ctk.CTkToplevel):
@@ -14,7 +15,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
         self.parent = parent
         self.theme = theme
 
-        self.title("SUS-ADB Quick Commands")
+        self.title(f"{METADATA.application_name} Quick Commands")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
         self.configure(fg_color=theme["bg"])

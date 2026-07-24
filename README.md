@@ -1,6 +1,8 @@
-# SUS-ADB Companion 1.0.0-rc.1
+# SUS Companion 1.0.0-rc.1
 
-SUS-ADB is a local-first Android reverse-engineering and authorized security-assessment workstation for Linux and Windows. Use it only for devices and applications you own or have explicit permission to test.
+**Android Security & Recovery Workstation**
+
+SUS Companion is a local-first Android reverse-engineering, authorized security-assessment, and recovery workstation for Linux and Windows. Use it only for devices and applications you own or have explicit permission to test.
 
 ## Install and run
 
@@ -14,8 +16,8 @@ python main.py
 
 ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/proxy tools, and external terminals are optional and diagnosed without automatic installation. Run `python main.py --diagnostics` for local readiness, `--version` for version output, or `--self-test` for packaged-resource/configuration validation.
 
-SUS-ADB includes Console, Instrumentation, Script Studio, and an authorized Pentest workspace with ADB, Runtime, Network, Storage, APK, Findings/Reports, and local Plugin Manager sections. Script Studio includes the local Script Library and import, edit, validate, and explicit load workflows. RC1 does not bundle a reviewed core curated script pack. The disabled hello example plugin includes a harmless demonstration asset; it does not load automatically. User-authored and third-party scripts execute only after explicit review and approval, and private/local Script Studio files are not release-package inputs.
+SUS Companion shows a responsive local splash while constructing the Console shell. Instrumentation, Script Studio, Pentest, Plugin Manager, and Pentest's operational sections are built only on first explicit access. Script Studio includes the local Script Library and import, edit, validate, and explicit load workflows. Official addons and third-party code remain inactive until their separate lifecycle approvals are completed.
 
-Configuration and logs use the user-local platform configuration directory. Cases and evidence are sensitive local data; back them up securely. SUS-ADB has no telemetry or automatic upload.
+The established `sus-adb` command and user-local storage directory remain supported; packaged builds prefer `sus-companion` and include a lightweight compatibility launcher. Existing configuration, cases, workspaces, plugin IDs, and trust records remain compatible. Cases and evidence are sensitive local data; back them up securely. SUS Companion has no telemetry or automatic upload.
 
-See [installation](docs/installation.md), [quick start](docs/quick-start.md), [user guide](docs/user-guide.md), [privacy/security](docs/privacy-security.md), and [testing](docs/testing.md).
+See [installation](docs/installation.md), [responsive startup](docs/startup.md), [quick start](docs/quick-start.md), [user guide](docs/user-guide.md), [privacy/security](docs/privacy-security.md), and [testing](docs/testing.md).

@@ -10,7 +10,7 @@ def _json(value: Any) -> str:
 
 
 def _header(kind: str, metadata: dict[str, Any]) -> str:
-    return "// SUS-ADB Runtime Explorer\n// Kind: " + kind + "\n// Metadata: " + _json(metadata) + "\n'use strict';\n"
+    return "// SUS Companion Runtime Explorer\n// Kind: " + kind + "\n// Metadata: " + _json(metadata) + "\n'use strict';\n"
 
 
 def readiness_probe() -> str:
