@@ -7,7 +7,7 @@ class Session:
  def permits(self,value):return self.allowed and value in {"sensitive-data-inspection","storage-inspection"}
 class T(unittest.TestCase):
  def test_states_presets_and_private_gate(self):
-  self.assertEqual(len(M.public_paths()),6);self.assertIn("authorization",M.classify_access("unauthorized"));self.assertIn("Recovery ADB",M.classify_access("recovery",True));self.assertIn("wipe data",M.classify_access("bootloader"));self.assertFalse(M.private_path_allowed("/data/data/app",False,Session(),True));self.assertFalse(M.private_path_allowed("/data/data/app",True,Session(False),True));self.assertTrue(M.private_path_allowed("/data/data/app",True,Session(),True))
+  self.assertEqual(len(M.public_paths()),10);self.assertIn("/sdcard/Android/media",M.public_paths());self.assertIn("authorization",M.classify_access("unauthorized"));self.assertIn("Recovery ADB",M.classify_access("recovery",True));self.assertIn("wipe data",M.classify_access("bootloader"));self.assertFalse(M.private_path_allowed("/data/data/app",False,Session(),True));self.assertFalse(M.private_path_allowed("/data/data/app",True,Session(False),True));self.assertTrue(M.private_path_allowed("/data/data/app",True,Session(),True))
  def test_copy_limits_duplicates_resume_cancel_hash_and_manifest(self):
   records=[("/sdcard/DCIM/a.jpg",b"abc","1"),("/sdcard/DCIM/b.jpg",b"defg","2")]
   with tempfile.TemporaryDirectory() as d:

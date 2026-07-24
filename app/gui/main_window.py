@@ -176,7 +176,7 @@ class SusADBWindow(ctk.CTk):
         )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.addons_center=None
-        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device)
+        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device,{"device-recovery":self._build_device_recovery_workspace})
         self.first_run_dialog = None
         self.crash_dialog = None
         self.instrumentation_panel = None
@@ -187,6 +187,12 @@ class SusADBWindow(ctk.CTk):
         self._device_refresh_active = False
         self._diagnostics_loading = False
         self._publish_host_state()
+
+    def _build_device_recovery_workspace(self,parent):
+        from app.core.device_recovery_service import ADBRecoveryBackend,DeviceRecoveryService
+        from app.gui.device_recovery_panel import DeviceRecoveryPanel
+        service=DeviceRecoveryService(ADBRecoveryBackend(self.devices.adb),selected_serial_provider=lambda:self.devices.selected_serial)
+        return DeviceRecoveryPanel(parent,self.theme,service,ui_dispatch=self.call_on_ui)
 
     def _initialize_shell(self):
 
@@ -575,9 +581,9 @@ class SusADBWindow(ctk.CTk):
 
     def _publish_host_state(self,lifecycle="ready"):
         if not hasattr(self,"host_state"):return
-        devices=tuple(DeviceState(device.serial,device.model,device.manufacturer,device.state,device.display_name) for device in self.devices.all()) if hasattr(self,"devices") else ()
+        devices=tuple(DeviceState(device.serial,device.model,device.manufacturer,device.state,device.display_name,bool(device.root)) for device in self.devices.all()) if hasattr(self,"devices") else ()
         selected=self.devices.selected if hasattr(self,"devices") else None
-        selected_state=DeviceState(selected.serial,selected.model,selected.manufacturer,selected.state,selected.display_name) if selected else None
+        selected_state=DeviceState(selected.serial,selected.model,selected.manufacturer,selected.state,selected.display_name,bool(selected.root)) if selected else None
         target=getattr(self,"selected_target",None)
         target_state=TargetState(getattr(target,"name",""),getattr(target,"identifier","") or "",getattr(target,"pid",None),getattr(getattr(target,"target_type",None),"value","")) if target else None
         session=getattr(getattr(self,"pentest_workspace",None),"session",None);scope=getattr(session,"scope",None)

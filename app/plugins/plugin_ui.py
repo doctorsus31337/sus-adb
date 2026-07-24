@@ -21,7 +21,7 @@ class PluginPanelSpec:
 class AddonWindowSpec:
     contribution_id:str;title:str;panel:PluginPanelSpec;preferred_mode:AddonUIMode=AddonUIMode.WINDOW
     default_width:int=1080;default_height:int=720;minimum_width:int=820;minimum_height:int=560
-    singleton:bool=True;embedded_summary:bool=False;icon:str="⚙";status:Mapping[str,str]=field(default_factory=dict);device_selector:bool=False
+    singleton:bool=True;embedded_summary:bool=False;icon:str="⚙";status:Mapping[str,str]=field(default_factory=dict);device_selector:bool=False;workspace_kind:str=""
     def __post_init__(self):
         object.__setattr__(self,"preferred_mode",AddonUIMode(self.preferred_mode));object.__setattr__(self,"status",dict(self.status))
 

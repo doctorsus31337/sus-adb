@@ -19,6 +19,7 @@ class DeviceState:
     manufacturer: str = "Unknown"
     state: str = "unknown"
     display_name: str = ""
+    root_available: bool = False
 
     @property
     def authorized(self) -> bool:
@@ -37,6 +38,7 @@ class DeviceState:
             "display_name": self.display_name or self.model or self.serial,
             "authorized": self.authorized,
             "usable": self.usable,
+            "root_available": self.root_available,
         }
 
 
