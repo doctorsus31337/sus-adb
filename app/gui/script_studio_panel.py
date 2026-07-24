@@ -14,7 +14,13 @@ from app.core.frida_runtime_manager import FridaRuntimeManager, RuntimeResult
 from app.core.frida_target import FridaTarget
 from app.core.script_descriptor import ScriptDescriptor, ScriptKind, TrustState
 from app.core.script_event import ScriptEvent
+from app.core.script_event import ScriptEventType
 from app.core.script_library import ScriptLibrary
+from app.core.script_operation import (
+    OperationState,
+    ScriptBadge,
+    ScriptOperationModel,
+)
 from app.core.script_profile import FailurePolicy, ScriptProfile, ScriptStage
 from app.core.script_profile_runner import ScriptProfileRunner
 from app.core.script_validator import ScriptValidator
@@ -22,12 +28,47 @@ from app.core.worker import BackgroundWorker
 
 
 class ScriptStudioPanel(ctk.CTkFrame):
-    def __init__(self, parent, theme, library: ScriptLibrary, runtime: FridaRuntimeManager, validator: ScriptValidator, log_callback, confirm_callback=None, objection_recipes=None):
+    OPERATION_BUTTONS = frozenset(
+        (
+            "Save", "Validate", "Load", "Reload", "Unload",
+            "Load Selected", "Reload Selected", "Unload Selected",
+            "Attach", "Spawn", "Post Message", "List Exports", "Call RPC",
+        )
+    )
+
+    def __init__(
+        self,
+        parent,
+        theme,
+        library: ScriptLibrary,
+        runtime: FridaRuntimeManager,
+        validator: ScriptValidator,
+        log_callback,
+        confirm_callback=None,
+        objection_recipes=None,
+        *,
+        show_advisories=False,
+        setting_callback=None,
+        launch_session_callback=None,
+        open_folder_callback=None,
+        ui_dispatch=None,
+    ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme, self.library, self.runtime, self.validator, self.log = theme, library, runtime, validator, log_callback
         self.confirm = confirm_callback or (lambda title, text: messagebox.askyesno(title, text, parent=self.winfo_toplevel()))
         self.objection_recipes = objection_recipes
         self.prepared_recipe = None
+        self.setting_callback = setting_callback
+        self.launch_session_callback = launch_session_callback
+        self.open_folder_callback = open_folder_callback
+        self.dispatch = ui_dispatch or (
+            lambda callback, *args: self.after(0, callback, *args)
+        )
+        self.operation_model = ScriptOperationModel()
+        self.operation_buttons = []
+        self.show_advisories = ctk.BooleanVar(value=bool(show_advisories))
+        self._validation_result = None
+        self._details_visible = False
         self.device: Device | None = None; self.target: FridaTarget | None = None
         self.descriptors: tuple[ScriptDescriptor, ...] = (); self.selected: ScriptDescriptor | None = None
         self.events: list[ScriptEvent] = []; self.display_paused = False; self.editor_dirty = False
@@ -40,7 +81,10 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def _button(self, parent, text, command, row=0, column=0):
         button = ctk.CTkButton(parent, text=text, command=command, fg_color=self.theme["red"], hover_color=self.theme["red_hover"], text_color=self.theme["text"], border_width=1, border_color=self.theme["gold_dark"], height=30)
-        button.grid(row=row, column=column, sticky="ew", padx=3, pady=3); return button
+        button.grid(row=row, column=column, sticky="ew", padx=3, pady=3)
+        if text in self.OPERATION_BUTTONS:
+            self.operation_buttons.append(button)
+        return button
 
     def _build_header(self):
         header = ctk.CTkFrame(self, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["gold_dark"], corner_radius=9)
@@ -90,19 +134,81 @@ class ScriptStudioPanel(ctk.CTkFrame):
         for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Untrust", self.toggle_trust), ("Open Editor", lambda: self.workspace.set("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
 
     def _build_editor(self):
-        frame = self._panel(self.tabs["Editor"], "Agent Editor"); frame.grid_rowconfigure(2, weight=1)
+        frame = self._panel(self.tabs["Editor"], "Agent Editor"); frame.grid_rowconfigure(3, weight=1)
         bar = ctk.CTkFrame(frame, fg_color="transparent"); bar.grid(row=1, column=0, sticky="ew", padx=8); bar.grid_columnconfigure(0, weight=1)
         self.editor_name = self._entry(bar, "Select a library item"); self.editor_name.grid(row=0, column=0, sticky="ew", padx=3)
         self.unsaved_label = ctk.CTkLabel(bar, text="Saved", text_color=self.theme["muted"]); self.unsaved_label.grid(row=0, column=1, padx=7)
         self.find_entry = self._entry(bar, "Find text"); self.find_entry.grid(row=0, column=2, padx=3); self._button(bar, "Find", self.find_text, 0, 3)
-        self.editor = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 13), border_width=1, border_color=self.theme["border"], wrap="none", scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.editor.grid(row=2, column=0, sticky="nsew", padx=10, pady=5); self.editor.bind("<<Modified>>", self._editor_modified); self.editor.bind("<KeyRelease>", self._cursor_update)
+        path_bar = ctk.CTkFrame(frame, fg_color="transparent")
+        path_bar.grid(row=2, column=0, sticky="ew", padx=8)
+        path_bar.grid_columnconfigure(0, weight=1)
+        self.path_label = ctk.CTkLabel(path_bar, text="Library path: None", text_color=self.theme["muted"], anchor="w")
+        self.path_label.grid(row=0, column=0, sticky="ew", padx=3)
+        self._button(path_bar, "Copy Path", self.copy_script_path, 0, 1)
+        self._button(path_bar, "Open Containing Folder", self.open_containing_folder, 0, 2)
+        self._button(path_bar, "Launch in Frida REPL", self.launch_in_frida_repl, 0, 3)
+        self._button(path_bar, "Launch Dedicated Session", self.launch_in_frida_repl, 0, 4)
+        self._button(path_bar, "Advanced Path", self.toggle_advanced_path, 0, 5)
+        self.absolute_path_label = ctk.CTkLabel(
+            path_bar, text="", text_color=self.theme["muted"], anchor="w",
+            font=("Consolas", 10),
+        )
+        self.absolute_path_label.grid(row=1, column=0, columnspan=6, sticky="ew", padx=3)
+        self.absolute_path_label.grid_remove()
+        self.editor = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 13), border_width=1, border_color=self.theme["border"], wrap="none", scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.editor.grid(row=3, column=0, sticky="nsew", padx=10, pady=5); self.editor.bind("<<Modified>>", self._editor_modified); self.editor.bind("<KeyRelease>", self._cursor_update)
+        self.operation_notice = ctk.CTkFrame(
+            frame, fg_color=self.theme["panel_alt"], border_width=1,
+            border_color=self.theme["gold_dark"],
+        )
+        self.operation_notice.grid(row=4, column=0, sticky="ew", padx=10, pady=(2, 4))
+        self.operation_notice.grid_columnconfigure(0, weight=1)
+        self.operation_message = ctk.CTkLabel(
+            self.operation_notice, text="Ready.", text_color=self.theme["gold"],
+            justify="left", anchor="w", wraplength=760,
+        )
+        self.operation_message.grid(row=0, column=0, sticky="ew", padx=9, pady=(6, 1))
+        self.operation_context = ctk.CTkLabel(
+            self.operation_notice, text="", text_color=self.theme["muted"],
+            justify="left", anchor="w", wraplength=800,
+        )
+        self.operation_context.grid(row=1, column=0, sticky="ew", padx=9, pady=(1, 6))
+        self.operation_progress = ctk.CTkProgressBar(
+            self.operation_notice, mode="indeterminate",
+            progress_color=self.theme["red"], fg_color=self.theme["border"],
+        )
+        self.operation_progress.grid(row=2, column=0, sticky="ew", padx=9, pady=(0, 6))
+        operation_actions = ctk.CTkFrame(self.operation_notice, fg_color="transparent")
+        operation_actions.grid(row=0, column=1, rowspan=3, sticky="e", padx=5)
+        self.jump_line_button = self._button(operation_actions, "Jump to Line", self.jump_to_error_line, 0, 0)
+        self.copy_error_button = self._button(operation_actions, "Copy Error", self.copy_operation_error, 1, 0)
+        self.technical_button = self._button(operation_actions, "Technical Details", self.toggle_technical_details, 2, 0)
+        self.suggestions_button = self._button(operation_actions, "Compatibility Suggestions", self.show_compatibility_suggestions, 3, 0)
+        self.operation_details = ctk.CTkTextbox(
+            self.operation_notice, height=100, fg_color=self.theme["terminal_bg"],
+            text_color=self.theme["terminal_text"], border_width=1,
+            border_color=self.theme["border"], wrap="word",
+        )
+        self.operation_details.grid(row=3, column=0, columnspan=2, sticky="ew", padx=9, pady=(0, 7))
+        self.operation_details.grid_remove()
+        self.operation_progress.grid_remove()
         self.validation_notice = ctk.CTkFrame(frame, fg_color=self.theme["panel_alt"], border_width=1, border_color=self.theme["gold_dark"])
-        self.validation_notice.grid(row=3, column=0, sticky="ew", padx=10, pady=(2, 4)); self.validation_notice.grid_columnconfigure(0, weight=1)
+        self.validation_notice.grid(row=5, column=0, sticky="ew", padx=10, pady=(2, 4)); self.validation_notice.grid_columnconfigure(0, weight=1)
         self.validation_message = ctk.CTkLabel(self.validation_notice, text="", text_color=self.theme["gold"], justify="left", anchor="w", wraplength=820)
         self.validation_message.grid(row=0, column=0, sticky="ew", padx=9, pady=7)
+        self.advisory_toggle = ctk.CTkCheckBox(
+            self.validation_notice,
+            text="Show static-analysis advisories",
+            variable=self.show_advisories,
+            command=self._advisory_setting_changed,
+            fg_color=self.theme["red"],
+            hover_color=self.theme["red_hover"],
+            border_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+        )
+        self.advisory_toggle.grid(row=1, column=0, sticky="w", padx=9, pady=(0, 7))
         self.validation_dismiss = self._button(self.validation_notice, "Dismiss", self.dismiss_validation, 0, 1)
         self.validation_notice.grid_remove()
-        bottom = ctk.CTkFrame(frame, fg_color="transparent"); bottom.grid(row=4, column=0, sticky="ew", padx=7, pady=(2, 7))
+        bottom = ctk.CTkFrame(frame, fg_color="transparent"); bottom.grid(row=6, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(5): bottom.grid_columnconfigure(i, weight=1)
         self.cursor_label = ctk.CTkLabel(bottom, text="Line 1, Column 0", text_color=self.theme["muted"]); self.cursor_label.grid(row=0, column=0, columnspan=5, sticky="w")
         for i, (text, callback) in enumerate((("Save", self.save_editor), ("Save As", self.save_as), ("Revert", self.open_selected), ("Validate", self.validate_selected), ("Load", self.load_selected), ("Reload", self.reload_selected), ("Unload", self.unload_selected), ("Prepare Recipe", self.prepare_recipe), ("Launch Recipe", self.launch_recipe))): self._button(bottom, text, callback, 1 + i // 5, i % 5)
@@ -180,13 +286,21 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def _render_details(self):
         item = self.selected; self.library_details.delete("1.0", "end")
-        if item: self.library_details.insert("1.0", f"Name: {item.name}\nKind: {item.kind.value}\nTrust: {item.trust.value}\nClassification: {item.classification}\nPath: {item.path}\nSHA-256: {item.sha256}\nTags: {', '.join(item.tags) or 'None'}\nCaution: {item.caution or 'None'}\n\n{item.description}")
+        if item: self.library_details.insert("1.0", f"Name: {item.name}\nKind: {item.kind.value}\nTrust: {item.trust.value}\nClassification: {item.classification}\nLibrary path: {self._relative_script_path(item)}\nSHA-256: {item.sha256}\nTags: {', '.join(item.tags) or 'None'}\nCaution: {item.caution or 'None'}\n\n{item.description}")
+        self._sync_path_display()
 
     def open_selected(self):
         if not self.selected: return
         result = self.library.load_source(self.selected)
         if not result.ok: self._error(result.error); return
-        self.editor.delete("1.0", "end"); self.editor.insert("1.0", result.text or ""); self.editor_name.delete(0, "end"); self.editor_name.insert(0, self.selected.name); self.editor.edit_modified(False); self.editor_dirty = False; self.unsaved_label.configure(text="Saved", text_color=self.theme["muted"])
+        self.editor.delete("1.0", "end"); self.editor.insert("1.0", result.text or ""); self.editor_name.delete(0, "end"); self.editor_name.insert(0, self.selected.name); self.editor.edit_modified(False); self.editor_dirty = False
+        self.operation_model.badge = (
+            ScriptBadge.LOADED
+            if self.selected.script_id in self.runtime.loaded
+            else ScriptBadge.SAVED
+        )
+        self._sync_badge()
+        self._sync_path_display()
 
     def new_script(self):
         name = simpledialog.askstring("New Script", "Script name:", parent=self.winfo_toplevel())
@@ -223,14 +337,32 @@ class ScriptStudioPanel(ctk.CTkFrame):
         if result.ok: self.selected = updated; self.refresh_library(); self._render_details()
 
     def save_editor(self):
-        if not self.selected: return
+        if not self.selected:
+            self._error("Select a script before saving.")
+            return
+        if not self._begin_operation("Save", "Writing local library source"):
+            return
         source = self.editor.get("1.0", "end-1c")
         validation = self.validator.validate(self.selected, source)
         self._show_validation(validation)
-        if not validation.valid: return
+        if not validation.valid:
+            self._operation_failed(
+                "Validation failed: " + "; ".join(validation.errors)
+            )
+            return
+        loaded = self.selected.script_id in self.runtime.loaded
         result = self.library.save_source(self.selected, source)
-        if result.ok: self.selected = result.descriptor; self.editor_dirty = False; self.unsaved_label.configure(text="Saved", text_color=self.theme["muted"]); self.refresh_library()
-        else: self._error(result.error)
+        if result.ok:
+            self.selected = result.descriptor
+            self.editor_dirty = False
+            self.operation_model.saved(loaded)
+            self._operation_succeeded(
+                "Script saved successfully."
+                + (" Reload is required to apply the edit." if loaded else "")
+            )
+            self.refresh_library()
+        else:
+            self._operation_failed(result.error or "Save failed.")
 
     def save_as(self):
         name = self.editor_name.get().strip() or "agent-copy"
@@ -239,17 +371,54 @@ class ScriptStudioPanel(ctk.CTkFrame):
         else: self._error(result.error)
 
     def validate_selected(self):
-        if not self.selected: return
-        self._show_validation(self.validator.validate(self.selected, self.editor.get("1.0", "end-1c")))
+        if not self.selected:
+            self._error("Select a script before validation.")
+            return
+        if not self._begin_operation("Validate", "Static validation"):
+            return
+        result = self.validator.validate(
+            self.selected, self.editor.get("1.0", "end-1c")
+        )
+        self._show_validation(result)
+        if result.valid:
+            self._operation_succeeded("Validation completed.")
+        else:
+            self._operation_failed(
+                "Validation failed: " + "; ".join(result.errors)
+            )
 
     def _show_validation(self, result):
+        self._validation_result = result
+        presentation = self.operation_model.present_validation(
+            result,
+            show_advisories=(
+                self.show_advisories.get()
+                and bool(self.selected)
+                and self.selected.trust is TrustState.UNTRUSTED
+            ),
+        )
         lines = []
-        if result.errors: lines.append("Blocking errors:\n" + "\n".join(f"• {item}" for item in result.errors))
-        if result.warnings: lines.append("Advisory warnings (saving and editing remain available):\n" + "\n".join(f"• {item}" for item in result.warnings))
-        if not lines: lines.append("Validation passed with no warnings.")
+        if presentation.errors: lines.append("Blocking errors:\n" + "\n".join(f"• {item}" for item in presentation.errors))
+        if presentation.warnings: lines.append("Warnings:\n" + "\n".join(f"• {item}" for item in presentation.warnings))
+        if presentation.suggestions:
+            lines.append(
+                f"{len(presentation.suggestions)} compatibility suggestion(s) "
+                "available under Analyze → Compatibility Suggestions."
+            )
+        if presentation.advisories:
+            lines.append("Static-analysis advisories:\n" + "\n".join(f"• {item}" for item in presentation.advisories))
+        if not lines: lines.append("Validation passed.")
         text = "\n\n".join(lines)
-        self.validation_message.configure(text=text, text_color=self.theme["error"] if result.errors else self.theme["gold"] if result.warnings else self.theme["success"])
-        self.validation_notice.grid(); self.log(f"[SCRIPT VALIDATION] {text}")
+        self.validation_message.configure(text=text, text_color=self.theme["error"] if presentation.errors else self.theme["gold"] if presentation.warnings else self.theme["success"])
+        if presentation.errors or presentation.warnings or presentation.suggestions or presentation.advisories:
+            self.validation_notice.grid()
+        else:
+            self.validation_notice.grid_remove()
+        self.log(
+            f"[SCRIPT VALIDATION] {len(presentation.errors)} error(s), "
+            f"{len(presentation.warnings)} warning(s), "
+            f"{len(presentation.suggestions)} suggestion(s)."
+        )
 
     def dismiss_validation(self):
         self.validation_notice.grid_remove()
@@ -261,6 +430,21 @@ class ScriptStudioPanel(ctk.CTkFrame):
         return {"confirm_untrusted": untrusted, "confirm_state_change": changing}
 
     def load_selected(self):
+        if self.selected and self.selected.script_id in self.runtime.loaded:
+            guidance = self.operation_model.load_guidance(
+                True, self.editor_dirty
+            )
+            self.operation_model.loaded()
+            self.operation_model.begin(
+                "Load",
+                script=self.selected.name,
+                target=self._target_text(),
+                device=self._device_text(),
+                stage="Already loaded",
+            )
+            self.operation_model.succeed(guidance, ScriptBadge.LOADED)
+            self._render_operation()
+            return
         confirmations = self._confirm_script()
         if confirmations is not None: self._run("Load script", lambda: self.runtime.load_script(self.selected, **confirmations), self._show_result)
 
@@ -310,9 +494,15 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def _show_result(self, result):
         results = result if isinstance(result, tuple) else (result,); errors = [item.error for item in results if isinstance(item, RuntimeResult) and not item.ok]
-        if errors: self._error("; ".join(error for error in errors if error))
+        if errors: self._operation_failed("; ".join(error for error in errors if error))
         warnings = [item.warning for item in results if isinstance(item, RuntimeResult) and item.warning]
-        if warnings: self.warning_label.configure(text="; ".join(warnings), text_color=self.theme["error"])
+        if warnings:
+            warning = "; ".join(warnings)
+            if "already loaded" in warning.casefold():
+                warning = self.operation_model.load_guidance(True, self.editor_dirty)
+            if self.operation_model.current.state is OperationState.RUNNING:
+                self._operation_succeeded(warning)
+                self.operation_message.configure(text_color=self.theme["gold"])
         self._sync_header(); self._render_loaded(); self._update_actions()
 
     def _render_loaded(self):
@@ -337,8 +527,25 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def _rpc_output(self, value): self.rpc_result.delete("1.0", "end"); self.rpc_result.insert("1.0", json.dumps(value, indent=2, default=str)); self._sync_header()
 
-    def queue_event(self, event): self.after(0, self._accept_event, event)
-    def _accept_event(self, event): self.events.append(event); self.event_status.configure(text=f"{len(self.events)} events"); self.log(f"[SCRIPT EVENT] {event.display_text}"); self.render_events()
+    def queue_event(self, event): self.dispatch(self._accept_event, event)
+    def _accept_event(self, event):
+        self.events.append(event); self.event_status.configure(text=f"{len(self.events)} events"); self.log(f"[SCRIPT EVENT] {event.display_text}"); self.render_events()
+        if event.event_type is ScriptEventType.ERROR:
+            self.operation_model.begin(
+                "Runtime error",
+                script=event.script_name or (self.selected.name if self.selected else ""),
+                target=self._target_text(),
+                device=self._device_text(),
+                stage="Runtime",
+            )
+            self.operation_model.fail(
+                event.summary,
+                technical_details=event.stack_trace or event.display_text,
+                line=event.source_line,
+            )
+            self._set_operation_busy(False)
+            self._render_operation()
+            self.workspace.set("Messages")
     def render_events(self):
         if self.display_paused: return
         kind = self.event_filter.get(); script = self.script_filter.get().strip().casefold(); shown = [event for event in self.events if (kind == "All" or event.event_type.value == kind) and (not script or script in (event.script_name or "").casefold())]
@@ -409,8 +616,265 @@ class ScriptStudioPanel(ctk.CTkFrame):
     def find_text(self):
         index = self.editor.search(self.find_entry.get(), self.editor.index("insert"), stopindex="end", nocase=True)
         if index: self.editor.mark_set("insert", index); self.editor.see(index)
+
+    def _relative_script_path(self, descriptor=None):
+        item = descriptor or self.selected
+        if not item:
+            return "None"
+        try:
+            return Path(item.path).resolve().relative_to(self.library.root).as_posix()
+        except (OSError, ValueError):
+            return Path(item.path).name
+
+    def _sync_path_display(self):
+        if not hasattr(self, "path_label"):
+            return
+        self.path_label.configure(
+            text=f"Library path: {self._relative_script_path()}"
+        )
+        self.absolute_path_label.configure(
+            text=(
+                f"Advanced absolute path: {Path(self.selected.path).resolve()}"
+                if self.selected else ""
+            )
+        )
+
+    def copy_script_path(self):
+        if not self.selected:
+            self._error("Select a script before copying its path.")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(str(Path(self.selected.path).resolve()))
+        self._operation_message_only("Script path copied.")
+
+    def open_containing_folder(self):
+        if not self.selected:
+            self._error("Select a script before opening its folder.")
+            return
+        if not self.open_folder_callback:
+            self._error("The host folder opener is unavailable.")
+            return
+        opened = self.open_folder_callback(Path(self.selected.path).resolve().parent)
+        if opened is False:
+            self._error("The host could not open the Script Studio library folder.")
+        else:
+            self._operation_message_only("Opened the Script Studio library folder.")
+
+    def launch_in_frida_repl(self):
+        if not self.selected or self.selected.kind is not ScriptKind.FRIDA:
+            self._error("Select a Frida script first.")
+            return
+        if not self.launch_session_callback:
+            self._error("Dedicated Frida sessions are unavailable.")
+            return
+        self.launch_session_callback(self.selected)
+        self._operation_message_only(
+            "Selected script sent to the dedicated Frida session workflow."
+        )
+
+    def toggle_advanced_path(self):
+        if self.absolute_path_label.winfo_ismapped():
+            self.absolute_path_label.grid_remove()
+        else:
+            self._sync_path_display()
+            self.absolute_path_label.grid()
+
+    def _advisory_setting_changed(self):
+        value = bool(self.show_advisories.get())
+        if self.setting_callback:
+            self.setting_callback(value)
+        if self._validation_result is not None:
+            self._show_validation(self._validation_result)
+
+    def show_compatibility_suggestions(self):
+        result = self._validation_result
+        suggestions = tuple(getattr(result, "suggestions", ())) if result else ()
+        text = (
+            "Analyze → Compatibility Suggestions\n\n"
+            + "\n".join(f"• {item}" for item in suggestions)
+            if suggestions
+            else "No compatibility suggestions are available for the current validation."
+        )
+        self.validation_message.configure(text=text, text_color=self.theme["gold"])
+        self.validation_notice.grid()
+
+    def jump_to_error_line(self):
+        line = self.operation_model.current.error_line
+        if not line:
+            return
+        index = f"{line}.0"
+        self.workspace.set("Editor")
+        self.editor.mark_set("insert", index)
+        self.editor.tag_remove("sel", "1.0", "end")
+        self.editor.tag_add("sel", index, f"{line}.end")
+        self.editor.see(index)
+        self.editor.focus_set()
+
+    def copy_operation_error(self):
+        operation = self.operation_model.current
+        text = operation.technical_details or operation.message
+        if text:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+
+    def toggle_technical_details(self):
+        details = self.operation_model.current.technical_details
+        if not details:
+            return
+        if self.operation_details.winfo_ismapped():
+            self.operation_details.grid_remove()
+            self._details_visible = False
+            return
+        self.operation_details.delete("1.0", "end")
+        self.operation_details.insert("1.0", details)
+        self.operation_details.grid()
+        self._details_visible = True
+
+    def _target_text(self):
+        return (
+            (self.target.identifier or self.target.name)
+            if self.target else "None"
+        )
+
+    def _device_text(self):
+        return self.device.serial if self.device else "None"
+
+    def _begin_operation(self, title, stage=None):
+        stages = {
+            "Attach": "Connecting",
+            "Spawn": "Launching target",
+            "Load script": "Compiling",
+            "Reload script": "Unloading current script",
+            "Unload script": "Unloading",
+            "Post message": "Posting message",
+            "List RPC": "Reading exports",
+            "Call RPC": "Calling export",
+        }
+        started = self.operation_model.begin(
+            title,
+            script=self.selected.name if self.selected else "None",
+            target=self._target_text(),
+            device=self._device_text(),
+            stage=stage or stages.get(title, "Preparing"),
+        )
+        if not started:
+            self.log("[SCRIPT STUDIO] An operation is already active.")
+            return False
+        self._set_operation_busy(True)
+        self._render_operation()
+        return True
+
+    def _operation_succeeded(self, message):
+        title = self.operation_model.current.operation.casefold()
+        badge = None
+        if "reload" in title or "load script" in title:
+            badge = ScriptBadge.LOADED
+        elif "unload" in title:
+            badge = ScriptBadge.UNLOADED
+        self.operation_model.succeed(message, badge)
+        self._set_operation_busy(False)
+        self._render_operation()
+
+    def _operation_failed(self, message, technical_details=""):
+        if self.operation_model.current.state is not OperationState.RUNNING:
+            self.operation_model.begin(
+                "Operation",
+                script=self.selected.name if self.selected else "None",
+                target=self._target_text(),
+                device=self._device_text(),
+                stage="Failed",
+            )
+        self.operation_model.fail(
+            message or "Operation failed.",
+            technical_details=technical_details or message or "",
+        )
+        self._set_operation_busy(False)
+        self._render_operation()
+        self.log(f"[SCRIPT STUDIO ERROR] {message}")
+
+    def _operation_message_only(self, message):
+        if not self.operation_model.begin(
+            "Script Studio",
+            script=self.selected.name if self.selected else "None",
+            target=self._target_text(),
+            device=self._device_text(),
+            stage="Complete",
+        ):
+            return
+        self.operation_model.succeed(message)
+        self._render_operation()
+
+    def _set_operation_busy(self, busy):
+        for button in self.operation_buttons:
+            button.configure(state="disabled" if busy else "normal")
+        self._update_actions()
+
+    def _render_operation(self):
+        operation = self.operation_model.current
+        color = {
+            OperationState.ERROR: self.theme["error"],
+            OperationState.SUCCESS: self.theme["success"],
+            OperationState.RUNNING: self.theme["gold"],
+        }.get(operation.state, self.theme["muted"])
+        self.operation_message.configure(
+            text=operation.message or "Ready.", text_color=color
+        )
+        self.operation_context.configure(
+            text=(
+                f"Operation: {operation.operation or 'None'} · "
+                f"Script: {operation.script or 'None'} · "
+                f"Target: {operation.target or 'None'} · "
+                f"Device: {operation.device or 'None'}\n"
+                f"Stage: {operation.stage or 'Idle'} · "
+                f"Started: {operation.started_at or '—'}"
+            )
+        )
+        if operation.state is OperationState.RUNNING:
+            self.operation_progress.grid()
+            self.operation_progress.start()
+        else:
+            self.operation_progress.stop()
+            self.operation_progress.grid_remove()
+        self.jump_line_button.configure(
+            state="normal" if operation.error_line else "disabled"
+        )
+        self.copy_error_button.configure(
+            state="normal"
+            if operation.state is OperationState.ERROR else "disabled"
+        )
+        self.technical_button.configure(
+            state="normal" if operation.technical_details else "disabled"
+        )
+        suggestions = (
+            tuple(getattr(self._validation_result, "suggestions", ()))
+            if self._validation_result else ()
+        )
+        self.suggestions_button.configure(
+            state="normal" if suggestions else "disabled"
+        )
+        self._sync_badge()
+
+    def _sync_badge(self):
+        badge = self.operation_model.badge
+        color = (
+            self.theme["error"]
+            if badge in {ScriptBadge.UNSAVED, ScriptBadge.RELOAD_REQUIRED, ScriptBadge.ERROR}
+            else self.theme["success"]
+            if badge in {ScriptBadge.SAVED, ScriptBadge.LOADED}
+            else self.theme["muted"]
+        )
+        self.unsaved_label.configure(text=badge.value, text_color=color)
+
     def _editor_modified(self, _e):
-        if self.editor.edit_modified(): self.editor_dirty = True; self.unsaved_label.configure(text="Unsaved", text_color=self.theme["error"]); self.editor.edit_modified(False)
+        if self.editor.edit_modified():
+            self.editor_dirty = True
+            loaded = bool(
+                self.selected
+                and self.selected.script_id in self.runtime.loaded
+            )
+            self.operation_model.edited(loaded)
+            self._sync_badge()
+            self.editor.edit_modified(False)
     def _cursor_update(self, _e=None): line, column = self.editor.index("insert").split("."); self.cursor_label.configure(text=f"Line {line}, Column {column}")
     def _sync_header(self):
         available = self.runtime.adapter.availability(); info = available.value or {}
@@ -418,15 +882,48 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.header_labels["device"].configure(text=self.device.display_name if self.device else "None"); self.header_labels["target"].configure(text=(self.target.identifier or self.target.name) if self.target else "None"); self.header_labels["runtime"].configure(text=self.runtime.state.value); self.header_labels["python"].configure(text=info.get("version", "Missing") if available.ok else "Missing"); self.header_labels["server"].configure(text=diagnosis.server_version if diagnosis and diagnosis.server_version else "Unknown"); self.header_labels["versions"].configure(text="Mismatch" if self.runtime.version_warning else "Match" if diagnosis and diagnosis.versions_match else "Unknown"); self.header_labels["loaded"].configure(text=str(len(self.runtime.loaded)))
         self.warning_label.configure(text=(available.error if not available.ok else "Ready for an explicitly selected device and target."), text_color=self.theme["error"] if not available.ok else self.theme["gold"])
     def _update_actions(self):
-        ready = bool(self.device and self.device.connected and self.target); self.attach_button.configure(state="normal" if ready else "disabled"); self.spawn_button.configure(state="normal" if ready and self.target.application_identifier else "disabled"); active = self.runtime.session is not None; self.detach_button.configure(state="normal" if active else "disabled"); self.resume_button.configure(state="normal" if self.runtime.spawned_pid else "disabled")
+        busy = self.operation_model.busy
+        ready = bool(self.device and self.device.connected and self.target) and not busy; self.attach_button.configure(state="normal" if ready else "disabled"); self.spawn_button.configure(state="normal" if ready and self.target.application_identifier else "disabled"); active = self.runtime.session is not None and not busy; self.detach_button.configure(state="normal" if active else "disabled"); self.resume_button.configure(state="normal" if self.runtime.spawned_pid and not busy else "disabled")
     def _run(self, title, operation, callback):
+        if not self._begin_operation(title):
+            return
         self.log(f"[SCRIPT STUDIO] {title}...")
         def guarded():
             try: return True, operation()
             except Exception as exc: return False, exc
-        BackgroundWorker(guarded, callback=lambda result: self.after(0, self._finish, title, result, callback)).start()
+        BackgroundWorker(
+            guarded,
+            callback=lambda result: self.dispatch(
+                self._finish, title, result, callback
+            ),
+        ).start()
     def _finish(self, title, result, callback):
         ok, value = result
-        if not ok: self._error(f"{title}: {value}"); return
-        callback(value); self.log(f"[SCRIPT STUDIO] {title} complete.")
-    def _error(self, text): self.warning_label.configure(text=text or "Operation failed.", text_color=self.theme["error"]); self.log(f"[SCRIPT STUDIO ERROR] {text}")
+        if not ok:
+            self._operation_failed(f"{title}: {value}", str(value))
+            return
+        try:
+            callback(value)
+        except Exception as exc:
+            self._operation_failed(f"{title}: {exc}", str(exc))
+            return
+        if self.operation_model.current.state is OperationState.RUNNING:
+            messages = {
+                "Load script": "Script loaded successfully.",
+                "Reload script": "Script reloaded successfully.",
+                "Unload script": "Script unloaded successfully.",
+                "Attach": "Attached to the selected target.",
+                "Spawn": "Selected target started under Frida.",
+                "Post message": "Message posted successfully.",
+                "Call RPC": "RPC call completed successfully.",
+            }
+            self._operation_succeeded(
+                messages.get(title, f"{title} completed successfully.")
+            )
+        self.log(f"[SCRIPT STUDIO] {title} complete.")
+
+    def _error(self, text):
+        self.warning_label.configure(
+            text=text or "Operation failed.", text_color=self.theme["error"]
+        )
+        self._operation_failed(text or "Operation failed.")

@@ -597,6 +597,27 @@ class SessionsCenter(ctk.CTkToplevel):
         safe_focus(self.script_combo)
         self.refresh_previews()
 
+    def select_script(self, descriptor):
+        self._scan_scripts()
+        match = next(
+            (
+                item for item in self.descriptors
+                if item.script_id == descriptor.script_id
+            ),
+            None,
+        )
+        if match is not None:
+            self.script_combo.set(match.name)
+            self._browsed_script = ""
+        else:
+            self._browsed_script = str(Path(descriptor.path).resolve())
+            self.script_combo.configure(values=(descriptor.name,))
+            self.script_combo.set(descriptor.name)
+        self.tabs.set("Frida REPL")
+        self.refresh_previews()
+        self.deiconify()
+        self.lift()
+
     def copy_script_path(self):
         path = self._selected_script_path()
         if path:

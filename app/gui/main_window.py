@@ -6,6 +6,9 @@ import threading
 import sys
 import time
 import queue
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import customtkinter as ctk
@@ -406,7 +409,54 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_scripts(self, parent):
         from app.gui.script_studio_panel import ScriptStudioPanel
-        return ScriptStudioPanel(parent,self.theme,self.script_library,self.frida_runtime,self.script_validator,self.log,objection_recipes=self.objection_recipes)
+        return ScriptStudioPanel(
+            parent,self.theme,self.script_library,self.frida_runtime,
+            self.script_validator,self.log,
+            objection_recipes=self.objection_recipes,
+            show_advisories=self.app_config.get("script_studio",{}).get(
+                "show_static_analysis_advisories",False
+            ),
+            setting_callback=self._set_script_advisories,
+            launch_session_callback=self.open_script_session,
+            open_folder_callback=self.open_local_directory,
+            ui_dispatch=self.call_on_ui,
+        )
+
+    def _set_script_advisories(self, value):
+        self.app_config.setdefault("script_studio",{})[
+            "show_static_analysis_advisories"
+        ]=bool(value)
+        result=self.config_manager.save(self.app_config)
+        if not result.ok:self.log(f"[CONFIG] Could not save Script Studio preference: {result.error}")
+
+    def open_script_session(self, descriptor):
+        center=self.open_sessions_center()
+        center.select_script(descriptor)
+        return center
+
+    def open_local_directory(self, path):
+        directory=Path(path).expanduser().resolve()
+        if not directory.is_dir():
+            self.log("[SCRIPT STUDIO ERROR] The containing directory is unavailable.")
+            return False
+        executable=(
+            shutil.which("explorer.exe") or shutil.which("explorer")
+            if os.name=="nt" else shutil.which("xdg-open")
+        )
+        if not executable:
+            self.log("[SCRIPT STUDIO ERROR] No supported host folder opener was found.")
+            return False
+        try:
+            subprocess.Popen(
+                (executable,str(directory)),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=os.name!="nt",
+            )
+        except OSError as exc:
+            self.log(f"[SCRIPT STUDIO ERROR] Could not open folder: {exc}")
+            return False
+        return True
 
     def _construct_pentest(self, parent):
         from app.gui.pentest_workspace import PentestWorkspace
