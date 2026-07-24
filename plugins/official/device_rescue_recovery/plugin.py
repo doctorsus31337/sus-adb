@@ -72,12 +72,14 @@ class RecoveryEngine:
 def manifest(items):
     return json.dumps([asdict(item) for item in sorted(items,key=lambda value:(value.source,value.destination))],indent=2,sort_keys=True)+"\n"
 def report_section(_context=None):return {"title":"Recovery Results","body":"Operator-selected recovery results only; evidence registration is always explicit."}
-def panel_spec(_context=None):
+def panel_spec(context=None):
     names=("Overview","Connection","Recovery Plan","Files","Copy Queue","Results","Guidance")
-    status={"Selected device":"None","ADB state":"Unavailable","Queued files":"0","Bytes planned":"0","Recovered":"0","Skipped":"0","Failed":"0","Manifest":"Not created"}
-    return PluginPanelSpec("Device Rescue & Recovery",tuple(PluginView(name,"No authorized recovery selection is active.",warning="Bootloader unlocking commonly wipes data and must not be used for recovery.") for name in names),status)
+    selected=getattr(context,"selected_device",{}) or {};serial=selected.get("serial","");state=selected.get("state","unavailable")
+    status={"Selected device":selected.get("display_name") or serial or "None","Serial":serial or "None","ADB state":getattr(context,"adb_state",state).title(),"Authorization":"Authorized" if selected.get("authorized") else "Unavailable","Queued files":"0","Bytes planned":"0","Recovered":"0","Skipped":"0","Failed":"0","Manifest":"Not created"}
+    body=f"Selected serial: {serial}\nConnection state: {state}" if serial else "No device is explicitly selected. Refresh and choose a device before planning recovery."
+    return PluginPanelSpec("Device Rescue & Recovery",tuple(PluginView(name,body,warning="Bootloader unlocking commonly wipes data and must not be used for recovery.") for name in names),status)
 class Plugin:
     def activate(self,api):
         self.api=api
-        return (Contribution("device-rescue.dashboard","dashboard-card","Device Rescue & Recovery",factory=panel_spec),Contribution("device-rescue.panel","pentest-panel","Device Rescue & Recovery",factory=panel_spec,metadata={"ui_mode":"window","singleton":True}),Contribution("device-rescue.menu","menu-action","Open Device Rescue",metadata={"target":"device-rescue.panel"}),Contribution("device-rescue.report","report-section","Recovery Results",factory=report_section,capability_requirement="contribute-report-section"),Contribution("device-rescue.manifest","evidence-processor","Recovery Manifest Exporter"))
+        return (Contribution("device-rescue.dashboard","dashboard-card","Device Rescue & Recovery",factory=panel_spec),Contribution("device-rescue.panel","pentest-panel","Device Rescue & Recovery",factory=panel_spec,metadata={"ui_mode":"window","singleton":True,"device_selector":True}),Contribution("device-rescue.menu","menu-action","Open Device Rescue",metadata={"target":"device-rescue.panel"}),Contribution("device-rescue.report","report-section","Recovery Results",factory=report_section,capability_requirement="contribute-report-section"),Contribution("device-rescue.manifest","evidence-processor","Recovery Manifest Exporter"))
     def deactivate(self):self.api=None

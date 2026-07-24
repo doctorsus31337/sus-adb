@@ -4,17 +4,18 @@ import customtkinter as ctk
 from app.core.app_metadata import METADATA
 from app.gui.plugin_manager_panel import PluginSpecFrame
 from app.plugins.plugin_ui import AddonWindowSpec,PluginPanelSpec,resolve_ui_mode,clamp_addon_geometry
+from app.widgets.addon_device_selector import AddonDeviceSelector
 
 class AddonWindowHost:
-    def __init__(self,parent,theme,manager,geometry_store=None):
-        self.parent=parent;self.theme=theme;self.manager=manager;self.geometry_store=geometry_store if geometry_store is not None else {};self.windows={};self.owners={};self.errors={};self.unsubscribe=manager.subscribe(self._manager_event)
+    def __init__(self,parent,theme,manager,geometry_store=None,refresh_devices=None,select_device=None):
+        self.parent=parent;self.theme=theme;self.manager=manager;self.geometry_store=geometry_store if geometry_store is not None else {};self.refresh_devices=refresh_devices or (lambda:False);self.select_device=select_device or (lambda _serial:None);self.windows={};self.frames={};self.selectors={};self.state_subscriptions={};self.owners={};self.errors={};self.unsubscribe=manager.subscribe(self._manager_event)
     def _manager_event(self,event,plugin_id):
         if event in {"unload","uninstall"}:self.close_plugin(plugin_id)
     def spec_for(self,contribution):
         try:
             panel=contribution.factory(self.manager.plugin_context(contribution.plugin_id)) if contribution.factory else None
             if not isinstance(panel,PluginPanelSpec):raise TypeError("Addon factory did not return PluginPanelSpec.")
-            meta=contribution.metadata;return AddonWindowSpec(contribution.contribution_id,contribution.title,panel,resolve_ui_mode(meta.get("ui_mode")),int(meta.get("default_width",1080)),int(meta.get("default_height",720)),int(meta.get("minimum_width",820)),int(meta.get("minimum_height",560)),bool(meta.get("singleton",True)),bool(meta.get("embedded_summary",False)),str(meta.get("icon","⚙")))
+            meta=contribution.metadata;return AddonWindowSpec(contribution.contribution_id,contribution.title,panel,resolve_ui_mode(meta.get("ui_mode")),int(meta.get("default_width",1080)),int(meta.get("default_height",720)),int(meta.get("minimum_width",820)),int(meta.get("minimum_height",560)),bool(meta.get("singleton",True)),bool(meta.get("embedded_summary",False)),str(meta.get("icon","⚙")),device_selector=bool(meta.get("device_selector",False)))
         except Exception as exc:self.errors[contribution.contribution_id]=str(exc)[:240];return None
     def open(self,contribution_id):
         existing=self.windows.get(contribution_id)
@@ -25,13 +26,29 @@ class AddonWindowHost:
         if spec is None:return None
         try:
             window=ctk.CTkToplevel(self.parent);window.title(f"{METADATA.application_name} — {spec.title}");window.configure(fg_color=self.theme["bg"]);window.minsize(spec.minimum_width,spec.minimum_height)
-            window.geometry(clamp_addon_geometry(self.geometry_store.get(contribution_id),window.winfo_screenwidth(),window.winfo_screenheight(),spec));window.grid_rowconfigure(0,weight=1);window.grid_columnconfigure(0,weight=1)
-            PluginSpecFrame(window,self.theme,spec.panel).grid(row=0,column=0,sticky="nsew",padx=12,pady=12)
-            self.windows[contribution_id]=window;self.owners[contribution_id]=contribution.plugin_id
+            window.geometry(clamp_addon_geometry(self.geometry_store.get(contribution_id),window.winfo_screenwidth(),window.winfo_screenheight(),spec));window.grid_columnconfigure(0,weight=1)
+            row=0
+            if spec.device_selector:
+                selector=AddonDeviceSelector(window,self.theme,select_callback=self.select_device,refresh_callback=self.refresh_devices);selector.grid(row=0,column=0,sticky="ew",padx=12,pady=(12,0));self.selectors[contribution_id]=selector;row=1
+            window.grid_rowconfigure(row,weight=1);frame=PluginSpecFrame(window,self.theme,spec.panel);frame.grid(row=row,column=0,sticky="nsew",padx=12,pady=12)
+            self.windows[contribution_id]=window;self.frames[contribution_id]=frame;self.owners[contribution_id]=contribution.plugin_id
+            def state_changed(context):
+                current=self.windows.get(contribution_id)
+                if current is not window or not current.winfo_exists():return
+                panel=contribution.factory(context) if contribution.factory else None
+                if isinstance(panel,PluginPanelSpec):frame.update_spec(panel)
+                selector=self.selectors.get(contribution_id)
+                if selector is not None:selector.apply_snapshot(self.manager.host_state.snapshot())
+            subscription=self.manager.subscribe_context(contribution.plugin_id,state_changed)
+            if subscription is not None:self.state_subscriptions[contribution_id]=subscription
+            selector=self.selectors.get(contribution_id)
+            if selector is not None and self.manager.host_state is not None:selector.apply_snapshot(self.manager.host_state.snapshot())
             window.protocol("WM_DELETE_WINDOW",lambda:self.close(contribution_id));return window
         except Exception as exc:self.errors[contribution_id]=str(exc)[:240];return None
     def close(self,contribution_id):
-        window=self.windows.pop(contribution_id,None);self.owners.pop(contribution_id,None)
+        subscription=self.state_subscriptions.pop(contribution_id,None)
+        if subscription is not None:subscription.cancel()
+        window=self.windows.pop(contribution_id,None);self.frames.pop(contribution_id,None);self.selectors.pop(contribution_id,None);self.owners.pop(contribution_id,None)
         if window is not None and window.winfo_exists():self.geometry_store[contribution_id]=window.geometry();window.destroy()
     def close_plugin(self,plugin_id):
         for cid,owner in tuple(self.owners.items()):

@@ -53,10 +53,11 @@ def main():
   before=(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses));center.destination_chooser=lambda:"";center.action("Export Template…",sid);assert before==(tuple(app.plugin_manager.records),tuple(app.plugin_manager.loader.statuses))
   export_parent=Path(d)/"export";export_parent.mkdir();center.destination_chooser=lambda:str(export_parent);center.action("Export Template…",sid);assert "not installed or executed" in center.status_message;assert not app.plugin_manager.list()
   center.geometry("980x650+0+0");center.update_idletasks();canvas=center.card_area._parent_canvas;canvas.configure(scrollregion=(0,0,1000,3000));canvas.yview_moveto(0);scroll_before=canvas.yview();center.card_area._mouse_wheel_all(SimpleNamespace(widget=center.cards[sid],delta=-1,num=5));assert canvas.yview()!=scroll_before;center.update_idletasks()
-  assert app.plugin_manager.install_official(sid,skeleton.package_digest).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Trust");assert "Permissions" not in center.cards[sid].actions
-  assert app.plugin_manager.trust_zero_capability(sid,True).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Enable")
-  assert app.plugin_manager.enable(sid).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Load")
-  assert app.plugin_manager.load(sid).ok;center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Open","Unload")
+  stable_card=center.cards[sid]
+  assert app.plugin_manager.install_official(sid,skeleton.package_digest).ok;center.refresh();assert center.cards[sid] is stable_card;assert center.cards[sid].actions==("Details","Export Template…","Trust");assert "Permissions" not in center.cards[sid].actions
+  assert app.plugin_manager.trust_zero_capability(sid,True).ok;center.refresh();assert center.cards[sid] is stable_card;assert center.cards[sid].actions==("Details","Export Template…","Enable")
+  assert app.plugin_manager.enable(sid).ok;center.refresh();assert center.cards[sid] is stable_card;assert center.cards[sid].actions==("Details","Export Template…","Load")
+  assert app.plugin_manager.load(sid).ok;center.refresh();assert center.cards[sid] is stable_card;assert center.cards[sid].actions==("Details","Export Template…","Open","Unload")
   for item in official:
    if item.manifest.plugin_id==sid:continue
    assert app.plugin_manager.install_official(item.manifest.plugin_id,item.package_digest).ok
@@ -65,6 +66,7 @@ def main():
    assert not app.plugin_registry.by_plugin(item.manifest.plugin_id)
    assert app.plugin_manager.load(item.manifest.plugin_id).ok
   app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==4
+  rescue_panel=next(v for v in panels if v.contribution_id=="device-rescue.panel");rescue_window=app.open_addon_window(rescue_panel.contribution_id);rescue_selector=app.addon_window_host.selectors[rescue_panel.contribution_id];assert rescue_selector.selector.get().startswith("Fixture — fixture-serial");assert "device" in rescue_selector.status.cget("text").casefold();app.addon_window_host.close(rescue_panel.contribution_id)
   app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==3
   skeleton_panel=next(v for v in panels if v.plugin_id==sid);skeleton_window=app.open_addon_window(skeleton_panel.contribution_id);assert skeleton_window is app.open_addon_window(skeleton_panel.contribution_id);center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Focus","Unload")
   first_panel=panels[0];window=app.open_addon_window(first_panel.contribution_id);assert window is app.open_addon_window(first_panel.contribution_id);window.update_idletasks();app.addon_window_host.close(first_panel.contribution_id);assert app.plugin_manager.loader.statuses[first_panel.plugin_id].state.value=="active"

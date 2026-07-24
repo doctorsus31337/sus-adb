@@ -14,8 +14,8 @@ from app.core.pentest_event import EventCategory,PentestEvent
 class ManagerResult:
     ok:bool;manifest:object=None;items:tuple=();status:object=None;path:str|None=None;error:str|None=None;warnings:tuple[str,...]=()
 class PluginManager:
-    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None,auto_refresh=True):
-        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self._listeners=[];self._refreshed=False;self.loader=PluginLoader(registry,self.validator,trust,self._api)
+    def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None,auto_refresh=True,host_state=None):
+        self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.host_state=host_state;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self._listeners=[];self._refreshed=False;self._apis={};self.loader=PluginLoader(registry,self.validator,trust,self._api)
         if auto_refresh:self.refresh()
     def subscribe(self,callback):
         if callback not in self._listeners:self._listeners.append(callback)
@@ -24,9 +24,21 @@ class PluginManager:
         for callback in tuple(self._listeners):
             try:callback(event,plugin_id)
             except Exception:continue
-    def _api(self,manifest):return PluginAPI(manifest.plugin_id,self.trust.approved(manifest.plugin_id,manifest.package_digest),self.session_provider,self.device_provider,self.target_provider,self.timeline_provider,self.evidence_provider,self.finding_provider,self.store.root/"state")
+    def _api(self,manifest):
+        api=self._apis.get(manifest.plugin_id)
+        approved=self.trust.approved(manifest.plugin_id,manifest.package_digest)
+        if api is not None and api.policy.approved!=frozenset(approved):api.close();api=None
+        if api is None:
+            api=PluginAPI(manifest.plugin_id,approved,self.session_provider,self.device_provider,self.target_provider,self.timeline_provider,self.evidence_provider,self.finding_provider,self.store.root/"state",host_state=self.host_state,app_version=self.app_version);self._apis[manifest.plugin_id]=api
+        return api
+    def _release_api(self,plugin_id):
+        api=self._apis.pop(plugin_id,None)
+        if api is not None:api.close()
     def plugin_context(self,plugin_id):
         record=self.records.get(plugin_id);return self._api(record[2]).context(self.app_version) if record else None
+    def subscribe_context(self,plugin_id,callback,replay=True):
+        record=self.records.get(plugin_id)
+        return self._api(record[2]).subscribe_context(callback,replay=replay) if record else None
     def _event(self,plugin_id,title,description="",severity="info"):
         timeline=self.timeline_provider()
         if timeline:timeline.append(PentestEvent(EventCategory.SESSION,"plugin-manager",title,description,payload={"plugin_id":plugin_id},severity=severity))
@@ -83,9 +95,11 @@ class PluginManager:
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")
         if not record[2].enabled:return ManagerResult(False,error="Plugin is disabled; enabling and loading are separate explicit actions.")
-        status=self.loader.load(record[0],record[1],enabled=True);self._event(plugin_id,"Plugin loaded" if status.state is LoaderState.ACTIVE else "Plugin load failed",status.last_error,severity="error" if status.last_error else "info");return ManagerResult(status.state is LoaderState.ACTIVE,record[2],status=status,error=status.last_error or None)
+        status=self.loader.load(record[0],record[1],enabled=True)
+        if status.state is not LoaderState.ACTIVE:self._release_api(plugin_id)
+        self._event(plugin_id,"Plugin loaded" if status.state is LoaderState.ACTIVE else "Plugin load failed",status.last_error,severity="error" if status.last_error else "info");return ManagerResult(status.state is LoaderState.ACTIVE,record[2],status=status,error=status.last_error or None)
     def unload(self,plugin_id):
-        status=self.loader.unload(plugin_id);self._event(plugin_id,"Plugin unloaded",status.last_error,severity="warning" if status.last_error else "info");self._changed("unload",plugin_id);return ManagerResult(status.state is LoaderState.UNLOADED,status=status,error=status.last_error or None)
+        status=self.loader.unload(plugin_id);self._release_api(plugin_id);self._event(plugin_id,"Plugin unloaded",status.last_error,severity="warning" if status.last_error else "info");self._changed("unload",plugin_id);return ManagerResult(status.state is LoaderState.UNLOADED,status=status,error=status.last_error or None)
     def reload(self,plugin_id):self.unload(plugin_id);return self.load(plugin_id)
     def uninstall(self,plugin_id,confirmed=False):
         record=self.records.get(plugin_id)
@@ -109,4 +123,7 @@ class PluginManager:
         p=Path(path).resolve();root=self.store.root.resolve()
         if root not in p.parents:raise ValueError("Inventory export must remain inside the plugin store.")
         p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps([m.to_dict() for m in self.list()],indent=2,sort_keys=True),encoding="utf-8");return str(p)
-    def shutdown(self):return self.loader.unload_all()
+    def shutdown(self):
+        statuses=self.loader.unload_all()
+        for plugin_id in tuple(self._apis):self._release_api(plugin_id)
+        return statuses

@@ -72,7 +72,7 @@ class DevicePanel(GothicFrame):
 
         serials = {device.serial for device in devices}
         if self.selected_serial not in serials:
-            self.selected_serial = devices[0].serial
+            self.selected_serial = None
 
         for device in devices:
             card = DeviceCard(

@@ -15,6 +15,7 @@ install_scroll_target_guard(ctk.CTkScrollableFrame)
 from app.core.command_runner import CommandRunner
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
+from app.core.host_state import DeviceState,HostStateSnapshot,HostStateStore,ScopeState,TargetState
 from app.core.file_manager import FileManager
 from app.core.external_terminal import ExternalTerminal
 from app.core.frida_manager import FridaManager
@@ -126,6 +127,10 @@ class SusADBWindow(ctk.CTk):
             self.recovery_manager=RecoveryManager(self.config_manager.directory);self.previous_unclean_shutdown=self.recovery_manager.begin_startup();self.crash_reporter=CrashReporter(self.config_manager.directory/"crashes",METADATA,self.logging_manager.tail);self.diagnostics_window=None
 
     def _initialize_core_services(self):
+        self._ui_queue = queue.Queue()
+        self._ui_poll_id = None
+        self._background_workers = set()
+        self.host_state=HostStateStore(self.call_on_ui)
         self.devices = DeviceManager()
         self.command_runner = CommandRunner()
         self.host_tools = HostToolResolver(self.app_config.get("executables", {}))
@@ -167,10 +172,11 @@ class SusADBWindow(ctk.CTk):
             finding_provider=lambda: getattr(getattr(self, "pentest_workspace", None), "findings", None),
             official_root=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parents[2]))/"plugins"/"official",
             auto_refresh=False,
+            host_state=self.host_state,
         )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.addons_center=None
-        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}))
+        self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device)
         self.first_run_dialog = None
         self.crash_dialog = None
         self.instrumentation_panel = None
@@ -180,9 +186,7 @@ class SusADBWindow(ctk.CTk):
         self._deferred_started = False
         self._device_refresh_active = False
         self._diagnostics_loading = False
-        self._ui_queue = queue.Queue()
-        self._ui_poll_id = None
-        self._background_workers = set()
+        self._publish_host_state()
 
     def _initialize_shell(self):
 
@@ -369,7 +373,7 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_pentest(self, parent):
         from app.gui.pentest_workspace import PentestWorkspace
-        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler)
+        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler,state_changed_callback=self._publish_host_state)
 
     def _hydrate_instrumentation(self, panel):
         target=self.selected_target
@@ -464,9 +468,10 @@ class SusADBWindow(ctk.CTk):
         self.terminal.execute(command)
 
     def refresh_devices(self):
-        if self._device_refresh_active or getattr(self,"_shutdown_started",False):return
+        if self._device_refresh_active or getattr(self,"_shutdown_started",False):return False
         self._device_refresh_active=True
         self.status_bar.set_status(adb="Scanning")
+        self._publish_host_state("device-refreshing")
         self.log("[ADB] Scanning for devices...")
         def scan():
             try:
@@ -477,12 +482,13 @@ class SusADBWindow(ctk.CTk):
             scan,
             lambda result: self.call_on_ui(self._finish_device_refresh,result),
         )
+        return True
 
     def _finish_device_refresh(self,result):
         self._device_refresh_active=False
         if getattr(self,"_shutdown_started",False):return
         ok,value=result
-        if not ok:self.status_bar.set_status(adb="Scan failed");self.log(f"[ADB] Discovery failed: {type(value).__name__}");return
+        if not ok:self.status_bar.set_status(adb="Scan failed");self._publish_host_state("device-refresh-failed");self.log(f"[ADB] Discovery failed: {type(value).__name__}");return
         self._apply_devices(value)
 
     def _apply_device_to_workspaces(self,device):
@@ -494,19 +500,20 @@ class SusADBWindow(ctk.CTk):
         if not devices:
             self._apply_device_to_workspaces(None)
             self.status_bar.set_status(adb="No Devices", device="None", root="Unknown", frida="Unknown")
+            self._publish_host_state("device-refresh-complete")
             self.log("[ADB] No devices detected.")
             return
 
-        selected = self.devices.selected or devices[0]
-        self.device_panel.selected_serial = selected.serial
+        selected = self.devices.selected
+        self.device_panel.selected_serial = selected.serial if selected else None
         self._apply_device_to_workspaces(selected)
-        self.status_bar.set_status(
-            adb="Connected",
-            device=selected.display_name,
-            root="Yes" if selected.root else "No",
-            frida="Running" if selected.frida else "Stopped",
-        )
-        self.log(f"[ADB] Found {len(devices)} device(s). Selected: {selected.serial}")
+        if selected:
+            self.status_bar.set_status(adb="Connected" if selected.connected else selected.state,device=selected.display_name,root="Yes" if selected.root else "No",frida="Running" if selected.frida else "Stopped")
+            message=f"Selected: {selected.serial}"
+        else:
+            self.status_bar.set_status(adb="Devices Found",device="Select Device",root="Unknown",frida="Unknown");message="Explicit selection required"
+        self._publish_host_state("device-refresh-complete")
+        self.log(f"[ADB] Found {len(devices)} device(s). {message}")
 
     def connect_device(self, serial: str | None):
         if not serial:
@@ -539,12 +546,14 @@ class SusADBWindow(ctk.CTk):
                 self.log(first.output)
             if second.output:
                 self.log(second.output)
+        self._publish_host_state("device-connected")
 
     def select_device(self, serial: str):
         device = self.devices.select(serial)
         if device is None:
             self.log(f"[ADB] Device not found: {serial}")
             self._apply_device_to_workspaces(None)
+            self._publish_host_state("device-selection-cleared")
             return
         self._apply_device_to_workspaces(device)
         self.status_bar.set_status(
@@ -553,6 +562,7 @@ class SusADBWindow(ctk.CTk):
             root="Yes" if device.root else "No",
             frida="Running" if device.frida else "Stopped",
         )
+        self._publish_host_state("device-selected")
         self.log(f"[ADB] Selected {device.display_name} ({serial}).")
 
     def _sync_script_target(self, target):
@@ -561,6 +571,19 @@ class SusADBWindow(ctk.CTk):
             self.script_studio_panel.set_selected_target(target)
         if self.pentest_workspace is not None:
             self.pentest_workspace.set_selected_target(target)
+        self._publish_host_state("target-changed")
+
+    def _publish_host_state(self,lifecycle="ready"):
+        if not hasattr(self,"host_state"):return
+        devices=tuple(DeviceState(device.serial,device.model,device.manufacturer,device.state,device.display_name) for device in self.devices.all()) if hasattr(self,"devices") else ()
+        selected=self.devices.selected if hasattr(self,"devices") else None
+        selected_state=DeviceState(selected.serial,selected.model,selected.manufacturer,selected.state,selected.display_name) if selected else None
+        target=getattr(self,"selected_target",None)
+        target_state=TargetState(getattr(target,"name",""),getattr(target,"identifier","") or "",getattr(target,"pid",None),getattr(getattr(target,"target_type",None),"value","")) if target else None
+        session=getattr(getattr(self,"pentest_workspace",None),"session",None);scope=getattr(session,"scope",None)
+        scope_state=ScopeState(scope.scope_id,scope.case_name,scope.authorization_confirmed,tuple(scope.allowed_actions),tuple(scope.excluded_actions)) if scope else None
+        adb_state=selected.state if selected else ("available" if devices else "unavailable")
+        self.host_state.publish(HostStateSnapshot(selected_state,devices,adb_state,target_state,scope_state,getattr(getattr(session,"state",None),"value","none"),self.app_config.get("interface_mode","advanced"),lifecycle))
 
     def navigate_workspace(self, name: str):
         if name in self.workspace._tab_dict:

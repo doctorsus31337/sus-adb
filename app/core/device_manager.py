@@ -19,7 +19,7 @@ class DeviceManager:
 
         serials = {device.serial for device in devices}
         if self.selected_serial not in serials:
-            self.selected_serial = devices[0].serial if devices else None
+            self.selected_serial = None
         return devices
 
     def all(self) -> list[Device]:
@@ -36,4 +36,7 @@ class DeviceManager:
     def selected(self) -> Device | None:
         if self.selected_serial is None:
             return None
-        return self.select(self.selected_serial)
+        return next(
+            (device for device in self.cache.all() if device.serial == self.selected_serial),
+            None,
+        )

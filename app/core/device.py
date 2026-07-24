@@ -26,6 +26,24 @@ class Device:
         return self.state == "device"
 
     @property
+    def authorized(self) -> bool:
+        return self.state in {"device", "recovery", "sideload"}
+
+    @property
+    def usable(self) -> bool:
+        return self.state in {"device", "recovery", "sideload"}
+
+    @property
+    def connection_mode(self) -> str:
+        return {
+            "device": "ADB",
+            "recovery": "Recovery ADB",
+            "sideload": "ADB Sideload",
+            "bootloader": "Bootloader",
+            "fastbootd": "Fastbootd",
+        }.get(self.state, self.state.title() if self.state else "Unknown")
+
+    @property
     def display_name(self) -> str:
         pieces = [piece for piece in (self.manufacturer, self.model) if piece and piece != "Unknown"]
         return " ".join(pieces) or self.serial
