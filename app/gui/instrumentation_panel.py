@@ -34,6 +34,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         frida_sessions: FridaSessionManager,
         log_callback: Callable[[str], None],
         target_callback: Callable[[FridaTarget | None], None] | None = None,
+        interactive_sessions=None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme = theme
@@ -44,6 +45,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.frida_sessions = frida_sessions
         self.log = log_callback
         self.target_callback = target_callback
+        self.interactive_sessions = interactive_sessions
         self.device: Device | None = None
         self.targets: tuple[FridaTarget, ...] = ()
         self.selected_target: FridaTarget | None = None
@@ -774,8 +776,22 @@ class InstrumentationPanel(ctk.CTkFrame):
         if not self._confirm_warning(readiness.warning):
             self.log("[FRIDA] Session launch cancelled after version warning.")
             return
+        if self.interactive_sessions is None:
+            operation = lambda: self.frida_sessions.launch(command)
+        else:
+            plan = self.interactive_sessions.build_frida(
+                self._serial(), self.selected_target,
+                mode=(
+                    "spawn" if "-f" in command
+                    else "pid" if "-p" in command
+                    else "attach"
+                ),
+                trace=bool(command and "frida-trace" in os.path.basename(command[0])),
+                trace_pattern=self.trace_pattern.get(),
+            )
+            operation = lambda: self.interactive_sessions.launch(plan)
         self._run_operation(
-            "Launch external Frida session", lambda: self.frida_sessions.launch(command),
+            "Launch external Frida session", operation,
             self._show_session_launch_result,
         )
 
@@ -835,9 +851,17 @@ class InstrumentationPanel(ctk.CTkFrame):
         if not self._confirm_warning(frida_ready.warning):
             self.log("[OBJECTION] Session launch cancelled after version warning.")
             return
+        if self.interactive_sessions is None:
+            operation = lambda: self.objection.launch_external_session(command)
+        else:
+            plan = self.interactive_sessions.build_objection(
+                self._serial(), self._objection_target(),
+                spawn="-s" in command, transport=self.transport.get(),
+            )
+            operation = lambda: self.interactive_sessions.launch(plan)
         self._run_operation(
             "Launch external Objection session",
-            lambda: self.objection.launch_external_session(command), self._show_session_launch_result,
+            operation, self._show_session_launch_result,
         )
 
     def _confirm_warning(self, warning: str | None) -> bool:
@@ -929,10 +953,17 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self._append_results("Operation", text)
 
-    def _show_session_launch_result(self, result: CommandResult):
-        self._show_command_results(result)
+    def _show_session_launch_result(self, result):
+        if isinstance(result, CommandResult):
+            self._show_command_results(result)
+        elif result.record is not None:
+            self._append_results(
+                "Session",
+                f"{result.record.session_type.value} · "
+                f"{result.record.state.value} · {result.record.session_id}",
+            )
         if result.ok:
-            message = "Session launched. Open the Frida / Objection Grimoire for starter commands."
+            message = "Session launched and tracked in Sessions Center."
             self.session_notice.configure(text=message, text_color=self.theme["success"])
             self._append_results("Session", message)
             self.log(f"[INSTRUMENTATION] {message}")
@@ -946,6 +977,8 @@ class InstrumentationPanel(ctk.CTkFrame):
         ]
         if hasattr(value, "ready") and not value.ready:
             failures.extend(value.errors)
+        if hasattr(value, "ok") and not value.ok and not isinstance(value, CommandResult):
+            failures.append(value.error or "Session operation failed.")
         return failures
 
     def _report_failure(self, title: str, error: str):

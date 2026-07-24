@@ -32,9 +32,12 @@ def main():
   device=Device("fixture-serial",state="device",model="Fixture");target=FridaTarget("Fixture App","org.example.fixture",101,TargetType.APPLICATION,True);app.devices.cache.update((device,));app.devices.selected_serial=device.serial;app._sync_script_target(target)
   assert not install_scroll_target_guard().installed
   top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","Tools","Addons","About"]
+  tools=top.nametowidget(top.entrycget(cascades[labels.index("Tools")],"menu"));tool_labels=[tools.entrycget(i,"label") for i in range(tools.index("end")+1) if tools.type(i)=="command"];assert "Sessions Center" in tool_labels
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
   official=app.plugin_manager.official();assert len(official)==4;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
+  console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
+  app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();sessions.close();assert app.sessions_center is None
   app.open_first_run();first=app.first_run_dialog;app.open_first_run();assert app.first_run_dialog is first
   diagnostics=EnvironmentDiagnosticsWindow(app,app.theme,(DiagnosticRecord("ADB",False,False,guidance="Optional"),),app.startup_profiler.summary());assert "No telemetry" in diagnostics.startup_view.get("1.0","end");crash=CrashDialog(app,app.theme,"redacted report")
   for width,height in ((1200,760),(1400,860)):

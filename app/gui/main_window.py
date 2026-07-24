@@ -13,6 +13,7 @@ from app.gui.customtkinter_compat import install_scroll_target_guard
 install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
+from app.core.command_router import CommandRouter
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
 from app.core.host_state import DeviceState,HostStateSnapshot,HostStateStore,ScopeState,TargetState
@@ -55,6 +56,7 @@ from app.core.application_lifecycle import ApplicationLifecycle
 from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
 from app.core.host_tool_resolver import HostToolResolver
+from app.core.interactive_sessions import InteractiveSessionManager
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
@@ -136,7 +138,8 @@ class SusADBWindow(ctk.CTk):
         self.host_tools = HostToolResolver(self.app_config.get("executables", {}))
         self.tool_diagnostics = ToolDiagnostics(self.command_runner, resolver=self.host_tools)
         self.frida_manager = FridaManager(self.devices.adb, self.command_runner, resolver=self.host_tools)
-        self.external_terminal = ExternalTerminal()
+        terminal_preference=self.app_config.get("terminal",{}).get("preference","auto")
+        self.external_terminal = ExternalTerminal(configured_terminal=None if terminal_preference=="auto" else terminal_preference)
         self.target_discovery = TargetDiscovery(self.frida_manager)
         self.frida_sessions = FridaSessionManager(self.frida_manager, self.external_terminal, resolver=self.host_tools)
         self.objection_manager = ObjectionManager(
@@ -148,14 +151,25 @@ class SusADBWindow(ctk.CTk):
                 (self.objection_manager.objection_path or "objection", "--help"), timeout=10
             ),
         )
-        self.script_library = ScriptLibrary()
+        self.script_library = ScriptLibrary(self.app_config.get("script_library_root","scripts"))
         self.frida_python = FridaPythonAdapter()
         self.script_validator = ScriptValidator()
         self.frida_runtime = FridaRuntimeManager(
             self.frida_python, self.script_library, self.script_validator,
             diagnosis_provider=self.frida_manager.diagnose,
         )
-        self.terminal = TerminalManager(self.log, self.clear_console, self.host_tools)
+        self.command_router=CommandRouter(self.host_tools)
+        self.interactive_sessions=InteractiveSessionManager(
+            self.external_terminal,self.host_tools,
+            selected_serial_provider=lambda:self.devices.selected_serial,
+            adb_path_provider=lambda:self.devices.adb.adb_path,
+            objection_manager=self.objection_manager,
+            frida_sessions=self.frida_sessions,
+        )
+        self.terminal = TerminalManager(
+            self.log,self.clear_console,self.host_tools,
+            router=self.command_router,interactive_callback=self._interactive_command_requested,
+        )
         plugin_root = self.app_config.get("plugin_storage_root", "plugins")
         if not __import__("pathlib").Path(plugin_root).is_absolute():
             plugin_root = self.config_manager.directory / plugin_root
@@ -176,6 +190,7 @@ class SusADBWindow(ctk.CTk):
         )
         self.cheat_sheet: CheatSheetWindow | None = None
         self.addons_center=None
+        self.sessions_center=None
         self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device,{"device-recovery":self._build_device_recovery_workspace})
         self.first_run_dialog = None
         self.crash_dialog = None
@@ -371,7 +386,12 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_instrumentation(self, parent):
         from app.gui.instrumentation_panel import InstrumentationPanel
-        return InstrumentationPanel(parent,self.theme,self.tool_diagnostics,self.frida_manager,self.objection_manager,self.target_discovery,self.frida_sessions,self.log,self._sync_script_target)
+        return InstrumentationPanel(
+            parent,self.theme,self.tool_diagnostics,self.frida_manager,
+            self.objection_manager,self.target_discovery,self.frida_sessions,
+            self.log,self._sync_script_target,
+            interactive_sessions=self.interactive_sessions,
+        )
 
     def _construct_scripts(self, parent):
         from app.gui.script_studio_panel import ScriptStudioPanel
@@ -472,6 +492,29 @@ class SusADBWindow(ctk.CTk):
 
     def execute_command(self, command: str):
         self.terminal.execute(command)
+
+    def _interactive_command_requested(self,route):
+        if threading.current_thread() is not threading.main_thread():
+            self.call_on_ui(self._interactive_command_requested,route);return
+        self.command_bar.show_session_prompt(route,self.open_sessions_for_route)
+
+    def open_sessions_for_route(self,route):
+        center=self.open_sessions_center()
+        center.open_route(route)
+
+    def open_sessions_center(self):
+        if self.sessions_center is not None and self.sessions_center.winfo_exists():
+            self.sessions_center.deiconify();self.sessions_center.lift();return self.sessions_center
+        from app.gui.sessions_center import SessionsCenter
+        self.sessions_center=SessionsCenter(
+            self,self.theme,self.interactive_sessions,self.host_state,
+            target_provider=lambda:self.selected_target,
+            script_library=self.script_library,
+            open_script_callback=self.open_generated_script,
+            ui_dispatch=self.call_on_ui,
+            on_close=lambda:setattr(self,"sessions_center",None),
+        )
+        return self.sessions_center
 
     def refresh_devices(self):
         if self._device_refresh_active or getattr(self,"_shutdown_started",False):return False
@@ -669,7 +712,8 @@ class SusADBWindow(ctk.CTk):
         for host in getattr(self,"workspace_hosts",{}).values():host.shutdown()
         if getattr(self,"splash",None) is not None and self.splash.winfo_exists():self.splash.close()
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
-        for name,owner,method in (("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
+        if self.sessions_center is not None and self.sessions_center.winfo_exists():self.sessions_center.close()
+        for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         life.add_cleanup("deferred-workers",self._join_background_workers)
         result=life.shutdown()

@@ -8,6 +8,7 @@ import threading
 from collections.abc import Callable
 
 from app.core.command_registry import CommandRegistry
+from app.core.command_router import CommandClassification,CommandRouter
 from app.core.command_runner import CommandRunner
 from app.core.history_manager import HistoryManager
 from app.core.host_tool_resolver import HostToolResolver
@@ -21,12 +22,16 @@ class TerminalManager:
         log_callback: Callable[[str], None],
         clear_callback: Callable[[], None] | None = None,
         resolver: HostToolResolver | None = None,
+        router: CommandRouter | None = None,
+        interactive_callback=None,
     ):
         self.log = log_callback
         self.clear_callback = clear_callback
         self.history = HistoryManager()
         self.runner = CommandRunner()
         self.resolver = resolver or HostToolResolver()
+        self.router = router or CommandRouter(self.resolver)
+        self.interactive_callback = interactive_callback
         self.cwd = os.getcwd()
         self._active_lock = threading.Lock()
         self._active = False
@@ -54,6 +59,17 @@ class TerminalManager:
 
         if lowered.startswith("cd "):
             self._change_directory(command[3:].strip())
+            return
+
+        route = self.router.classify(command)
+        if route.classification is CommandClassification.INTERACTIVE:
+            if self.interactive_callback is not None:
+                self.interactive_callback(route)
+            else:
+                self.log("This command opens an interactive session. Use Sessions Center.")
+            return
+        if route.classification in {CommandClassification.UNSUPPORTED,CommandClassification.AMBIGUOUS}:
+            self.log(f"[ERROR] {route.reason}")
             return
 
         with self._active_lock:

@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.core.host_tool_resolver import HostToolResolver
+from app.core.command_router import CommandRouter
 from app.core.terminal_manager import TerminalManager
 
 
@@ -43,6 +44,22 @@ class TerminalManagerTests(unittest.TestCase):
         manager._run("frida-ps -H 127.0.0.1:27042")
         self.assertFalse(runner.commands)
         self.assertIn("configure its executable path", " ".join(logs).lower())
+
+    def test_interactive_route_never_marks_console_busy_or_starts_runner(self):
+        logs = []
+        routes = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None),
+            interactive_callback=routes.append,
+        )
+        runner = Runner()
+        manager.runner = runner
+        manager.execute("adb -s SERIAL shell")
+        self.assertEqual(len(routes), 1)
+        self.assertEqual(routes[0].serial, "SERIAL")
+        self.assertFalse(manager._active)
+        self.assertEqual(runner.commands, [])
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ class MenuBar:
         tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
         tools_menu.add_command(label="Clear Console", command=window.clear_console)
         tools_menu.add_command(label="Environment Diagnostics", command=window.open_environment_diagnostics)
+        tools_menu.add_command(label="Sessions Center", command=window.open_sessions_center)
         tools_menu.add_separator()
         tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
         tools_menu.add_command(label="Open ADB Explorer", command=window.open_adb_explorer)
