@@ -9,4 +9,8 @@ class ApplicationStartupTests(unittest.TestCase):
   self.assertIn("1.0.0-rc.1",out.getvalue())
  def test_cli_identity_is_preferred_while_legacy_entry_remains_documented(self):
   self.assertEqual(main.METADATA.preferred_executable,"sus-companion");self.assertEqual(main.METADATA.legacy_executable,"sus-adb")
+ def test_diagnostics_prints_build_identity_before_tool_results(self):
+  out=io.StringIO()
+  with patch("main.EnvironmentDiagnostics.run",return_value=()),redirect_stdout(out):self.assertEqual(main.cli(["--diagnostics"]),0)
+  text=out.getvalue();self.assertIn("BUILD\tProduct version\t",text);self.assertIn("BUILD\tCommit\t",text);self.assertIn("BUILD\tBranch/ref\t",text);self.assertIn("BUILD\tBuild timestamp\t",text);self.assertIn("BUILD\tBuild channel\t",text)
 if __name__=="__main__":unittest.main()

@@ -29,6 +29,16 @@ class ReleaseManifestTests(unittest.TestCase):
         (package / "sus-companion").write_text("executable", encoding="utf-8")
         (package / "sus-adb").write_text("compatibility launcher", encoding="utf-8")
         (resources / "VERSION").write_text("1.0.0-rc.1\n", encoding="utf-8")
+        (resources / "build-info.json").write_text(json.dumps({
+            "format": 1,
+            "product": "SUS Companion",
+            "version": "1.0.0-rc.1",
+            "commit": "1234567890abcdef",
+            "short_commit": "1234567890ab",
+            "ref": "feature/testing",
+            "timestamp": "2026-07-24T12:00:00Z",
+            "channel": "current-testing",
+        }), encoding="utf-8")
         (resources / "frida").mkdir()
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
         (resources / "frida-17.15.5.dist-info").mkdir()
@@ -72,6 +82,8 @@ class ReleaseManifestTests(unittest.TestCase):
             package = self.make_package(directory)
             manifest = json.loads((package / "release-manifest.json").read_text(encoding="utf-8"))
             listed = {entry["path"] for entry in manifest["files"]}
+            self.assertEqual(manifest["build"]["ref"], "feature/testing")
+            self.assertEqual(manifest["build"]["short_commit"], "1234567890ab")
             self.assertIn("_internal/frida/_frida.abi3.so", listed)
             self.assertIn("_internal/frida-17.15.5.dist-info/METADATA", listed)
             self.assertTrue(VERIFY.verify(package)["ok"])
@@ -109,6 +121,7 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(result["assets"]["example_plugin_assets"]["count"], 2)
             self.assertEqual(result["assets"]["user_local_script_studio_assets"], {"count": 0, "packaged": False})
             self.assertEqual(result["assets"]["official_bundled_plugins"]["count"], 6)
+            self.assertEqual(result["build"]["channel"], "current-testing")
             self.assertEqual(result["assets"]["installed_third_party_plugins"], {"count": 0, "packaged": False})
 
     def test_fixture_curated_assets_are_required_and_counted(self):

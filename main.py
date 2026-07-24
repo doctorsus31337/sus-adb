@@ -15,6 +15,11 @@ def cli(argv=None):
     if args.self_test:
         config=ConfigManager().load();print(json.dumps({"ok":config.ok,"version":METADATA.version,"configuration_schema":METADATA.configuration_schema_version,"plugin_api":METADATA.plugin_api_version},sort_keys=True));return 0 if config.ok else 1
     if args.diagnostics:
+        print(f"BUILD\tProduct version\t{METADATA.version}")
+        print(f"BUILD\tCommit\t{METADATA.short_revision}")
+        print(f"BUILD\tBranch/ref\t{METADATA.repository_ref}")
+        print(f"BUILD\tBuild timestamp\t{METADATA.build_timestamp}")
+        print(f"BUILD\tBuild channel\t{METADATA.build_channel}")
         for r in EnvironmentDiagnostics().run(ConfigManager().directory,"workspaces"):print(f"{'OK' if r.available else 'MISSING'}\t{r.name}\t{r.version or r.path}")
         return 0
     gui_import_started=time.perf_counter();from app.gui.main_window import SusADBWindow

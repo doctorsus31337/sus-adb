@@ -16,6 +16,26 @@ python main.py
 
 ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/proxy tools, and external terminals are optional and diagnosed without automatic installation. Run `python main.py --diagnostics` for local readiness, `--version` for version output, or `--self-test` for packaged-resource/configuration validation.
 
+## Current tested builds
+
+- Latest tested development branch: `feature/operator-experience-reliability`
+- Stable RC branch: `release/1.0.0-rc.1`
+
+For a source checkout, select the intended branch or commit and run:
+
+```sh
+python -m pip install -r requirements.txt
+python main.py
+```
+
+The manually dispatched GitHub Actions workflow **Package Current Testing Build**
+accepts a branch, tag, or commit ref and produces separate Linux and Windows
+artifacts. Artifact names include the selected ref and short commit hash.
+Every artifact includes build identity metadata, SHA-256 checksums, a file
+manifest, and a verification report. The workflow never creates a tag or
+publishes a GitHub Release. Treat current-testing artifacts as acceptance
+builds, not as a replacement for the stable RC branch.
+
 SUS Companion shows a responsive local splash while constructing the Console shell. Instrumentation, Script Studio, Pentest, Plugin Manager, and Pentest's operational sections are built only on first explicit access. Script Studio includes the local Script Library and import, edit, validate, and explicit load workflows. Official addons and third-party code remain inactive until their separate lifecycle approvals are completed.
 
 The established `sus-adb` command and user-local storage directory remain supported; packaged builds prefer `sus-companion` and include a lightweight compatibility launcher. Existing configuration, cases, workspaces, plugin IDs, and trust records remain compatible. Cases and evidence are sensitive local data; back them up securely. SUS Companion has no telemetry or automatic upload.

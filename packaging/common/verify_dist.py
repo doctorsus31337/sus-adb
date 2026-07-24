@@ -1,14 +1,14 @@
 from __future__ import annotations
-import hashlib,json,sys
+import argparse,hashlib,json
 from pathlib import Path
-REQUIRED=("VERSION","app/themes","app/resources/startup_tips.json","docs","plugins/examples","packaging/curated-script-assets.json")
+REQUIRED=("VERSION","build-info.json","app/themes","app/resources/startup_tips.json","docs","plugins/examples","packaging/curated-script-assets.json")
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
 OFFICIAL_IDS=("susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module","susadb.frida-tutorial","susadb.objection-tutorial")
 OFFICIAL_CAPABILITIES={
  "susadb.device-rescue-recovery":("read-selected-device","run-adb-readonly","access-active-case","append-timeline","create-evidence","contribute-report-section"),
- "susadb.rootability-advisor":("read-selected-device","run-adb-readonly","access-active-case","append-timeline","create-findings","contribute-report-section"),
+ "susadb.rootability-advisor":("read-selected-device","read-selected-target","run-adb-readonly","access-active-case","append-timeline","create-findings","contribute-report-section"),
  "susadb.webview-security-inspector":("read-selected-target","access-frida-runtime","load-frida-script","access-active-case","append-timeline","create-findings","contribute-report-section"),
  "susadb.skeleton-module":(),
  "susadb.frida-tutorial":(),
@@ -36,7 +36,15 @@ def verify(root):
  unexpected.extend(p.relative_to(root).as_posix() for p in root.rglob("*") if any(part in BLOCKED_PARTS for part in p.relative_to(root).parts) or (p.is_file() and p.suffix.casefold() in {".pyc",".pyo"}))
  example_missing=tuple(path for path in EXAMPLE_ASSETS if not (resource_root/path).is_file())
  missing+=example_missing
- asset_errors=[];core_counts={};core_total=0
+ asset_errors=[];core_counts={};core_total=0;build_info={}
+ try:
+  build_info=json.loads((resource_root/"build-info.json").read_text(encoding="utf-8"))
+  build_keys=("product","version","commit","short_commit","ref","timestamp","channel")
+  if any(not isinstance(build_info.get(key),str) or not build_info[key].strip() for key in build_keys):asset_errors.append("build-info-fields")
+  if build_info.get("product")!="SUS Companion":asset_errors.append("build-info-product")
+  if build_info.get("short_commit")!=(build_info.get("commit","")[:12] or "unknown"):asset_errors.append("build-info-commit")
+  if build_info.get("version")!=(resource_root/"VERSION").read_text(encoding="utf-8").strip():asset_errors.append("build-info-version")
+ except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError):asset_errors.append("build-info.json")
  try:
   asset_report=json.loads((resource_root/"packaging/curated-script-assets.json").read_text(encoding="utf-8"))
   core=asset_report["core_curated_script_studio_assets"];categories=core["categories"]
@@ -70,6 +78,8 @@ def verify(root):
  integrity=[];manifest_path=root/"release-manifest.json"
  try:
   manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
+  expected_build={key:build_info.get(key) for key in ("version","commit","short_commit","ref","timestamp","channel")}
+  if manifest.get("build")!=expected_build:integrity.append("build-metadata")
   listed={entry["path"] for entry in manifest["files"]}
   for entry in manifest["files"]:
    path=root/entry["path"]
@@ -80,6 +90,8 @@ def verify(root):
   if sums!={entry["path"]:entry["sha256"] for entry in manifest["files"]}:integrity.append("SHA256SUMS")
  except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError):integrity.append("release-manifest.json")
  assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"official_bundled_plugins":{"count":len(official),"plugins":official},"installed_third_party_plugins":{"count":0,"packaged":False},"user_created_local_plugins":{"count":0,"packaged":False},"user_local_script_studio_assets":{"count":0,"packaged":False}}
- return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
+ return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"build":build_info,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
 if __name__=="__main__":
- result=verify(sys.argv[1] if len(sys.argv)>1 else "dist/sus-companion-1.0.0-rc.1-linux-x86_64");print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)
+ parser=argparse.ArgumentParser();parser.add_argument("root",nargs="?",default="dist/sus-companion-1.0.0-rc.1-linux-x86_64");parser.add_argument("--output");args=parser.parse_args();result=verify(args.root);report=json.dumps(result,indent=2,sort_keys=True)+"\n"
+ if args.output:Path(args.output).write_text(report,encoding="utf-8")
+ print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)

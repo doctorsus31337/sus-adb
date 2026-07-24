@@ -1,21 +1,60 @@
-name: Package RC
+name: Package Current Testing Build
+
 on:
   workflow_dispatch:
-  push: {branches: ['feature/release-engineering-stabilization', 'release-candidate/**', 'release/**']}
-permissions: {contents: read}
+    inputs:
+      ref:
+        description: Branch, tag, or commit to package
+        required: true
+        default: feature/operator-experience-reliability
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   package:
-    strategy: {matrix: {os: [ubuntu-latest, windows-latest], python: ['3.11']}}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11']
     runs-on: ${{ matrix.os }}
+    env:
+      SUS_ADB_REF: ${{ inputs.ref }}
+      SUS_ADB_BUILD_CHANNEL: current-testing
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Resolve artifact identity
+        id: identity
+        shell: pwsh
+        env:
+          SELECTED_REF: ${{ inputs.ref }}
+        run: |
+          $shortCommit = git rev-parse --short=12 HEAD
+          $safeRef = $env:SELECTED_REF -replace '[^A-Za-z0-9._-]', '-'
+          "short_commit=$shortCommit" >> $env:GITHUB_OUTPUT
+          "safe_ref=$safeRef" >> $env:GITHUB_OUTPUT
       - uses: actions/setup-python@v5
-        with: {python-version: '${{ matrix.python }}', cache: pip}
-      - run: python -m pip install -r requirements-build.txt
-      - if: runner.os == 'Linux'
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Build and verify Linux package
+        if: runner.os == 'Linux'
         run: sh packaging/linux/build_linux.sh
-      - if: runner.os == 'Windows'
+      - name: Build and verify Windows package
+        if: runner.os == 'Windows'
         shell: pwsh
         run: ./packaging/windows/build_windows.ps1
-      - uses: actions/upload-artifact@v4
-        with: {name: 'sus-companion-1.0.0-rc.1-${{ runner.os }}', path: dist/}
+      - name: Upload current testing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sus-companion-current-testing-${{ steps.identity.outputs.safe_ref }}-${{ steps.identity.outputs.short_commit }}-${{ runner.os }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

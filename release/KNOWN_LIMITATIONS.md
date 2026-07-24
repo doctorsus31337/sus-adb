@@ -7,3 +7,4 @@
 - Script Studio is included, but RC1 does not bundle a reviewed core curated script pack; user-local and third-party scripts remain separately reviewed local content.
 - In-process trusted plugins are trusted Python code, not a hardened sandbox.
 - PDF report generation is outside v1; offline HTML, Markdown, and JSON are supported.
+- Current-testing artifacts are unsigned acceptance builds and are not GitHub Releases.

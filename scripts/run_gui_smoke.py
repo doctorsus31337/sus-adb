@@ -53,7 +53,7 @@ def main():
   console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
   app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();sessions.close();assert app.sessions_center is None
   app.open_first_run();first=app.first_run_dialog;app.open_first_run();assert app.first_run_dialog is first
-  diagnostics=EnvironmentDiagnosticsWindow(app,app.theme,(DiagnosticRecord("ADB",False,False,guidance="Optional"),),app.startup_profiler.summary());assert "No telemetry" in diagnostics.startup_view.get("1.0","end");crash=CrashDialog(app,app.theme,"redacted report")
+  diagnostics=EnvironmentDiagnosticsWindow(app,app.theme,(DiagnosticRecord("ADB",False,False,guidance="Optional"),),app.startup_profiler.summary());assert "No telemetry" in diagnostics.startup_view.get("1.0","end");assert tuple(diagnostics.tabs._tab_dict)==("Build","Environment","Startup");build_text=diagnostics.build_view.get("1.0","end");assert all(label in build_text for label in ("Product version:","Commit:","Branch/ref:","Build timestamp:","Build channel:"));crash=CrashDialog(app,app.theme,"redacted report")
   for width,height in ((1200,760),(1400,860)):
    app.geometry(f"{width}x{height}+0+0");app.update_idletasks()
    assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height()

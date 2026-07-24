@@ -109,6 +109,7 @@ class MenuBar:
             f"About {METADATA.application_name}",
             f"{METADATA.display_version}\n\n"
             f"{METADATA.descriptor}\n\n"
+            f"{METADATA.build_details}\n\n"
             "Legacy sus-adb CLI and local storage remain compatible.\n\n"
             "Created by DoctorSUS & ChatGPT"
         )
