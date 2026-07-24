@@ -18,6 +18,7 @@ def main():
   from app.core.environment_diagnostics import DiagnosticRecord
   from app.core.device import Device
   from app.core.frida_target import FridaTarget,TargetType
+  from app.core.installed_app_discovery import InstalledApplication,InstalledAppResult
   from app.gui.customtkinter_compat import install_scroll_target_guard
   app=SusADBWindow()
   app._deferred_started=True
@@ -31,7 +32,7 @@ def main():
   unopened=LazyPanelHost(app,app.theme,"Unopened",lambda parent:ctk.CTkFrame(parent));unopened.shutdown();assert unopened.ensure() is None;unopened.destroy()
   device=Device("fixture-serial",state="device",model="Fixture");target=FridaTarget("Fixture App","org.example.fixture",101,TargetType.APPLICATION,True);app.devices.cache.update((device,));app.devices.selected_serial=device.serial;app._sync_script_target(target)
   assert not install_scroll_target_guard().installed
-  top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","Tools","Addons","About"]
+  top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","Tools","Addons","Help","About"]
   tools=top.nametowidget(top.entrycget(cascades[labels.index("Tools")],"menu"));tool_labels=[tools.entrycget(i,"label") for i in range(tools.index("end")+1) if tools.type(i)=="command"];assert "Sessions Center" in tool_labels
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
   official=app.plugin_manager.official();assert len(official)==4;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
@@ -77,7 +78,9 @@ def main():
   app.workspace.set("Pentest");app.go_home();assert app.workspace.get()=="Console";assert center.winfo_exists()
   app.pentest_workspace.plugin_panel.refresh();app.update_idletasks()
   for name in app.pentest_workspace.HEAVY_SECTIONS:assert app.pentest_workspace._ensure_section(name)
-  app.navigate_workspace("Instrumentation");instrumentation=app.instrumentation_panel;assert instrumentation is not None and instrumentation.device is device;assert app.navigate_workspace("Instrumentation") is instrumentation
+  app.navigate_workspace("Instrumentation");instrumentation=app.instrumentation_panel;assert instrumentation is not None and instrumentation.device is device;assert app.navigate_workspace("Instrumentation") is instrumentation;assert tuple(instrumentation.target_sources._tab_dict)==("Installed Applications","Runtime Targets");instrumentation._apply_installed_apps(InstalledAppResult(device.serial,(InstalledApplication("org.example.fixture","Fixture App",launchable=True,running=True,pid=101),)));assert instrumentation.installed_scan_complete and len(instrumentation.installed_list.winfo_children())==1;assert instrumentation.interface_mode=="guided";assert instrumentation.frida_attach_button.cget("text")=="Observe Running App";app.set_interface_mode("advanced");assert instrumentation.frida_attach_button.cget("text")=="Attach";app.set_interface_mode("guided")
+  help_window=app.open_context_help("targets");assert app.open_context_help("console") is help_window;assert "Console" in help_window.topic_text.get("1.0","end");help_window.tabs.set("Glossary");help_window.search.delete(0,"end");help_window.search.insert(0,"temporary numeric");help_window._search_changed();assert "PID" in help_window.glossary_text.get("1.0","end")
+  guide=app.open_guided_setup();assert app.open_guided_setup() is guide;assert len(guide.STEPS)==10 and not guide.plan.executes_automatically
   app.navigate_workspace("Scripts");scripts=app.script_studio_panel;assert scripts is not None and scripts.device is device and scripts.target is target;assert app.navigate_workspace("Scripts") is scripts
   assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded addons"
   assert "SUS Companion" in app.title() and "1.0.0-rc.1" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")

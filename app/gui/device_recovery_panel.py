@@ -47,6 +47,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         *,
         destination_chooser=None,
         manifest_chooser=None,
+        help_callback=None,
         ui_dispatch=None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
@@ -62,6 +63,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
                 filetypes=(("Recovery manifest", "recovery-manifest.json"), ("JSON", "*.json")),
             )
         )
+        self.help_callback = help_callback
         self._local_ui_queue = None
         self._poll_id = None
         if ui_dispatch is None:
@@ -139,6 +141,14 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
             wraplength=1000,
         )
         self.warning.grid(row=3, column=0, columnspan=4, sticky="ew", padx=7, pady=(3, 7))
+        ctk.CTkButton(
+            header, text="? Help",
+            command=lambda: self.help_callback("device-rescue")
+            if self.help_callback else None,
+            fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], width=90,
+        ).grid(row=0, column=3, rowspan=3, sticky="e", padx=7, pady=5)
 
     def _build_tabs(self):
         self.tabs = ctk.CTkTabview(

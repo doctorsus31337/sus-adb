@@ -18,7 +18,20 @@ class ConfigManager:
     def load(self):
         if not self.path.exists():return ConfigResult(True,defaults(),str(self.path),warning="First run: using safe defaults.")
         try:
-            raw=json.loads(self.path.read_text(encoding="utf-8"));errors=validate(raw)
+            raw=json.loads(self.path.read_text(encoding="utf-8"))
+            if (
+                isinstance(raw,dict)
+                and int(raw.get("schema_version",1)) >= 4
+                and "interface" not in raw
+            ):
+                raw["interface"]={"mode":"advanced"}
+            interface=raw.get("interface")
+            if interface is not None and (
+                not isinstance(interface,dict)
+                or interface.get("mode") not in {"guided","advanced"}
+            ):
+                raw["interface"]={"mode":"advanced"}
+            errors=validate(raw)
             if errors:raise ValueError("; ".join(errors))
             migrated,applied=migrate(raw);merged=defaults();self._merge(merged,migrated)
             if applied:

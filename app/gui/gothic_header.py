@@ -4,7 +4,15 @@ from app.core.app_metadata import METADATA
 
 class GothicHeader(ctk.CTkFrame):
 
-    def __init__(self, parent, theme, home_callback=None):
+    def __init__(
+        self,
+        parent,
+        theme,
+        home_callback=None,
+        help_callback=None,
+        mode_callback=None,
+        interface_mode="guided",
+    ):
         super().__init__(
             parent,
             fg_color="transparent"
@@ -33,6 +41,38 @@ class GothicHeader(ctk.CTkFrame):
             text_color=theme["muted"]
         )
         self.subtitle.pack(pady=(0, 8))
+
+        controls = ctk.CTkFrame(self, fg_color="transparent")
+        controls.pack(fill="x", padx=120, pady=(0, 5))
+        controls.grid_columnconfigure(0, weight=1)
+        self.mode = ctk.CTkSegmentedButton(
+            controls,
+            values=["Guided", "Advanced"],
+            command=lambda value: mode_callback(value.casefold())
+            if mode_callback else None,
+            selected_color=theme["red"],
+            selected_hover_color=theme["red_hover"],
+            unselected_color=theme["panel_alt"],
+            unselected_hover_color=theme["gold_dark"],
+            text_color=theme["text"],
+            width=210,
+        )
+        self.mode.grid(row=0, column=1, padx=6)
+        self.mode.set(
+            "Advanced" if interface_mode == "advanced" else "Guided"
+        )
+        self.help_button = ctk.CTkButton(
+            controls,
+            text="? Help",
+            command=help_callback,
+            width=90,
+            fg_color=theme["red"],
+            hover_color=theme["red_hover"],
+            text_color=theme["text"],
+            border_width=1,
+            border_color=theme["gold_dark"],
+        )
+        self.help_button.grid(row=0, column=2, padx=6)
 
         self.separator = ctk.CTkFrame(
             self,

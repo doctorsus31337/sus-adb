@@ -15,7 +15,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
         self.parent = parent
         self.theme = theme
 
-        self.title(f"{METADATA.application_name} Quick Commands")
+        self.title(f"{METADATA.application_name} — Advanced Command Reference")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
         self.configure(fg_color=theme["bg"])
@@ -23,7 +23,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
 
         title = ctk.CTkLabel(
             self,
-            text="⚔ QUICK COMMAND GRIMOIRE ⚔",
+            text="⚔ ADVANCED COMMAND REFERENCE ⚔",
             font=("Times New Roman", 20, "bold"),
             text_color=theme["gold"],
         )

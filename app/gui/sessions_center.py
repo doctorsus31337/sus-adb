@@ -35,6 +35,7 @@ class SessionsCenter(ctk.CTkToplevel):
         target_provider=lambda: None,
         script_library=None,
         open_script_callback=None,
+        help_callback=None,
         ui_dispatch=None,
         on_close=None,
     ):
@@ -45,6 +46,7 @@ class SessionsCenter(ctk.CTkToplevel):
         self.target_provider = target_provider
         self.script_library = script_library
         self.open_script_callback = open_script_callback
+        self.help_callback = help_callback
         self._local_ui_queue = None
         self._ui_poll_id = None
         if ui_dispatch is None:
@@ -108,12 +110,20 @@ class SessionsCenter(ctk.CTkToplevel):
             border_color=self.theme["gold_dark"],
         )
         header.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 4))
-        for column in range(5):
+        for column in range(6):
             header.grid_columnconfigure(column, weight=1)
         ctk.CTkLabel(
             header, text="SESSIONS CENTER", text_color=self.theme["gold"],
             font=("Times New Roman", 24, "bold"),
         ).grid(row=0, column=0, columnspan=5, sticky="w", padx=10, pady=(7, 3))
+        ctk.CTkButton(
+            header, text="? Help",
+            command=lambda: self.help_callback("sessions-center")
+            if self.help_callback else None,
+            fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], width=90,
+        ).grid(row=0, column=5, sticky="e", padx=10, pady=(7, 3))
         self.header_values = {}
         for column, (key, label) in enumerate(
             (

@@ -17,6 +17,7 @@ install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
 from app.core.command_router import CommandRouter
+from app.core.context_help import HelpRegistry
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
 from app.core.host_state import DeviceState,HostStateSnapshot,HostStateStore,ScopeState,TargetState
@@ -60,6 +61,8 @@ from app.core.crash_report import CrashReporter
 from app.core.environment_diagnostics import EnvironmentDiagnostics
 from app.core.host_tool_resolver import HostToolResolver
 from app.core.interactive_sessions import InteractiveSessionManager
+from app.core.guide_engine import GuideEngine,GuideState
+from app.core.installed_app_discovery import ADBInstalledAppDiscovery
 from app.core.objection_session_recovery import ObjectionSessionRecovery
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
@@ -138,6 +141,7 @@ class SusADBWindow(ctk.CTk):
         self._background_workers = set()
         self.host_state=HostStateStore(self.call_on_ui)
         self.devices = DeviceManager()
+        self.installed_app_discovery=ADBInstalledAppDiscovery(self.devices.adb)
         self.command_runner = CommandRunner()
         self.host_tools = HostToolResolver(self.app_config.get("executables", {}))
         self.tool_diagnostics = ToolDiagnostics(self.command_runner, resolver=self.host_tools)
@@ -164,6 +168,8 @@ class SusADBWindow(ctk.CTk):
                 else "disconnected"
             ),
         )
+        self.help_registry=HelpRegistry()
+        self.guide_engine=GuideEngine()
         self.script_library = ScriptLibrary(self.app_config.get("script_library_root","scripts"))
         self.frida_python = FridaPythonAdapter()
         self.script_validator = ScriptValidator()
@@ -203,6 +209,8 @@ class SusADBWindow(ctk.CTk):
             host_state=self.host_state,
         )
         self.cheat_sheet: CheatSheetWindow | None = None
+        self.context_help_window=None
+        self.guided_setup_window=None
         self.addons_center=None
         self.sessions_center=None
         self.addon_window_host=AddonWindowHost(self,self.theme,self.plugin_manager,self.app_config.setdefault("addon_windows",{}),self.refresh_devices,self.select_device,{"device-recovery":self._build_device_recovery_workspace})
@@ -221,7 +229,10 @@ class SusADBWindow(ctk.CTk):
         from app.core.device_recovery_service import ADBRecoveryBackend,DeviceRecoveryService
         from app.gui.device_recovery_panel import DeviceRecoveryPanel
         service=DeviceRecoveryService(ADBRecoveryBackend(self.devices.adb),selected_serial_provider=lambda:self.devices.selected_serial)
-        return DeviceRecoveryPanel(parent,self.theme,service,ui_dispatch=self.call_on_ui)
+        return DeviceRecoveryPanel(
+            parent,self.theme,service,ui_dispatch=self.call_on_ui,
+            help_callback=self.open_context_help,
+        )
 
     def _initialize_shell(self):
 
@@ -265,7 +276,10 @@ class SusADBWindow(ctk.CTk):
 
     def create_widgets(self):
         started=time.perf_counter()
-        self.gothic_header=GothicHeader(self, self.theme, self.go_home)
+        self.gothic_header=GothicHeader(
+            self,self.theme,self.go_home,self.open_current_help,
+            self.set_interface_mode,self.interface_mode,
+        )
         self.gothic_header.grid(
             row=0,
             column=0,
@@ -293,7 +307,7 @@ class SusADBWindow(ctk.CTk):
 
         ctk.CTkButton(
             left,
-            text="⚔ Cheat Sheet",
+            text="⚔ Advanced Command Reference",
             command=self.open_cheat_sheet,
             fg_color=self.theme["red"],
             hover_color=self.theme["red_hover"],
@@ -405,6 +419,11 @@ class SusADBWindow(ctk.CTk):
             self.objection_manager,self.target_discovery,self.frida_sessions,
             self.log,self._sync_script_target,
             interactive_sessions=self.interactive_sessions,
+            installed_app_discovery=self.installed_app_discovery,
+            interface_mode=self.interface_mode,
+            help_callback=self.open_context_help,
+            guided_setup_callback=self.open_guided_setup,
+            ui_dispatch=self.call_on_ui,
         )
 
     def _construct_scripts(self, parent):
@@ -572,6 +591,7 @@ class SusADBWindow(ctk.CTk):
             target_provider=lambda:self.selected_target,
             script_library=self.script_library,
             open_script_callback=self.open_generated_script,
+            help_callback=self.open_context_help,
             ui_dispatch=self.call_on_ui,
             on_close=lambda:setattr(self,"sessions_center",None),
         )
@@ -693,7 +713,119 @@ class SusADBWindow(ctk.CTk):
         session=getattr(getattr(self,"pentest_workspace",None),"session",None);scope=getattr(session,"scope",None)
         scope_state=ScopeState(scope.scope_id,scope.case_name,scope.authorization_confirmed,tuple(scope.allowed_actions),tuple(scope.excluded_actions)) if scope else None
         adb_state=selected.state if selected else ("available" if devices else "unavailable")
-        self.host_state.publish(HostStateSnapshot(selected_state,devices,adb_state,target_state,scope_state,getattr(getattr(session,"state",None),"value","none"),self.app_config.get("interface_mode","advanced"),lifecycle))
+        self.host_state.publish(HostStateSnapshot(selected_state,devices,adb_state,target_state,scope_state,getattr(getattr(session,"state",None),"value","none"),self.interface_mode,lifecycle))
+
+    @property
+    def interface_mode(self):
+        return self.app_config.get("interface",{}).get("mode","guided")
+
+    def set_interface_mode(self,mode):
+        normalized=mode if mode in {"guided","advanced"} else "guided"
+        self.app_config.setdefault("interface",{})["mode"]=normalized
+        result=self.config_manager.save(self.app_config)
+        if not result.ok:self.log(f"[CONFIG] Could not save interface mode: {result.error}")
+        if hasattr(self,"gothic_header"):
+            self.gothic_header.mode.set(normalized.title())
+        for panel in (
+            getattr(self,"instrumentation_panel",None),
+            getattr(self,"script_studio_panel",None),
+            getattr(self,"pentest_workspace",None),
+        ):
+            if panel is not None and hasattr(panel,"apply_interface_mode"):
+                panel.apply_interface_mode(normalized)
+        self._publish_host_state("interface-mode-changed")
+
+    def current_help_topic(self):
+        workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
+        if workspace=="Console":return "console"
+        if workspace=="Instrumentation":
+            panel=getattr(self,"instrumentation_panel",None)
+            section=panel.internal_workspace.get() if panel else "Overview"
+            return {
+                "Overview":"instrumentation-overview",
+                "Targets":"targets",
+                "Sessions":"sessions",
+            }.get(section,"instrumentation-overview")
+        if workspace=="Scripts":return "script-studio"
+        panel=getattr(self,"pentest_workspace",None)
+        section=panel.workspace.get() if panel else "Dashboard"
+        return {
+            "Dashboard":"pentest-dashboard","ADB Explorer":"adb-explorer",
+            "Runtime Explorer":"runtime-explorer","Network":"network",
+            "Storage":"storage","APK Lab":"apk-laboratory",
+            "Findings":"findings-reports","Reports":"findings-reports",
+            "Plugins":"plugin-manager",
+        }.get(section,"pentest-dashboard")
+
+    def open_current_help(self):
+        return self.open_context_help(self.current_help_topic())
+
+    def open_context_help(self,topic_id="console"):
+        if self.context_help_window is None or not self.context_help_window.winfo_exists():
+            from app.gui.context_help_window import ContextHelpWindow
+            self.context_help_window=ContextHelpWindow(
+                self,self.theme,self.help_registry,
+                interface_mode_provider=lambda:self.interface_mode,
+                on_close=lambda:setattr(self,"context_help_window",None),
+            )
+        self.context_help_window.show_topic(topic_id)
+        return self.context_help_window
+
+    def _guide_state(self):
+        selected=self.devices.selected
+        panel=getattr(self,"instrumentation_panel",None)
+        diagnosis=getattr(panel,"_last_diagnosis",None)
+        target=getattr(self,"selected_target",None)
+        return GuideState(
+            selected_serial=selected.serial if selected else "",
+            adb_state=selected.state if selected else "unavailable",
+            host_frida_available=bool(self.host_tools.resolve("frida")),
+            frida_endpoint_reachable=bool(diagnosis and diagnosis.reachable),
+            root_available=bool(selected and selected.root),
+            server_available=bool(diagnosis and diagnosis.server_running),
+            installed_apps_scanned=bool(
+                panel and getattr(panel,"installed_scan_complete",False)
+            ),
+            selected_package=(
+                getattr(target,"application_identifier",None) or ""
+                if target else ""
+            ),
+            selected_target=(
+                getattr(target,"identifier",None)
+                or getattr(target,"name","")
+                if target else ""
+            ),
+        )
+
+    def open_guided_setup(self):
+        if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():
+            self.guided_setup_window.refresh();self.guided_setup_window.deiconify();self.guided_setup_window.lift();return self.guided_setup_window
+        from app.gui.guided_setup_window import GuidedSetupWindow
+        self.guided_setup_window=GuidedSetupWindow(
+            self,self.theme,self.guide_engine,self._guide_state,
+            open_destination=self.open_guide_destination,
+            on_close=lambda:setattr(self,"guided_setup_window",None),
+        )
+        return self.guided_setup_window
+
+    def open_guide_destination(self,destination):
+        if destination in {"console"}:return self.navigate_workspace("Console")
+        if destination in {"targets","targets-installed","instrumentation-overview"}:
+            panel=self.navigate_workspace("Instrumentation")
+            if panel:
+                panel.internal_workspace.set(
+                    "Targets" if destination!="instrumentation-overview" else "Overview"
+                )
+                if destination=="targets-installed" and hasattr(panel,"target_sources"):
+                    panel.target_sources.set("Installed Applications")
+            return panel
+        if destination in {"sessions-center"}:return self.open_sessions_center()
+        if destination in {"script-studio"}:return self.navigate_workspace("Scripts")
+        if destination in {"learning-center"} and hasattr(self,"open_learning_center"):
+            return self.open_learning_center()
+        if destination in {"device-rescue","readiness-advisor","webview-inspector"}:
+            return self.open_addons_center()
+        return self.open_context_help(destination)
 
     def navigate_workspace(self, name: str):
         if name in self.workspace._tab_dict:
@@ -704,7 +836,11 @@ class SusADBWindow(ctk.CTk):
 
     def open_addons_center(self):
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.deiconify();self.addons_center.lift();self.addons_center.focus_force();return self.addons_center
-        self.addons_center=AddonsCenter(self,self.theme,self.plugin_manager,self.addon_window_host,on_close=lambda:setattr(self,"addons_center",None));return self.addons_center
+        self.addons_center=AddonsCenter(
+            self,self.theme,self.plugin_manager,self.addon_window_host,
+            on_close=lambda:setattr(self,"addons_center",None),
+            help_callback=self.open_context_help,
+        );return self.addons_center
 
     def open_addon_window(self,contribution_id):return self.addon_window_host.open(contribution_id)
 
@@ -774,6 +910,8 @@ class SusADBWindow(ctk.CTk):
         if getattr(self,"splash",None) is not None and self.splash.winfo_exists():self.splash.close()
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
         if self.sessions_center is not None and self.sessions_center.winfo_exists():self.sessions_center.close()
+        if self.context_help_window is not None and self.context_help_window.winfo_exists():self.context_help_window.close()
+        if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         life.add_cleanup("deferred-workers",self._join_background_workers)

@@ -20,7 +20,14 @@ class MenuBar:
         menu.add_cascade(label="File", menu=file_menu)
 
         settings_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
-        settings_menu.add_command(label="Preferences (Coming Soon)")
+        settings_menu.add_command(
+            label="Guided Mode",
+            command=lambda: window.set_interface_mode("guided"),
+        )
+        settings_menu.add_command(
+            label="Advanced Mode",
+            command=lambda: window.set_interface_mode("advanced"),
+        )
         menu.add_cascade(label="Settings", menu=settings_menu)
 
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
@@ -52,6 +59,22 @@ class MenuBar:
         addons_menu.add_separator();addons_menu.add_command(label="Unload All Addons",command=window.unload_all_addons)
         menu.add_cascade(label="Addons",menu=addons_menu);self.addons_menu=addons_menu;self.refresh_loaded_addons()
         manager=getattr(window,"plugin_manager",None);self.manager_unsubscribe=manager.subscribe(lambda _event,_pid:window.after(0,self.refresh_loaded_addons)) if manager else None
+
+        help_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
+        help_menu.add_command(label="Contextual Help", command=window.open_current_help)
+        help_menu.add_command(
+            label="Guided Instrumentation Setup",
+            command=window.open_guided_setup,
+        )
+        help_menu.add_command(
+            label="Glossary",
+            command=lambda: window.open_context_help("learning-center").tabs.set("Glossary"),
+        )
+        help_menu.add_command(
+            label="Advanced Command Reference",
+            command=window.open_cheat_sheet,
+        )
+        menu.add_cascade(label="Help", menu=help_menu)
 
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         about_menu.add_command(label=f"About {METADATA.application_name}", command=self.about_box)

@@ -1,4 +1,4 @@
-"""Non-modal searchable Frida and Objection command Grimoire."""
+"""Non-modal searchable Frida and Objection advanced command reference."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class InstrumentationReferenceWindow(ctk.CTkToplevel):
         self.theme = theme
         self.target_provider = target_provider
         self.copy_callback = copy_callback
-        self.title("Frida / Objection Command Grimoire")
+        self.title("Frida / Objection Advanced Command Reference")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.minsize(560, 540)
         self.configure(fg_color=theme["bg"])
@@ -51,7 +51,7 @@ class InstrumentationReferenceWindow(ctk.CTkToplevel):
 
     def _build_header(self):
         ctk.CTkLabel(
-            self, text="⚔ FRIDA / OBJECTION GRIMOIRE ⚔",
+            self, text="⚔ FRIDA / OBJECTION ADVANCED COMMAND REFERENCE ⚔",
             text_color=self.theme["gold"], font=("Times New Roman", 22, "bold"),
         ).grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 5))
 

@@ -6,6 +6,11 @@ class ConfigManagerTests(unittest.TestCase):
  def test_atomic_round_trip_and_unknown_key(self):
   with tempfile.TemporaryDirectory() as d:
    m=ConfigManager(d);data=defaults();data["extension"]={"kept":True};self.assertTrue(m.save(data).ok);loaded=m.load().data;self.assertTrue(loaded["extension"]["kept"]);self.assertFalse(loaded["script_studio"]["show_static_analysis_advisories"])
+ def test_fresh_install_is_guided_but_existing_missing_or_bad_mode_is_advanced(self):
+  with tempfile.TemporaryDirectory() as d:
+   m=ConfigManager(d);self.assertEqual(m.load().data["interface"]["mode"],"guided")
+   m.path.write_text(json.dumps({"schema_version":4}),encoding="utf-8");self.assertEqual(m.load().data["interface"]["mode"],"advanced")
+   m.path.write_text(json.dumps({"schema_version":4,"interface":{"mode":"broken"}}),encoding="utf-8");self.assertEqual(m.load().data["interface"]["mode"],"advanced")
  def test_malformed_is_quarantined(self):
   with tempfile.TemporaryDirectory() as d:
    m=ConfigManager(d);m.path.write_text("{");result=m.load();self.assertTrue(result.ok);self.assertTrue((Path(d)/"config.malformed.json").exists())

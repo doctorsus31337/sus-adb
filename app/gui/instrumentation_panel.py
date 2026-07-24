@@ -14,7 +14,12 @@ from app.core.command_result import CommandResult
 from app.core.device import Device
 from app.core.frida_manager import FridaDiagnosis, FridaManager
 from app.core.frida_session_manager import FridaSessionManager, FridaSessionReadiness
-from app.core.frida_target import FridaTarget
+from app.core.frida_target import FridaTarget, TargetType
+from app.core.installed_app_discovery import (
+    ADBInstalledAppDiscovery,
+    InstalledAppResult,
+    filter_installed_apps,
+)
 from app.core.objection_manager import ObjectionManager
 from app.core.target_discovery import TargetDiscovery, TargetDiscoveryResult, filter_targets
 from app.core.tool_diagnostics import ToolDiagnostic, ToolDiagnostics
@@ -35,6 +40,11 @@ class InstrumentationPanel(ctk.CTkFrame):
         log_callback: Callable[[str], None],
         target_callback: Callable[[FridaTarget | None], None] | None = None,
         interactive_sessions=None,
+        installed_app_discovery: ADBInstalledAppDiscovery | None = None,
+        interface_mode: str = "guided",
+        help_callback: Callable[[str], object] | None = None,
+        guided_setup_callback: Callable[[], object] | None = None,
+        ui_dispatch: Callable[..., None] | None = None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme = theme
@@ -46,8 +56,20 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.log = log_callback
         self.target_callback = target_callback
         self.interactive_sessions = interactive_sessions
+        self.installed_app_discovery = installed_app_discovery
+        self.interface_mode = (
+            interface_mode if interface_mode in {"guided", "advanced"} else "guided"
+        )
+        self.help_callback = help_callback
+        self.guided_setup_callback = guided_setup_callback
+        self.dispatch = ui_dispatch or (
+            lambda callback, *args: self.after(0, callback, *args)
+        )
         self.device: Device | None = None
         self.targets: tuple[FridaTarget, ...] = ()
+        self.installed_apps = ()
+        self.installed_scan_complete = False
+        self.installed_serial: str | None = None
         self.selected_target: FridaTarget | None = None
         self.target_rows: list[tuple[FridaTarget, ctk.CTkFrame]] = []
         self.frida_preview_command: tuple[str, ...] = ()
@@ -67,8 +89,10 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._build_target_browser(self.targets_tab)
         self._build_session_section(self.sessions_tab)
         self._build_results_section(self.results_tab)
+        self.apply_interface_mode(self.interface_mode)
         self._update_target_actions()
         self.refresh_targets_button.configure(state="disabled")
+        self.scan_installed_button.configure(state="disabled")
 
     def _build_summary_header(self):
         header = ctk.CTkFrame(
@@ -104,11 +128,25 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.device_warning.grid(row=1, column=0, columnspan=5, sticky="ew", padx=10, pady=(1, 7))
         ctk.CTkButton(
-            header, text="⚔ Frida / Objection Grimoire", command=self.open_reference_window,
+            header, text="? Help",
+            command=lambda: self._open_help("instrumentation-overview"),
+            fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], height=30,
+        ).grid(row=1, column=4, sticky="e", padx=4, pady=(1, 7))
+        ctk.CTkButton(
+            header, text="Guided Setup", command=self._open_guided_setup,
+            fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], height=30,
+        ).grid(row=1, column=5, sticky="e", padx=4, pady=(1, 7))
+        ctk.CTkButton(
+            header, text="Advanced Command Reference",
+            command=self.open_reference_window,
             fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
             text_color=self.theme["text"], border_width=1,
             border_color=self.theme["gold_dark"], height=30,
-        ).grid(row=1, column=5, columnspan=2, sticky="e", padx=10, pady=(1, 7))
+        ).grid(row=1, column=6, sticky="e", padx=(4, 10), pady=(1, 7))
 
     def _build_workspace(self):
         self.internal_workspace = ctk.CTkTabview(
@@ -254,7 +292,26 @@ class InstrumentationPanel(ctk.CTkFrame):
         ).grid(row=0, column=2, sticky="e", padx=4)
 
     def _build_target_browser(self, parent):
-        frame = self._section(parent, "Target Browser", 0, 0)
+        self.target_sources = ctk.CTkTabview(
+            parent, fg_color=self.theme["panel"], border_width=1,
+            border_color=self.theme["border"],
+            segmented_button_fg_color=self.theme["panel_alt"],
+            segmented_button_selected_color=self.theme["red"],
+            segmented_button_selected_hover_color=self.theme["red_hover"],
+            segmented_button_unselected_color=self.theme["panel_alt"],
+            segmented_button_unselected_hover_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+        )
+        self.target_sources.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
+        installed_tab = self.target_sources.add("Installed Applications")
+        runtime_tab = self.target_sources.add("Runtime Targets")
+        for tab in (installed_tab, runtime_tab):
+            tab.configure(fg_color=self.theme["bg"])
+            tab.grid_rowconfigure(0, weight=1)
+            tab.grid_columnconfigure(0, weight=1)
+        self._build_installed_browser(installed_tab)
+
+        frame = self._section(runtime_tab, "Runtime Targets — Frida-backed", 0, 0)
         frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=3)
         frame.grid_columnconfigure(1, weight=2)
@@ -278,7 +335,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.target_type.grid(row=0, column=1, padx=4)
         self.target_type.set("All")
         self.refresh_targets_button = self._button(
-            toolbar, "Refresh Targets", self.refresh_targets, 0, 2, track=False
+            toolbar, "Scan Running Processes", self.refresh_targets, 0, 2, track=False
         )
         self._button(toolbar, "Clear Search", self.clear_search, 0, 3)
         self.target_count = ctk.CTkLabel(
@@ -318,6 +375,80 @@ class InstrumentationPanel(ctk.CTkFrame):
             border_color=self.theme["gold_dark"], state="disabled",
         )
         self.copy_guidance_button.grid(row=6, column=0, columnspan=2, sticky="e", padx=12, pady=(0, 8))
+
+    def _build_installed_browser(self, parent):
+        frame = self._section(
+            parent, "Installed Applications — ADB-backed (Frida not required)", 0, 0
+        )
+        frame.grid_rowconfigure(3, weight=1)
+        toolbar = ctk.CTkFrame(frame, fg_color="transparent")
+        toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=4)
+        toolbar.grid_columnconfigure(0, weight=1)
+        self.installed_search = ctk.CTkEntry(
+            toolbar, placeholder_text="Search application or package ID...",
+            fg_color=self.theme["terminal_bg"],
+            border_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+            placeholder_text_color=self.theme["muted"],
+        )
+        self.installed_search.grid(row=0, column=0, sticky="ew", padx=4)
+        self.installed_search.bind(
+            "<KeyRelease>", lambda _event: self._render_installed_apps()
+        )
+        self.installed_type = ctk.CTkSegmentedButton(
+            toolbar, values=["All", "User Apps", "System Apps"],
+            command=lambda _value: self._render_installed_apps(),
+            selected_color=self.theme["red"],
+            selected_hover_color=self.theme["red_hover"],
+            unselected_color=self.theme["panel_alt"],
+            unselected_hover_color=self.theme["gold_dark"],
+            text_color=self.theme["text"],
+        )
+        self.installed_type.grid(row=0, column=1, padx=4)
+        self.installed_type.set("All")
+        self.scan_installed_button = self._button(
+            toolbar, "Scan Installed Apps", self.scan_installed_apps, 0, 2,
+            track=False,
+        )
+        self._button(
+            toolbar, "Guided Instrumentation Setup", self._open_guided_setup, 0, 3
+        )
+        self._button(toolbar, "? Help", lambda: self._open_help("targets"), 0, 4)
+
+        filters = ctk.CTkFrame(frame, fg_color="transparent")
+        filters.grid(row=2, column=0, columnspan=2, sticky="ew", padx=12, pady=2)
+        self.launchable_only = ctk.BooleanVar(value=False)
+        self.running_only = ctk.BooleanVar(value=False)
+        for column, (text, variable) in enumerate((
+            ("Launchable only", self.launchable_only),
+            ("Running only", self.running_only),
+        )):
+            ctk.CTkCheckBox(
+                filters, text=text, variable=variable,
+                command=self._render_installed_apps,
+                fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+                border_color=self.theme["gold_dark"],
+                text_color=self.theme["text"],
+            ).grid(row=0, column=column, sticky="w", padx=(0, 14))
+        self.installed_count = ctk.CTkLabel(
+            filters, text="Scan not run", text_color=self.theme["gold"],
+            font=("Segoe UI", 12, "bold"),
+        )
+        self.installed_count.grid(row=0, column=2, sticky="e", padx=8)
+        filters.grid_columnconfigure(2, weight=1)
+
+        self.installed_list = ctk.CTkScrollableFrame(
+            frame, fg_color=self.theme["terminal_bg"],
+            border_width=1, border_color=self.theme["border"],
+            scrollbar_button_color=self.theme["gold_dark"],
+            scrollbar_button_hover_color=self.theme["red_hover"],
+        )
+        self.installed_list.grid(
+            row=3, column=0, columnspan=2, sticky="nsew",
+            padx=12, pady=(5, 10),
+        )
+        self.installed_list.grid_columnconfigure(0, weight=1)
+        self._render_installed_apps()
 
     def _build_session_section(self, parent):
         frame = self._section(parent, "Live Session Launcher", 0, 0)
@@ -399,7 +530,8 @@ class InstrumentationPanel(ctk.CTkFrame):
             objection_buttons, "Copy Command", lambda: self.copy_preview("objection"), 2, 1
         )
         self.open_grimoire_session_button = self._button(
-            objection_buttons, "Open Grimoire", self.open_reference_window, 2, 2
+            objection_buttons, "Command Reference", self.open_reference_window,
+            2, 2,
         )
 
         self.command_preview = ctk.CTkTextbox(
@@ -423,6 +555,9 @@ class InstrumentationPanel(ctk.CTkFrame):
         current_serial = device.serial if device else None
         if previous_serial != current_serial or (device is not None and not device.connected):
             self.clear_targets("Device selection changed; target data cleared.")
+            self._clear_installed_apps(
+                "Device selection changed; installed application data cleared."
+            )
         if device is None:
             self.device_warning.configure(text="No device selected. Refresh and select an online device.")
             self.summary_labels["device"].configure(text="None")
@@ -445,6 +580,9 @@ class InstrumentationPanel(ctk.CTkFrame):
                 text="Unknown" if device.frida is None else "Running" if device.frida else "Stopped"
             )
         self.refresh_targets_button.configure(state="normal" if device and device.connected else "disabled")
+        self.scan_installed_button.configure(
+            state="normal" if device and device.connected else "disabled"
+        )
 
     def diagnose_host(self):
         self._run_operation("Host diagnostics", self.diagnostics.diagnose_all, self._show_host_diagnostics)
@@ -565,7 +703,8 @@ class InstrumentationPanel(ctk.CTkFrame):
         serial = self._serial()
         self.refresh_targets_button.configure(state="disabled")
         self._run_operation(
-            "Target discovery", lambda: self.target_discovery.discover_combined(serial),
+            "Runtime target discovery",
+            lambda: self.target_discovery.discover_processes(serial),
             self._apply_discovery,
         )
 
@@ -580,8 +719,128 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._show_selected_target()
         message = f"Discovered {len(result.targets)} structured target(s)."
         self._append_results("Target discovery", message)
-        if result.errors:
-            self._report_failure("Target discovery", "; ".join(result.errors))
+
+    def scan_installed_apps(self):
+        serial = self._serial()
+        if self.installed_app_discovery is None:
+            self._report_failure(
+                "Installed application scan",
+                "ADB installed-application discovery is unavailable.",
+            )
+            return
+        self.scan_installed_button.configure(state="disabled")
+        self._run_operation(
+            "Installed application scan",
+            lambda: self.installed_app_discovery.scan(serial),
+            self._apply_installed_apps,
+        )
+
+    def _apply_installed_apps(self, result: InstalledAppResult):
+        self.scan_installed_button.configure(
+            state="normal" if self.device and self.device.connected else "disabled"
+        )
+        if result.serial != self._serial():
+            self._report_failure(
+                "Installed application scan",
+                "Selected device changed before the scan completed.",
+            )
+            return
+        self.installed_scan_complete = True
+        self.installed_serial = result.serial
+        self.installed_apps = result.applications
+        self._render_installed_apps()
+        self._append_results(
+            "Installed applications",
+            f"Discovered {len(result.applications)} installed application(s) via ADB.",
+        )
+
+    def _clear_installed_apps(self, reason: str | None = None):
+        self.installed_apps = ()
+        self.installed_scan_complete = False
+        self.installed_serial = None
+        if hasattr(self, "installed_list"):
+            self._render_installed_apps()
+        if reason and hasattr(self, "results"):
+            self._append_results("Installed applications stale", reason)
+
+    def _render_installed_apps(self):
+        for widget in self.installed_list.winfo_children():
+            widget.destroy()
+        kind = self.installed_type.get()
+        visible = filter_installed_apps(
+            self.installed_apps,
+            self.installed_search.get(),
+            user_only=kind == "User Apps",
+            system_only=kind == "System Apps",
+            launchable_only=self.launchable_only.get(),
+            running_only=self.running_only.get(),
+        )
+        if not self.installed_scan_complete:
+            state = (
+                "No selected device. Select an authorized online device first."
+                if not self.device else
+                f"Device state is {self.device.state}. Reconnect before scanning."
+                if not self.device.connected else
+                "ADB scan not run. Select Scan Installed Apps."
+            )
+            self.installed_count.configure(text="Scan not run")
+        elif not self.installed_apps:
+            state = "No installed applications were returned by the ADB package scan."
+            self.installed_count.configure(text="0 applications")
+        elif not visible:
+            state = "No installed applications match the current filters."
+            self.installed_count.configure(text="0 matching")
+        else:
+            state = ""
+            self.installed_count.configure(
+                text=f"{len(visible)} application{'s' if len(visible) != 1 else ''}"
+            )
+        if state:
+            ctk.CTkLabel(
+                self.installed_list, text=state, text_color=self.theme["muted"],
+                wraplength=760, justify="left",
+            ).grid(row=0, column=0, sticky="ew", padx=10, pady=18)
+            return
+        for row_index, app in enumerate(visible):
+            row = ctk.CTkFrame(
+                self.installed_list, fg_color=self.theme["panel_alt"],
+                border_width=1, border_color=self.theme["border"], corner_radius=7,
+            )
+            row.grid(row=row_index, column=0, sticky="ew", padx=3, pady=3)
+            row.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(
+                row, text=app.display_label, text_color=self.theme["gold"],
+                font=("Segoe UI", 13, "bold"), anchor="w", justify="left",
+            ).grid(row=0, column=0, sticky="ew", padx=10, pady=(7, 1))
+            facts = (
+                f"{'System' if app.system else 'User'} · "
+                f"{'Enabled' if app.enabled is not False else 'Disabled'} · "
+                f"{'Launchable' if app.launchable else 'Not launchable'} · "
+                f"{'Running' if app.running else 'Not running'}"
+            )
+            ctk.CTkLabel(
+                row, text=facts, text_color=self.theme["text"],
+                font=("Consolas", 11), anchor="w",
+            ).grid(row=1, column=0, sticky="ew", padx=10, pady=(1, 7))
+            ctk.CTkButton(
+                row, text="Select App",
+                command=lambda item=app: self._select_installed_app(item),
+                fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+                text_color=self.theme["text"], border_width=1,
+                border_color=self.theme["gold_dark"], width=105,
+            ).grid(row=0, column=1, rowspan=2, sticky="e", padx=9, pady=6)
+
+    def _select_installed_app(self, app):
+        target = FridaTarget(
+            app.label or app.package_id, app.package_id, app.pid,
+            TargetType.APPLICATION, app.running,
+        )
+        self.targets = tuple(
+            item for item in self.targets if item.identifier != app.package_id
+        ) + (target,)
+        self.target_sources.set("Runtime Targets")
+        self.select_target(target)
+        self._render_targets()
 
     def clear_search(self):
         self.search_entry.delete(0, "end")
@@ -672,7 +931,14 @@ class InstrumentationPanel(ctk.CTkFrame):
         values = {
             "name": target.name if target else "None",
             "identifier": target.identifier if target and target.identifier else "None",
-            "pid": str(target.pid) if target and target.pid is not None else "None",
+            "pid": (
+                str(target.pid)
+                if self.interface_mode == "advanced"
+                and target and target.pid is not None
+                else "Available under Advanced Details"
+                if self.interface_mode == "guided" and target
+                else "None"
+            ),
             "type": target.target_type.value.title() if target else "None",
             "running": self._state(target.running) if target else "No",
         }
@@ -930,7 +1196,9 @@ class InstrumentationPanel(ctk.CTkFrame):
 
         BackgroundWorker(
             guarded,
-            callback=lambda outcome: self.after(0, self._finish_operation, title, outcome, callback),
+            callback=lambda outcome: self.dispatch(
+                self._finish_operation, title, outcome, callback
+            ),
         ).start()
 
     def _finish_operation(self, title: str, outcome, callback):
@@ -978,7 +1246,13 @@ class InstrumentationPanel(ctk.CTkFrame):
         if hasattr(value, "ready") and not value.ready:
             failures.extend(value.errors)
         if hasattr(value, "ok") and not value.ok and not isinstance(value, CommandResult):
-            failures.append(value.error or "Session operation failed.")
+            structured = tuple(getattr(value, "errors", ()) or ())
+            if structured:
+                failures.extend(str(item) for item in structured)
+            else:
+                failures.append(
+                    getattr(value, "error", None) or "Session operation failed."
+                )
         return failures
 
     def _report_failure(self, title: str, error: str):
@@ -999,7 +1273,46 @@ class InstrumentationPanel(ctk.CTkFrame):
             self.refresh_targets_button.configure(
                 state="disabled" if busy or not (self.device and self.device.connected) else "normal"
             )
+        if hasattr(self, "scan_installed_button"):
+            self.scan_installed_button.configure(
+                state="disabled"
+                if busy or not (self.device and self.device.connected)
+                else "normal"
+            )
         self._update_target_actions()
+
+    def apply_interface_mode(self, mode: str):
+        self.interface_mode = mode if mode in {"guided", "advanced"} else "guided"
+        if not hasattr(self, "frida_attach_button"):
+            return
+        guided = self.interface_mode == "guided"
+        self.frida_attach_button.configure(
+            text="Observe Running App" if guided else "Attach"
+        )
+        self.frida_spawn_button.configure(
+            text="Start and Observe App" if guided else "Spawn"
+        )
+        self.frida_pid_button.configure(
+            text="Advanced PID Attach" if guided else "Attach by PID"
+        )
+        self.objection_attach_button.configure(
+            text="Observe Running App" if guided else "Attach"
+        )
+        self.objection_spawn_button.configure(
+            text="Start and Observe App" if guided else "Spawn"
+        )
+        if hasattr(self, "target_detail_labels"):
+            self._show_selected_target()
+
+    def _open_help(self, topic_id: str):
+        if self.help_callback:
+            return self.help_callback(topic_id)
+        return None
+
+    def _open_guided_setup(self):
+        if self.guided_setup_callback:
+            return self.guided_setup_callback()
+        return self._open_help("instrumentation-overview")
 
     def _append_results(self, title: str, text: str):
         self.results_source.configure(text=f"Source: {title}")

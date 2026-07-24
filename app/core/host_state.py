@@ -84,7 +84,7 @@ class HostStateSnapshot:
     selected_target: TargetState | None = None
     assessment_scope: ScopeState | None = None
     session_state: str = "none"
-    interface_mode: str = "advanced"
+    interface_mode: str = "guided"
     lifecycle: str = "ready"
     generation: int = 0
     updated_at: str = field(default_factory=_now)
