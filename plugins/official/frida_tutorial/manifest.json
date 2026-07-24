@@ -1,18 +1,39 @@
 {
   "plugin_id": "susadb.frida-tutorial",
-  "name": "Frida Foundations",
-  "version": "1.0.0",
-  "description": "Local synthetic lessons for Frida concepts, readiness, targets, scripts, RPC, cleanup, and connection-loss troubleshooting.",
+  "name": "Frida Assistant",
+  "version": "1.1.0",
+  "description": "A focused local Frida readiness, target, session, script-launch, troubleshooting, command-preview, and learning assistant.",
   "author": "SUS-ADB",
   "license": "MIT",
   "minimum_sus_adb_version": "1.0.0",
   "supported_platforms": ["linux", "windows"],
   "entry_point": "plugin.py:Plugin",
   "plugin_api_version": "1.0",
-  "requested_capabilities": [],
+  "requested_capabilities": ["read-selected-device", "read-selected-target"],
   "optional_dependencies": [],
   "required_external_tools": [],
   "contributed_components": [
+    {
+      "contribution_id": "frida-assistant.panel",
+      "contribution_type": "pentest-panel",
+      "title": "Frida Assistant",
+      "factory": "panel_spec",
+      "metadata": {
+        "ui_mode": "window",
+        "singleton": true,
+        "workspace_kind": "frida-assistant",
+        "default_width": 1180,
+        "default_height": 780,
+        "minimum_width": 900,
+        "minimum_height": 650
+      }
+    },
+    {
+      "contribution_id": "frida-assistant.menu",
+      "contribution_type": "menu-action",
+      "title": "Open Frida Assistant",
+      "metadata": {"target": "frida-assistant.panel"}
+    },
     {
       "contribution_id": "frida-tutorial.course",
       "contribution_type": "learning-course",
@@ -21,8 +42,8 @@
       "metadata": {"category": "education", "synthetic_only": true}
     }
   ],
-  "addon_ui": {"category": "education"},
+  "addon_ui": {"category": "instrumentation", "ui_mode": "window"},
   "trust_state": "untrusted",
   "enabled": false,
-  "caution_text": "Educational content only. Browsing lessons performs no device, Frida, script, target, process, terminal, or network action."
+  "caution_text": "Opening performs no scan, attach, spawn, server start, script load, APK modification, device modification, terminal launch, or network action. Every operational handoff is explicit."
 }

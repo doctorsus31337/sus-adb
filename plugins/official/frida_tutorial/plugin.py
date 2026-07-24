@@ -1,7 +1,8 @@
-"""Static Frida Foundations course; lesson browsing performs no action."""
+"""Frida Assistant declarations and secondary synthetic learning course."""
 
 from app.core.learning_center import Course, Lesson
 from app.plugins.contribution_registry import Contribution
+from app.plugins.plugin_ui import PluginPanelSpec, PluginView
 
 
 def _lesson(identifier, title, explanation, example, expected, *hints):
@@ -95,10 +96,47 @@ def course_spec(_context=None):
     )
 
 
+def panel_spec(context=None):
+    device = dict(getattr(context, "selected_device", {}) or {})
+    target = dict(getattr(context, "selected_target", {}) or {})
+    serial = str(device.get("serial", ""))
+    identifier = str(target.get("identifier") or target.get("name") or "")
+    return PluginPanelSpec(
+        "Frida Assistant",
+        (
+            PluginView(
+                "Overview",
+                "Host-owned contextual assistance for Frida readiness, targets, "
+                "sessions, scripts, troubleshooting, reference, and learning.",
+                (
+                    ("Selected serial", serial or "None"),
+                    ("Selected target", identifier or "None"),
+                ),
+            ),
+        ),
+        {"device": serial or "None", "target": identifier or "None"},
+    )
+
+
 class Plugin:
     def activate(self, api):
         self.api = api
         return (
+            Contribution(
+                "frida-assistant.panel", "pentest-panel",
+                "Frida Assistant", factory=panel_spec,
+                metadata={
+                    "ui_mode": "window", "singleton": True,
+                    "workspace_kind": "frida-assistant",
+                    "default_width": 1180, "default_height": 780,
+                    "minimum_width": 900, "minimum_height": 650,
+                },
+            ),
+            Contribution(
+                "frida-assistant.menu", "menu-action",
+                "Open Frida Assistant",
+                metadata={"target": "frida-assistant.panel"},
+            ),
             Contribution(
                 "frida-tutorial.course", "learning-course",
                 "Frida Foundations", factory=course_spec,

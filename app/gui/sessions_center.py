@@ -162,6 +162,7 @@ class SessionsCenter(ctk.CTkToplevel):
         self.route_launch = self._button(
             self.route_bar, "Launch Routed Session", self.launch_routed, 1
         )
+        self.route_launch.configure(width=180)
         self.route_cancel = self._button(
             self.route_bar, "Clear", self.clear_route, 2
         )

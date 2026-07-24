@@ -1,6 +1,10 @@
-# Objection Foundations
+# Objection Assistant
 
-An official, disabled-by-default local course. It requests no capabilities,
-uses synthetic prompt examples, and never launches Objection or Frida, contacts
-a device, selects a target, sends a command, or loads a script while lessons
-are browsed.
+An official, disabled-by-default contextual helper. It requests only immutable
+selected-device and selected-target state. Host-owned actions delegate to the
+shared diagnostics, command planner, Sessions Center, and recoverable Objection
+session workflow. Opening the assistant sends no command, attaches or spawns no
+target, performs no bypass action, and launches no terminal.
+
+The original Objection Foundations course remains available under **Learn**,
+with synthetic prompt examples and no automatic execution.

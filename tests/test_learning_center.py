@@ -56,14 +56,21 @@ class LearningCenterTests(unittest.TestCase):
         self.assertIn("help command may succeed", device_gone.explanation)
         self.assertIn("device is gone", device_gone.synthetic_example)
 
-    def test_tutorial_manifests_are_disabled_zero_capability_and_static(self):
+    def test_assistant_manifests_are_disabled_minimum_capability_and_safe(self):
         for directory in ("frida_tutorial", "objection_tutorial"):
             root = ROOT / "plugins/official" / directory
             manifest = json.loads((root / "manifest.json").read_text())
             self.assertFalse(manifest["enabled"])
-            self.assertEqual(manifest["requested_capabilities"], [])
+            self.assertEqual(
+                manifest["requested_capabilities"],
+                ["read-selected-device", "read-selected-target"],
+            )
             self.assertEqual(
                 manifest["contributed_components"][0]["contribution_type"],
+                "pentest-panel",
+            )
+            self.assertEqual(
+                manifest["contributed_components"][-1]["contribution_type"],
                 "learning-course",
             )
             source = (root / "plugin.py").read_text()
@@ -110,11 +117,10 @@ class LearningCenterTests(unittest.TestCase):
                 ).ok
             )
             self.assertFalse(service.courses())
-            self.assertTrue(
-                manager.trust_zero_capability(
-                    item.manifest.plugin_id, True
-                ).ok
-            )
+            self.assertTrue(manager.approve(
+                item.manifest.plugin_id,
+                item.manifest.requested_capabilities,
+            ).ok)
             self.assertTrue(manager.enable(item.manifest.plugin_id).ok)
             self.assertFalse(service.courses())
             self.assertTrue(manager.load(item.manifest.plugin_id).ok)

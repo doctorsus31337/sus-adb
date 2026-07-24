@@ -153,7 +153,7 @@ class GuideEngine:
             actions.append(
                 GuideAction(
                     "Open Learning Center", "learning-center",
-                    "Browse the local Objection Foundations course using synthetic practice.",
+                    "Open Objection Assistant and use its local Learn section with synthetic practice.",
                 )
             )
             if state.frida_endpoint_reachable:

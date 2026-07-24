@@ -66,6 +66,21 @@ class PluginManager:
         current=PluginPackage.inspect(item.path)
         if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed before installation.")
         return self.install(item.path)
+    def update_official(self,plugin_id,expected_digest="",confirmed=False):
+        item=self.catalog.get(plugin_id,self.records) if self.catalog else None
+        record=self.records.get(plugin_id)
+        if not item or not record:return ManagerResult(False,error="Installed official plugin was not found.")
+        if not confirmed:return ManagerResult(False,item.manifest,error="Explicit official-addon update review is required.")
+        if not item.valid:return ManagerResult(False,item.manifest,error="; ".join(item.errors))
+        if item.package_digest==record[1].package_digest:return ManagerResult(False,item.manifest,error="The bundled official addon already matches the installed digest.")
+        if item.manifest.version==record[2].version:return ManagerResult(False,item.manifest,error="A changed official digest must use a new version; the installed package was not overwritten.")
+        current=PluginPackage.inspect(item.path)
+        if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed during update review.")
+        self.unload(plugin_id)
+        result=self.store.install(item.path)
+        self.refresh()
+        if result.ok:self._event(plugin_id,"Official addon update stored disabled","Trust does not transfer across the new package digest.")
+        return ManagerResult(result.ok,item.manifest,path=result.path,error=result.error)
     def approve(self,plugin_id,capabilities=(),confirmed=False):
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")

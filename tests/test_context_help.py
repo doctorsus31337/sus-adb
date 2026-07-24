@@ -10,7 +10,8 @@ class ContextHelpTests(unittest.TestCase):
         "runtime-explorer", "network", "storage", "apk-laboratory",
         "findings-reports", "plugin-manager", "addons-center",
         "device-rescue", "readiness-advisor", "webview-inspector",
-        "sessions-center", "learning-center",
+        "sessions-center", "learning-center", "frida-assistant",
+        "objection-assistant",
     }
     REQUIRED_TERMS = {
         "ADB", "package", "process", "PID", "attach", "spawn",

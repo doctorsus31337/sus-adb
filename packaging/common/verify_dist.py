@@ -11,8 +11,8 @@ OFFICIAL_CAPABILITIES={
  "susadb.rootability-advisor":("read-selected-device","read-selected-target","run-adb-readonly","access-active-case","append-timeline","create-findings","contribute-report-section"),
  "susadb.webview-security-inspector":("read-selected-target","access-frida-runtime","load-frida-script","access-active-case","append-timeline","create-findings","contribute-report-section"),
  "susadb.skeleton-module":(),
- "susadb.frida-tutorial":(),
- "susadb.objection-tutorial":(),
+ "susadb.frida-tutorial":("read-selected-device","read-selected-target"),
+ "susadb.objection-tutorial":("read-selected-device","read-selected-target"),
 }
 def frida_runtime_errors(resource_root,platform_name):
  metadata=tuple(resource_root.glob("frida-*.dist-info/METADATA"))

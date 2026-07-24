@@ -33,7 +33,7 @@ class AddonCard(ctk.CTkFrame):
 
 class AddonsCenter(ctk.CTkToplevel):
     def __init__(self,parent,theme,manager,window_host,on_close=None,destination_chooser=None,help_callback=None):
-        super().__init__(parent);self.theme=theme;self.manager=manager;self.window_host=window_host;self.on_close=on_close;self.help_callback=help_callback;self.destination_chooser=destination_chooser or (lambda:filedialog.askdirectory(parent=self,title="Choose template export destination"));self.cards={};self.status_message="";self.title(f"{METADATA.application_name} — Add-ons Center");self.configure(fg_color=theme["bg"]);self.minsize(980,650);self.geometry(self._center(1180,780));self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1);self.protocol("WM_DELETE_WINDOW",self.close)
+        super().__init__(parent);self.theme=theme;self.manager=manager;self.window_host=window_host;self.on_close=on_close;self.help_callback=help_callback;self.destination_chooser=destination_chooser or (lambda:filedialog.askdirectory(parent=self,title="Choose template export destination"));self.cards={};self.status_message="";self.title(f"{METADATA.application_name} — Add-ons Center");self.configure(fg_color=theme["bg"]);self.minsize(900,650);self.geometry(self._center(1180,780));self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1);self.protocol("WM_DELETE_WINDOW",self.close)
         heading=ctk.CTkFrame(self,fg_color="transparent");heading.grid(row=0,column=0,sticky="ew",padx=18,pady=(16,6));heading.grid_columnconfigure(0,weight=1);ctk.CTkLabel(heading,text="⚙ ADD-ONS CENTER ⚙",font=("Times New Roman",28,"bold"),text_color=theme["gold"]).grid(row=0,column=0,sticky="ew");ctk.CTkButton(heading,text="Help",command=lambda:self.help_callback("addons-center") if self.help_callback else None,width=90,fg_color=theme["red"],hover_color=theme["red_hover"],text_color=theme["text"],border_width=1,border_color=theme["gold_dark"]).grid(row=0,column=1,padx=(8,0))
         row=ctk.CTkFrame(self,fg_color="transparent");row.grid(row=1,column=0,sticky="ew",padx=18,pady=5);row.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(row,placeholder_text="Search available and installed addons",fg_color=theme["terminal_bg"],border_color=theme["gold_dark"],text_color=theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=(0,8));ctk.CTkButton(row,text="Apply",width=90,fg_color=theme["red"],hover_color=theme["red_hover"],command=self.refresh).grid(row=0,column=1)
         self.card_area=ctk.CTkScrollableFrame(self,fg_color=theme["panel"],border_width=1,border_color=theme["border"]);self.card_area.grid(row=2,column=0,sticky="nsew",padx=18,pady=8);self.card_area.bind("<Configure>",lambda _e:self._layout())
@@ -68,6 +68,23 @@ class AddonsCenter(ctk.CTkToplevel):
         item=self.manager.catalog.get(plugin_id,self.manager.records) if self.manager.catalog else None
         if name=="Details" and item:messagebox.showinfo(item.manifest.name,f"{item.manifest.description}\n\nCapabilities: {', '.join(item.manifest.requested_capabilities) or 'None'}\n\n{item.manifest.caution_text}",parent=self)
         elif name=="Install" and item:self._result(self.manager.install_official(plugin_id,item.package_digest))
+        elif name=="Review Update" and item:
+            current=self.manager.records[plugin_id]
+            confirmed=messagebox.askyesno(
+                "Review Official Addon Update",
+                f"Addon: {item.manifest.name}\n"
+                f"Installed version: {current[2].version}\n"
+                f"Bundled version: {item.manifest.version}\n"
+                f"New package digest: {item.package_digest}\n\n"
+                "The new package will be stored disabled. Existing trust and "
+                "capability approval will not transfer to the changed digest. "
+                "You must review permissions, enable, and load it separately.\n\n"
+                "Store this reviewed update?",
+                parent=self,
+            )
+            self._result(self.manager.update_official(
+                plugin_id,item.package_digest,confirmed
+            ))
         elif name=="Trust":
             manifest=self.manager.records[plugin_id][2];digest=self.manager.records[plugin_id][1].package_digest
             confirmed=messagebox.askyesno("Trust Zero-Capability Addon",f"Addon: {manifest.name}\nVersion: {manifest.version}\nPackage digest: {digest}\n\nThis addon requests zero capabilities. Trust is bound only to this exact digest. Trusting does not enable, load, or open it.\n\nTrust this package?",parent=self)

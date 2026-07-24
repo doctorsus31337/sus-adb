@@ -18,6 +18,7 @@ install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
 from app.core.command_router import CommandRouter
+from app.core.contextual_assistant import ContextualAssistantService
 from app.core.context_help import HelpRegistry
 from app.core.device import Device
 from app.core.device_manager import DeviceManager
@@ -188,6 +189,12 @@ class SusADBWindow(ctk.CTk):
             frida_sessions=self.frida_sessions,
             objection_recovery=self.objection_recovery,
         )
+        self.contextual_assistants=ContextualAssistantService(
+            self.installed_app_discovery,self.target_discovery,
+            self.tool_diagnostics,self.frida_manager,
+            self.interactive_sessions,self.script_library,
+            selected_target_provider=lambda:self.selected_target,
+        )
         self.terminal = TerminalManager(
             self.log,self.clear_console,self.host_tools,
             router=self.command_router,interactive_callback=self._interactive_command_requested,
@@ -243,6 +250,22 @@ class SusADBWindow(ctk.CTk):
                     self._build_readiness_advisor_workspace,
                     "read-selected-device",True,
                 ),
+                "frida-assistant":HostWorkspaceBinding(
+                    lambda parent:self._build_contextual_assistant(parent,"frida"),
+                    "read-selected-device",
+                ),
+                "frida-assistant.panel":HostWorkspaceBinding(
+                    lambda parent:self._build_contextual_assistant(parent,"frida"),
+                    "read-selected-device",
+                ),
+                "objection-assistant":HostWorkspaceBinding(
+                    lambda parent:self._build_contextual_assistant(parent,"objection"),
+                    "read-selected-device",
+                ),
+                "objection-assistant.panel":HostWorkspaceBinding(
+                    lambda parent:self._build_contextual_assistant(parent,"objection"),
+                    "read-selected-device",
+                ),
             },
         )
         self.first_run_dialog = None
@@ -288,6 +311,24 @@ class SusADBWindow(ctk.CTk):
             help_callback=self.open_context_help,
             ui_dispatch=self.call_on_ui,
         )
+
+    def _build_contextual_assistant(self,parent,kind):
+        from app.gui.contextual_assistant_panel import ContextualAssistantPanel
+        return ContextualAssistantPanel(
+            parent,self.theme,self.contextual_assistants,kind,
+            refresh_devices=self.refresh_devices,
+            open_guided_setup=self.open_guided_setup,
+            open_sessions=self.open_assistant_session,
+            open_script_studio=lambda:self.navigate_workspace("Scripts"),
+            open_learning=self.open_learning_center,
+            open_help=self.open_context_help,
+            ui_dispatch=self.call_on_ui,
+        )
+
+    def open_assistant_session(self,section):
+        center=self.open_sessions_center()
+        if section in center.SECTIONS:center.tabs.set(section)
+        return center
 
     def _initialize_shell(self):
 
