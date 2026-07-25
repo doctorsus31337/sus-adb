@@ -57,3 +57,14 @@ class T(unittest.TestCase):
   source=(ROOT/"app/gui/pentest_workspace.py").read_text(encoding="utf-8");self.assertIn('"Authorization must be explicitly confirmed."',source);self.assertNotIn('"Authorization must be explicitly confirm"',source)
  def test_generic_hosts_have_no_official_ids_or_raw_root_provider(self):
   text="".join((ROOT/path).read_text(encoding="utf-8") for path in ("app/gui/addons_center.py","app/gui/addon_window_host.py","app/gui/menu_bar.py"));self.assertNotIn("susadb.",text);self.assertNotIn("import subprocess",text);self.assertNotIn("import requests",text)
+ def test_addons_center_uses_one_scoped_themed_scroll_region(self):
+  source=(ROOT/"app/gui/addons_center.py").read_text(encoding="utf-8")
+  self.assertIn("class AddonCardScroller",source);self.assertIn("tk.Canvas(",source);self.assertIn("ctk.CTkScrollbar(",source)
+  self.assertIn('button_color=theme["gold_dark"]',source);self.assertIn('button_hover_color=theme["red_hover"]',source)
+  self.assertNotIn("bind_all(",source);self.assertIn("detach_input()",source);self.assertIn("BOTTOM_PADDING",source)
+ def test_filtering_retains_cards_and_lifecycle_updates_in_place(self):
+  source=(ROOT/"app/gui/addons_center.py").read_text(encoding="utf-8")
+  self.assertIn("self.visible_plugin_ids=tuple(visible)",source)
+  self.assertIn("card.update_spec(spec)",source)
+  self.assertIn("if plugin_id not in specs:",source)
+  self.assertIn("self.callbacks.cancel_all()",source)
