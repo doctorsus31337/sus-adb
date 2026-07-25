@@ -13,6 +13,10 @@ from app.core.pentest_event import EventCategory,PentestEvent
 @dataclass(frozen=True,slots=True)
 class ManagerResult:
     ok:bool;manifest:object=None;items:tuple=();status:object=None;path:str|None=None;error:str|None=None;warnings:tuple[str,...]=()
+@dataclass(frozen=True,slots=True)
+class OfficialUpdateReview:
+    plugin_id:str;name:str;installed_version:str;candidate_version:str;installed_digest:str;candidate_digest:str;publisher:str;source_classification:str
+    capability_additions:tuple[str,...]=();capability_removals:tuple[str,...]=();contribution_additions:tuple[str,...]=();contribution_removals:tuple[str,...]=();contribution_changes:tuple[str,...]=();presentation_changes:tuple[str,...]=();executable_files_changed:bool=False;version_changed:bool=False;digest_only_changed:bool=False
 class PluginManager:
     def __init__(self,store,trust,registry,timeline_provider=lambda:None,session_provider=lambda:None,device_provider=lambda:None,target_provider=lambda:None,evidence_provider=lambda:None,finding_provider=lambda:None,app_version="1.0.0",official_root=None,official_tracked_paths=None,auto_refresh=True,host_state=None):
         self.store=store;self.trust=trust;self.registry=registry;self.validator=PluginValidator();self.timeline_provider=timeline_provider;self.session_provider=session_provider;self.device_provider=device_provider;self.target_provider=target_provider;self.evidence_provider=evidence_provider;self.finding_provider=finding_provider;self.app_version=app_version;self.host_state=host_state;self.catalog=OfficialPluginCatalog(official_root,official_tracked_paths) if official_root else None;self.records={};self._listeners=[];self._refreshed=False;self._apis={};self.loader=PluginLoader(registry,self.validator,trust,self._api)
@@ -66,21 +70,67 @@ class PluginManager:
         current=PluginPackage.inspect(item.path)
         if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed before installation.")
         return self.install(item.path)
-    def update_official(self,plugin_id,expected_digest="",confirmed=False):
+    def official_update_review(self,plugin_id,expected_digest=""):
         item=self.catalog.get(plugin_id,self.records) if self.catalog else None
         record=self.records.get(plugin_id)
         if not item or not record:return ManagerResult(False,error="Installed official plugin was not found.")
-        if not confirmed:return ManagerResult(False,item.manifest,error="Explicit official-addon update review is required.")
         if not item.valid:return ManagerResult(False,item.manifest,error="; ".join(item.errors))
         if item.package_digest==record[1].package_digest:return ManagerResult(False,item.manifest,error="The bundled official addon already matches the installed digest.")
-        if item.manifest.version==record[2].version:return ManagerResult(False,item.manifest,error="A changed official digest must use a new version; the installed package was not overwritten.")
         current=PluginPackage.inspect(item.path)
         if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed during update review.")
-        self.unload(plugin_id)
-        result=self.store.install(item.path)
-        self.refresh()
-        if result.ok:self._event(plugin_id,"Official addon update stored disabled","Trust does not transfer across the new package digest.")
-        return ManagerResult(result.ok,item.manifest,path=result.path,error=result.error)
+        installed_manifest=record[2];candidate_manifest=item.manifest
+        old_caps=set(installed_manifest.requested_capabilities);new_caps=set(candidate_manifest.requested_capabilities)
+        old_contributions={value.contribution_id:value.to_dict() for value in installed_manifest.contributed_components}
+        new_contributions={value.contribution_id:value.to_dict() for value in candidate_manifest.contributed_components}
+        shared=set(old_contributions)&set(new_contributions)
+        presentation=tuple(label for label,old,new in (
+            ("name",installed_manifest.name,candidate_manifest.name),
+            ("description",installed_manifest.description,candidate_manifest.description),
+            ("author",installed_manifest.author,candidate_manifest.author),
+            ("caution text",installed_manifest.caution_text,candidate_manifest.caution_text),
+            ("addon presentation",installed_manifest.addon_ui,candidate_manifest.addon_ui),
+        ) if old!=new)
+        executable_suffixes=(".py",".pyc",".pyd",".so",".dll",".dylib")
+        old_files={name:digest for name,digest,_size in record[1].files if name.casefold().endswith(executable_suffixes)}
+        new_files={name:digest for name,digest,_size in current.files if name.casefold().endswith(executable_suffixes)}
+        version_changed=installed_manifest.version!=candidate_manifest.version
+        review=OfficialUpdateReview(
+            plugin_id,candidate_manifest.name,installed_manifest.version,candidate_manifest.version,
+            record[1].package_digest,current.package_digest,candidate_manifest.author or "Unspecified",
+            "Bundled official addon",tuple(sorted(new_caps-old_caps)),tuple(sorted(old_caps-new_caps)),
+            tuple(sorted(set(new_contributions)-set(old_contributions))),tuple(sorted(set(old_contributions)-set(new_contributions))),
+            tuple(sorted(value for value in shared if old_contributions[value]!=new_contributions[value])),
+            presentation,old_files!=new_files,version_changed,not version_changed,
+        )
+        return ManagerResult(True,item.manifest,status=review)
+    def official_update_reviewed(self,plugin_id,candidate_digest=""):
+        record=self.records.get(plugin_id)
+        item=self.catalog.get(plugin_id,self.records) if self.catalog else None
+        digest=candidate_digest or (item.package_digest if item else "")
+        return bool(record and item and digest==item.package_digest and digest!=record[1].package_digest and self.store.update_reviewed(plugin_id,record[1].package_digest,digest))
+    def mark_official_update_reviewed(self,plugin_id,expected_digest=""):
+        result=self.official_update_review(plugin_id,expected_digest)
+        if not result.ok:return result
+        record=self.records[plugin_id];review=result.status
+        stored=self.store.mark_update_reviewed(plugin_id,record[1].package_digest,review.candidate_digest)
+        if not stored.ok:return ManagerResult(False,result.manifest,error=stored.error)
+        self._changed("update-reviewed",plugin_id)
+        return ManagerResult(True,result.manifest,status=review)
+    def install_official_update(self,plugin_id,expected_digest=""):
+        review_result=self.official_update_review(plugin_id,expected_digest)
+        if not review_result.ok:return review_result
+        record=self.records[plugin_id];review=review_result.status
+        if not self.official_update_reviewed(plugin_id,review.candidate_digest):return ManagerResult(False,review_result.manifest,error="Review this exact update candidate before installing it.")
+        status=self.loader.statuses.get(plugin_id)
+        if plugin_id in self.loader.instances or status and status.state is LoaderState.ACTIVE or self.registry.by_plugin(plugin_id):return ManagerResult(False,review_result.manifest,error="Update ready — unload addon before installing.")
+        current_digest=record[1].package_digest
+        result=self.store.replace_package(plugin_id,record[2].version,current_digest,self.catalog.get(plugin_id,self.records).path,review.candidate_digest)
+        if not result.ok:return ManagerResult(False,review_result.manifest,error=result.error)
+        self._release_api(plugin_id);self.trust.revoke(plugin_id,"Trust and capability approval revoked after official addon update.");self.refresh();self._changed("update",plugin_id)
+        self._event(plugin_id,"Official addon update installed disabled","Trust and capability approval do not transfer across the new package digest.")
+        return ManagerResult(True,self.records[plugin_id][2],path=result.path)
+    def update_official(self,plugin_id,expected_digest="",confirmed=False):
+        return ManagerResult(False,error="Review and Install Update are separate explicit actions; use the Add-ons Center update controls.")
     def approve(self,plugin_id,capabilities=(),confirmed=False):
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")

@@ -330,10 +330,12 @@ class AddonCard(ctk.CTkFrame):
             text=f"Official · v{spec.version} · {spec.preferred_mode.value.title()}"
         )
         self.description_label.configure(text=spec.description)
+        update_line=f"\n{spec.update_status}" if spec.update_status else ""
         self.state_label.configure(
             text=(
                 f"Capabilities: {spec.capability_count}{impact}\n"
                 f"State: {spec.lifecycle_status}"
+                f"{update_line}"
             ),
             text_color=self.theme["error"] if spec.high_impact else self.theme["gold"],
         )
@@ -341,7 +343,8 @@ class AddonCard(ctk.CTkFrame):
         wanted=card_actions(spec)
         for name,button in self.buttons.items():
             if name not in wanted:
-                if focused_within(button):safe_focus(self)
+                if focused_within(button):
+                    safe_focus(self.buttons.get("Details") or self)
                 button.grid_remove()
         for name in wanted:
             button=self.buttons.get(name)
@@ -393,6 +396,106 @@ class AddonCard(ctk.CTkFrame):
         super().destroy()
 
 
+class UpdateReviewDialog(ctk.CTkToplevel):
+    """Non-mutating official-addon comparison with one explicit review action."""
+
+    def __init__(self,parent,theme,review,mark_callback,close_callback):
+        super().__init__(parent)
+        self.theme=theme
+        self.review=review
+        self.mark_callback=mark_callback
+        self.close_callback=close_callback
+        self._closed=False
+        self.title("Review Official Addon Update")
+        self.configure(fg_color=theme["bg"])
+        self.geometry(parent._center(760,580))
+        self.minsize(680,500)
+        self.transient(parent)
+        self.grid_columnconfigure(0,weight=1)
+        self.grid_rowconfigure(1,weight=1)
+        self.protocol("WM_DELETE_WINDOW",self.close)
+        self.bind("<Escape>",lambda _event:self.close(),add="+")
+        ctk.CTkLabel(
+            self,text="REVIEW OFFICIAL ADDON UPDATE",
+            font=("Times New Roman",22,"bold"),text_color=theme["gold"],
+        ).grid(row=0,column=0,sticky="ew",padx=18,pady=(16,8))
+        details=ctk.CTkTextbox(
+            self,fg_color=theme["terminal_bg"],
+            text_color=theme["terminal_text"],border_width=1,
+            border_color=theme["gold_dark"],wrap="word",
+        )
+        details.grid(row=1,column=0,sticky="nsew",padx=18,pady=6)
+        details.insert("1.0",self._summary())
+        details.configure(state="disabled")
+        bar=ctk.CTkFrame(self,fg_color="transparent")
+        bar.grid(row=2,column=0,sticky="ew",padx=18,pady=(8,16))
+        bar.grid_columnconfigure(0,weight=1)
+        ctk.CTkButton(
+            bar,text="Close",command=self.close,width=110,
+            fg_color=theme["gold_dark"],hover_color=theme["red_hover"],
+            text_color=theme["text"],border_width=1,
+            border_color=theme["gold"],
+        ).grid(row=0,column=1,padx=5)
+        mark=ctk.CTkButton(
+            bar,text="Mark Reviewed",command=self.mark_reviewed,width=150,
+            fg_color=theme["red"],hover_color=theme["red_hover"],
+            text_color=theme["text"],border_width=1,
+            border_color=theme["gold_dark"],
+        )
+        mark.grid(row=0,column=2,padx=5)
+        self.grab_set()
+        mark.focus_set()
+
+    @staticmethod
+    def _values(values):
+        return ", ".join(values) if values else "None"
+
+    def _summary(self):
+        review=self.review
+        warning=(
+            "\nWARNING: Package contents changed without a version change.\n"
+            if review.digest_only_changed else ""
+        )
+        return (
+            f"Addon: {review.name}\n"
+            f"Installed version: {review.installed_version}\n"
+            f"Candidate version: {review.candidate_version}\n"
+            f"Installed digest: {review.installed_digest[:12]}…\n"
+            f"Candidate digest: {review.candidate_digest[:12]}…\n"
+            f"Publisher: {review.publisher}\n"
+            f"Source: {review.source_classification}\n"
+            f"{warning}\n"
+            "Requested capabilities\n"
+            f"  Added: {self._values(review.capability_additions)}\n"
+            f"  Removed: {self._values(review.capability_removals)}\n\n"
+            "Contributions\n"
+            f"  Added: {self._values(review.contribution_additions)}\n"
+            f"  Removed: {self._values(review.contribution_removals)}\n"
+            f"  Changed: {self._values(review.contribution_changes)}\n\n"
+            f"Presentation metadata changed: "
+            f"{self._values(review.presentation_changes)}\n"
+            f"Executable/plugin files changed: "
+            f"{'Yes' if review.executable_files_changed else 'No'}\n"
+            f"Version changed: {'Yes' if review.version_changed else 'No'}\n\n"
+            "Mark Reviewed records only this exact candidate digest. It does "
+            "not install, unload, disable, trust, approve, enable, load, or "
+            "open the addon. Prior trust and capability approval do not "
+            "transfer if the changed package is later installed."
+        )
+
+    def mark_reviewed(self):
+        result=self.mark_callback()
+        self.close(result)
+
+    def close(self,result=None):
+        if self._closed:return
+        self._closed=True
+        try:self.grab_release()
+        except tk.TclError:pass
+        self.destroy()
+        self.close_callback(result)
+
+
 class AddonsCenter(ctk.CTkToplevel):
     def __init__(
         self,parent,theme,manager,window_host,on_close=None,
@@ -412,6 +515,7 @@ class AddonsCenter(ctk.CTkToplevel):
         self.cards={}
         self.visible_plugin_ids=()
         self.status_message=""
+        self.review_dialog=None
         self.title(f"{METADATA.application_name} — Add-ons Center")
         self.configure(fg_color=theme["bg"])
         self.minsize(900,650)
@@ -552,12 +656,16 @@ class AddonsCenter(ctk.CTkToplevel):
             if self.manager.catalog else None
         )
         if name=="Details" and item:
+            manifest=(
+                self.manager.records[plugin_id][2]
+                if plugin_id in self.manager.records else item.manifest
+            )
             messagebox.showinfo(
-                item.manifest.name,
-                f"{item.manifest.description}\n\n"
+                manifest.name,
+                f"{manifest.description}\n\n"
                 f"Capabilities: "
-                f"{', '.join(item.manifest.requested_capabilities) or 'None'}"
-                f"\n\n{item.manifest.caution_text}",
+                f"{', '.join(manifest.requested_capabilities) or 'None'}"
+                f"\n\n{manifest.caution_text}",
                 parent=self,
             )
         elif name=="Install" and item:
@@ -565,22 +673,25 @@ class AddonsCenter(ctk.CTkToplevel):
                 self.manager.install_official(plugin_id,item.package_digest)
             )
         elif name=="Review Update" and item:
-            current=self.manager.records[plugin_id]
-            confirmed=messagebox.askyesno(
-                "Review Official Addon Update",
-                f"Addon: {item.manifest.name}\n"
-                f"Installed version: {current[2].version}\n"
-                f"Bundled version: {item.manifest.version}\n"
-                f"New package digest: {item.package_digest}\n\n"
-                "The new package will be stored disabled. Existing trust and "
-                "capability approval will not transfer to the changed digest. "
-                "You must review permissions, enable, and load it separately."
-                "\n\nStore this reviewed update?",
-                parent=self,
+            review=self.manager.official_update_review(
+                plugin_id,item.package_digest
             )
+            if not review.ok:self._result(review)
+            elif widget_exists(self.review_dialog):
+                self.review_dialog.lift()
+                self.review_dialog.focus_force()
+            else:
+                self.review_dialog=UpdateReviewDialog(
+                    self,self.theme,review.status,
+                    lambda:self.manager.mark_official_update_reviewed(
+                        plugin_id,item.package_digest
+                    ),
+                    self._review_closed,
+                )
+        elif name=="Install Update" and item:
             self._result(
-                self.manager.update_official(
-                    plugin_id,item.package_digest,confirmed
+                self.manager.install_official_update(
+                    plugin_id,item.package_digest
                 )
             )
         elif name=="Trust":
@@ -680,7 +791,12 @@ class AddonsCenter(ctk.CTkToplevel):
         )
         self.refresh()
 
+    def _review_closed(self,result=None):
+        self.review_dialog=None
+        if result is not None:self._result(result)
+
     def close(self):
+        if widget_exists(self.review_dialog):self.review_dialog.close()
         if self.unsubscribe:
             self.unsubscribe()
             self.unsubscribe=None
