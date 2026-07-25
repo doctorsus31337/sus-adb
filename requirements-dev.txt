@@ -1,0 +1,4 @@
+-c constraints.txt
+-r requirements.txt
+coverage>=7.6,<8
+pyyaml>=6.0,<7

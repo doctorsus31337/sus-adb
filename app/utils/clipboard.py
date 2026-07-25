@@ -1,57 +1,27 @@
-import customtkinter as ctk
-
-
-class Clipboard:
+class ClipboardManager:
+    """Clipboard helper."""
 
     @staticmethod
-    def copy(widget, text: str) -> bool:
-        """
-        Copies text to the system clipboard.
-
-        Returns True on success.
-        """
-
+    def copy(widget):
         try:
-            widget.clipboard_clear()
-            widget.clipboard_append(text)
-            widget.update()
+            text = widget.get("sel.first", "sel.last")
+        except Exception:
+            try:
+                text = widget.get("1.0", "end").strip()
+            except Exception:
+                return False
 
+        widget.clipboard_clear()
+        widget.clipboard_append(text)
+        widget.update()
+
+        return True
+
+    @staticmethod
+    def paste(entry):
+        try:
+            text = entry.clipboard_get()
+            entry.insert("insert", text)
             return True
-
         except Exception:
             return False
-
-    @staticmethod
-    def paste(widget) -> str:
-        """
-        Returns the current clipboard contents.
-        """
-
-        try:
-            return widget.clipboard_get()
-
-        except Exception:
-            return ""
-
-    @staticmethod
-    def copy_console(widget, console):
-
-        text = console.get("1.0", "end").strip()
-
-        return Clipboard.copy(widget, text)
-
-    @staticmethod
-    def copy_selection(widget, console):
-
-        try:
-            text = console.selection_get()
-
-        except Exception:
-            return False
-
-        return Clipboard.copy(widget, text)
-
-    @staticmethod
-    def copy_command(widget, command: str):
-
-        return Clipboard.copy(widget, command)

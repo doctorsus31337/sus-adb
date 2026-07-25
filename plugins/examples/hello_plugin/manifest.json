@@ -1,0 +1,25 @@
+{
+  "plugin_id": "hello-local",
+  "name": "Hello Local Example",
+  "version": "1.0.0",
+  "description": "Harmless read-only SDK example with local metadata contributions.",
+  "author": "SUS-ADB",
+  "homepage_source_reference": "docs/plugin-sdk/README.md",
+  "license": "MIT",
+  "minimum_sus_adb_version": "1.0.0",
+  "supported_platforms": ["linux", "windows"],
+  "entry_point": "hello_plugin.py:Plugin",
+  "plugin_api_version": "1.0",
+  "requested_capabilities": ["contribute-report-section"],
+  "optional_dependencies": [],
+  "required_external_tools": [],
+  "contributed_components": [
+    {"contribution_id": "hello.dashboard", "contribution_type": "dashboard-card", "title": "Hello Plugin", "metadata": {"read_only": true}},
+    {"contribution_id": "hello.menu", "contribution_type": "menu-action", "title": "Hello from Plugin", "metadata": {"read_only": true}},
+    {"contribution_id": "hello.report", "contribution_type": "report-section", "title": "Plugin SDK Example", "factory": "report_section", "metadata": {"read_only": true}},
+    {"contribution_id": "hello.script", "contribution_type": "script-asset", "title": "Hello Observer", "metadata": {"path": "assets/hello_observer.js", "metadata_path": "assets/hello_observer.meta.json"}}
+  ],
+  "trust_state": "untrusted",
+  "enabled": false,
+  "caution_text": "Example only. It remains disabled and never loads automatically."
+}

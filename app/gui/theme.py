@@ -1,5 +1,5 @@
 """
-SUS-ADB Medieval Gothic Blackhat Theme
+SUS Companion Medieval Gothic Blackhat Theme
 """
 
 THEME = {

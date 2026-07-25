@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "tips": [
+    "Device Rescue can organize selected-file recovery when authorized access is already available.",
+    "Bootloader unlocking commonly wipes user data and is not a recovery method.",
+    "Official addons remain inactive until explicitly installed and enabled.",
+    "Script Studio assets remain unloaded until explicitly reviewed and loaded.",
+    "SUS Companion keeps assessment data local and includes no automatic upload.",
+    "Runtime observations can be converted into structured findings after operator review.",
+    "The Add-ons Center separates installation, trust, permissions, enablement, loading, and opening.",
+    "A matching device serial is required for device-bound workflows.",
+    "Evidence is registered only after an explicit operator action.",
+    "WebView static matches are candidates, not automatically confirmed vulnerabilities."
+  ]
+}

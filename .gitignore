@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+.idea/
 # C extensions
 *.so
 
@@ -31,6 +31,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!packaging/pyinstaller/sus_adb.spec
 
 # Installer logs
 pip-log.txt
@@ -57,6 +58,11 @@ cover/
 
 # Django stuff:
 *.log
+scripts/session-exports/
+scripts/.bundles/
+scripts/.cache/
+workspaces/*
+!workspaces/README.md
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -179,3 +185,21 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# SUS-ADB user-local and generated release data
+logs/
+crashes/
+captures/
+reports/
+evidence/
+plugins/installed/
+plugins/disabled/
+plugins/quarantine/
+plugins/state/
+*.pcap
+*.pcapng
+*.apk
+*.apks
+*.xapk
+*.keystore
+*.jks
