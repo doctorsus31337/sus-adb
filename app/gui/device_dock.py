@@ -88,7 +88,7 @@ class DeviceDock(ctk.CTkFrame):
             self.summary,
             text="◆",
             width=30,
-            text_color=theme["gold"],
+            text_color=self.theme["gold"],
             font=("Times New Roman", 18, "bold"),
         ).grid(row=0, column=0, rowspan=2, padx=(3, 7))
         self.name_label = ctk.CTkLabel(
@@ -102,7 +102,7 @@ class DeviceDock(ctk.CTkFrame):
         self.serial_label = ctk.CTkLabel(
             self.summary,
             text="Select explicitly from the device drawer",
-            text_color=theme["muted"],
+            text_color=self.theme["muted"],
             anchor="w",
             font=("Consolas", 10),
         )
@@ -125,11 +125,22 @@ class DeviceDock(ctk.CTkFrame):
         self.expand_button = self._button(
             self.summary, "Details ▾", self.toggle, 5
         )
+        self.drawer = None
+        self.device_list = None
+        self.drawer_status = None
+        self.connect_button = None
+        self.close_button = None
+        if expanded:
+            self.expand()
+
+    def _build_drawer(self):
+        if self.drawer is not None:
+            return
         self.drawer = ctk.CTkFrame(
             self,
-            fg_color=theme["panel_alt"],
+            fg_color=self.theme["panel_alt"],
             border_width=1,
-            border_color=theme["border"],
+            border_color=self.theme["border"],
             corner_radius=8,
             height=172,
         )
@@ -142,22 +153,22 @@ class DeviceDock(ctk.CTkFrame):
         ctk.CTkLabel(
             drawer_header,
             text="Connected Devices",
-            text_color=theme["gold"],
+            text_color=self.theme["gold"],
             font=("Times New Roman", 17, "bold"),
             anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         ctk.CTkLabel(
             drawer_header,
             text="Selection is always explicit.",
-            text_color=theme["muted"],
+            text_color=self.theme["muted"],
             anchor="e",
         ).grid(row=0, column=1, sticky="e")
         self.device_list = ctk.CTkScrollableFrame(
             self.drawer,
             height=120,
-            fg_color=theme["terminal_bg"],
-            scrollbar_button_color=theme["gold_dark"],
-            scrollbar_button_hover_color=theme["red_hover"],
+            fg_color=self.theme["terminal_bg"],
+            scrollbar_button_color=self.theme["gold_dark"],
+            scrollbar_button_hover_color=self.theme["red_hover"],
         )
         self.device_list.grid(row=1, column=0, sticky="nsew", padx=8, pady=4)
         self.device_list.grid_columnconfigure(0, weight=1)
@@ -167,7 +178,7 @@ class DeviceDock(ctk.CTkFrame):
         self.drawer_status = ctk.CTkLabel(
             controls,
             text="No devices detected.",
-            text_color=theme["muted"],
+            text_color=self.theme["muted"],
             anchor="w",
         )
         self.drawer_status.grid(row=0, column=0, sticky="ew")
@@ -175,10 +186,7 @@ class DeviceDock(ctk.CTkFrame):
             controls, "Connect / Diagnose", self._connect, 1
         )
         self.close_button = self._button(controls, "Close", self.collapse, 2)
-        if expanded:
-            self.expand()
-        else:
-            self.drawer.grid_remove()
+        self.update_devices(list(self._devices.values()))
 
     def _button(self, parent, text, command, column):
         button = ctk.CTkButton(
@@ -219,6 +227,9 @@ class DeviceDock(ctk.CTkFrame):
         self._devices = {device.serial: device for device in devices}
         if self._selected_serial not in self._devices:
             self._selected_serial = None
+        if self.device_list is None:
+            self._render_selection()
+            return
         for serial in tuple(self.rows):
             if serial not in self._devices:
                 row = self.rows.pop(serial)
@@ -290,6 +301,7 @@ class DeviceDock(ctk.CTkFrame):
     def expand(self):
         if self._expanded:
             return
+        self._build_drawer()
         self._expanded = True
         self.drawer.grid(row=1, column=0, sticky="ew", padx=7, pady=(0, 7))
         self.expand_button.configure(text="Details ▴")
@@ -299,9 +311,10 @@ class DeviceDock(ctk.CTkFrame):
     def collapse(self):
         if not self._expanded:
             return False
-        if focused_within(self.drawer):
+        if self.drawer is not None and focused_within(self.drawer):
             safe_focus(self.expand_button)
-        self.drawer.grid_remove()
+        if self.drawer is not None:
+            self.drawer.grid_forget()
         self._expanded = False
         self.expand_button.configure(text="Details ▾")
         if self.expanded_callback:

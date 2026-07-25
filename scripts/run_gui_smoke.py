@@ -51,6 +51,18 @@ def main():
   assert not app.device_dock.expanded
   assert app.instrumentation_panel is None and app.script_studio_panel is None and app.pentest_workspace is None
   assert all(host.state=="pending" for host in app.workspace_hosts.values())
+  app.home_panel.ensure_content()
+  home_geometry=[]
+  for width,height in ((1200,760),(1400,860),(1600,900)):
+   app.geometry(f"{width}x{height}+0+0");app.update_idletasks();app.go_home();app.update_idletasks()
+   cards=tuple(app.home_panel.cards.values());assert len(cards)==6
+   assert app.gothic_header.winfo_height()<=90 and app.device_dock.winfo_height()<=75
+   assert app.device_dock.winfo_rooty()+app.device_dock.winfo_height()<=app.workspace.winfo_rooty()
+   assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height()
+   assert all(card.winfo_width()>=260 and card.winfo_height()>=150 for card in cards)
+   assert all(button_text_fits(card.open_button) for card in cards)
+   assert all(card.open_button.winfo_rootx()>=card.winfo_rootx() and card.open_button.winfo_rootx()+card.open_button.winfo_width()<=card.winfo_rootx()+card.winfo_width()+2 for card in cards)
+   home_geometry.append((width,height,app.gothic_header.winfo_height(),app.device_dock.winfo_height(),app.home_panel.winfo_height(),cards[0].winfo_width(),cards[0].winfo_height(),app.status_bar.winfo_rooty()))
   stage_names={stage.name for stage in app.startup_profiler.stages()};assert {"tk-root","splash-construction","first-splash-paint","console-shell","first-responsive-idle"}<=stage_names
   for width,height in ((600,360),(720,430)):
    splash=SplashScreen(app,app.theme,load_startup_tips(),width=width,height=height);assert splash.master is app;splash.paint_now();splash.update_stage(1,2,"Testing real stage text");assert "SUS COMPANION" in splash.brand_label.cget("text");assert splash.stage_label.cget("text")=="Testing real stage text";splash.show_failure("fixture failure");assert "fixture failure" in splash.stage_label.cget("text");splash.close()
@@ -58,7 +70,8 @@ def main():
   unopened=LazyPanelHost(app,app.theme,"Unopened",lambda parent:ctk.CTkFrame(parent));unopened.shutdown();assert unopened.ensure() is None;unopened.destroy()
   device=Device("fixture-serial",state="device",model="Fixture");target=FridaTarget("Fixture App","org.example.fixture",101,TargetType.APPLICATION,True);app.devices.cache.update((device,));app.devices.selected_serial=device.serial;app._apply_devices([device]);app._sync_script_target(target)
   assert app.device_dock.selected_serial==device.serial
-  assert app.home_panel.cards["Device Recovery"].state_label.cget("text")=="fixture-serial"
+  assert app.home_panel.cards["Device Recovery"].state=="fixture-serial"
+  guided_description=app.home_panel.cards["Instrumentation"].description;app.set_interface_mode("advanced");assert app.home_panel.cards["Instrumentation"].description!=guided_description;assert "Current selection:" in app.home_panel.recommendation.cget("text") and "Frida:" in app.status_bar.label.cget("text");app.set_interface_mode("guided");assert app.home_panel.cards["Instrumentation"].description==guided_description and "Frida:" not in app.status_bar.label.cget("text")
   app.home_panel.cards["Console"].open_button.invoke();assert app.workspace.get()=="Console";app.gothic_header.title._canvas.event_generate("<Button-1>",x=2,y=2);app.update();assert app.workspace.get()=="Home"
   app.navigate_workspace("Console");app.event_generate("<Alt-Home>");app.update_idletasks();assert app.workspace.get()=="Home"
   app.device_dock.expand();app.update_idletasks();assert app.device_dock.expanded;app.event_generate("<Escape>");app.update_idletasks();assert not app.device_dock.expanded
@@ -146,10 +159,14 @@ def main():
   app.navigate_workspace("Scripts");scripts=app.script_studio_panel;assert scripts is not None and scripts.device is device and scripts.target is target;assert app.navigate_workspace("Scripts") is scripts;assert no_question_help(app)
   assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded addons"
   assert "SUS Companion" in app.title() and "1.0.0-rc.2" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
+  scaling_results=[]
+  for scale in (1.25,1.5):
+   ctk.set_widget_scaling(scale);app.geometry("1200x760+0+0");app.go_home();app.update_idletasks();buttons=[card.open_button for card in app.home_panel.cards.values()]+app.home_panel.explore_buttons;assert all(button_text_fits(button) for button in buttons);assert app.device_dock.winfo_rooty()+app.device_dock.winfo_height()<=app.workspace.winfo_rooty();assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height();scaling_results.append((scale,app.gothic_header.winfo_height(),app.device_dock.winfo_height(),app.home_panel.winfo_height(),next(iter(app.home_panel.cards.values())).winfo_width()))
+  ctk.set_widget_scaling(1.0);app.update_idletasks()
   assert all(not value.casefold().startswith("blue") for value in app.theme.values() if isinstance(value,str))
   assert not any(worker.is_alive() for worker in app._background_workers)
   first.destroy();diagnostics.destroy();crash.destroy()
   app.shutdown()
- print("gui-smoke=PASS main=1200x760,1400x860 splash=600x360,720x430 compact-windows=900x650,980x650,1180x780,1400x860 addons-rescue-assistants-help-sessions-learning=PASS lazy-workspaces=PASS cards=6 wheel-guard-export-scroll-shutdown=PASS")
+ print(f"gui-smoke=PASS main=1200x760,1400x860 home=1200x760,1400x860,1600x900 scaling=125%,150% geometry={home_geometry} scaled={scaling_results} splash=600x360,720x430 compact-windows=900x650,980x650,1180x780,1400x860 addons-rescue-assistants-help-sessions-learning=PASS lazy-workspaces=PASS cards=6 wheel-guard-export-scroll-shutdown=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

@@ -54,6 +54,25 @@ class WorkspaceNavigationTests(unittest.TestCase):
             self.assertNotIn("BackgroundWorker", source)
         self.assertNotIn("refresh_devices(", home)
         self.assertNotIn("scan(", home)
+        self.assertIn("self.after(750, self.ensure_content)", home)
+        self.assertIn("self.after_cancel(self._content_after_id)", home)
+
+    def test_home_is_progressive_and_secondary_tools_remain_subordinate(self):
+        home = (ROOT / "app/gui/workspace_home.py").read_text(encoding="utf-8")
+        main = (ROOT / "app/gui/main_window.py").read_text(encoding="utf-8")
+        self.assertIn("self.open_button = self", home)
+        self.assertIn("OPEN →", home)
+        for title in (
+            "Console", "Instrumentation", "Device Recovery",
+            "Script Studio", "Pentest", "Sessions",
+        ):
+            self.assertIn(f'"{title}"', home)
+        for title in (
+            "Add-ons Center", "Learning Center", "Environment Diagnostics",
+            "Contextual Help", "Advanced Command Reference",
+        ):
+            self.assertIn(f'"{title}"', main)
+        self.assertIn('fg_color=theme["panel_alt"]', home)
 
     def test_serial_abbreviation_preserves_short_and_distinguishes_long(self):
         self.assertEqual(abbreviated_serial("ABC123"), "ABC123")

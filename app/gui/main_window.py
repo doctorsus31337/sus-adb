@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import messagebox
 
 import customtkinter as ctk
-from app.gui.customtkinter_compat import install_scroll_target_guard
+from app.gui.customtkinter_compat import install_scroll_target_guard, safe_focus
 install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
@@ -472,9 +472,9 @@ class SusADBWindow(ctk.CTk):
             (
                 ("Add-ons Center", self.open_addons_center),
                 ("Learning Center", self.open_learning_center),
-                ("Diagnostics", self.open_environment_diagnostics),
+                ("Environment Diagnostics", self.open_environment_diagnostics),
                 ("Contextual Help", self.open_current_help),
-                ("Command Reference", self.open_cheat_sheet),
+                ("Advanced Command Reference", self.open_cheat_sheet),
             ),
         )
         self.home_panel.grid(row=0, column=0, sticky="nsew")
@@ -531,6 +531,7 @@ class SusADBWindow(ctk.CTk):
         started=time.perf_counter()
         self.status_bar = StatusBar(self, self.theme)
         self.status_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
+        self.status_bar.apply_interface_mode(self.interface_mode)
         self.startup_profiler.record_interval("status-bar",started,time.perf_counter())
 
     def center_window(self):
@@ -637,6 +638,7 @@ class SusADBWindow(ctk.CTk):
         self._ensure_workspace(name)
         if name == "Home":
             self._refresh_home_state()
+        self._focus_workspace(name)
 
     def _show_principal_workspace(self, name):
         if name not in self.workspace._tab_dict:
@@ -646,7 +648,18 @@ class SusADBWindow(ctk.CTk):
         panel = self._ensure_workspace(name)
         if name == "Home":
             self._refresh_home_state()
+        self._focus_workspace(name)
         return panel
+
+    def _focus_workspace(self, name):
+        if name == "Home":
+            self.home_panel.focus_first_card()
+            return
+        if name == "Console":
+            safe_focus(self.command_bar.entry)
+            return
+        panel = self.workspace_hosts.get(name)
+        safe_focus(panel.panel if panel and panel.panel is not None else panel)
 
     def _ensure_workspace(self, name):
         host = self.workspace_hosts.get(name)
@@ -898,6 +911,8 @@ class SusADBWindow(ctk.CTk):
             self.gothic_header.mode.set(normalized.title())
         if hasattr(self, "device_dock"):
             self.device_dock.apply_interface_mode(normalized)
+        if hasattr(self, "status_bar"):
+            self.status_bar.apply_interface_mode(normalized)
         for panel in (
             getattr(self,"instrumentation_panel",None),
             getattr(self,"script_studio_panel",None),
