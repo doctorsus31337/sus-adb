@@ -30,6 +30,26 @@ class MenuBar:
         )
         menu.add_cascade(label="Settings", menu=settings_menu)
 
+        view_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
+        view_menu.add_command(label="Home", command=window.go_home)
+        view_menu.add_command(
+            label="Console",
+            command=lambda: window.navigate_workspace("Console"),
+        )
+        view_menu.add_command(
+            label="Instrumentation",
+            command=lambda: window.navigate_workspace("Instrumentation"),
+        )
+        view_menu.add_command(
+            label="Script Studio",
+            command=lambda: window.navigate_workspace("Scripts"),
+        )
+        view_menu.add_command(
+            label="Pentest",
+            command=lambda: window.navigate_workspace("Pentest"),
+        )
+        menu.add_cascade(label="View", menu=view_menu)
+
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
         tools_menu.add_command(label="Clear Console", command=window.clear_console)

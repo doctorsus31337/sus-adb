@@ -19,6 +19,10 @@ class LazyStartupTests(unittest.TestCase):
         for module in ("instrumentation_panel","script_studio_panel","pentest_workspace"):
             self.assertNotIn(f"from app.gui.{module} import",prefix)
         self.assertIn("LazyPanelHost",source);self.assertIn("first-responsive-idle",source)
+        self.assertIn('self.workspace.add("Home")',source)
+        home=(ROOT/"app/gui/workspace_home.py").read_text(encoding="utf-8")
+        for operation in ("refresh_devices(", "target_discovery", "ensure_refreshed"):
+            self.assertNotIn(operation,home)
 
     def test_pentest_heavy_sections_are_not_called_by_constructor(self):
         source=(ROOT/"app/gui/pentest_workspace.py").read_text(encoding="utf-8");constructor=source.split("def __init__",1)[1].split("def _button",1)[0]

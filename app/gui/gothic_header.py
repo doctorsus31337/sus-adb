@@ -32,7 +32,7 @@ class GothicHeader(ctk.CTkFrame):
             self.title.bind("<space>",lambda _event:home_callback())
             self.title.bind("<Enter>",lambda _event:self.title.configure(text_color=theme["text"]))
             self.title.bind("<Leave>",lambda _event:self.title.configure(text_color=theme["gold"]))
-            self.title.tooltip_text="Return to Console Home"
+            self.title.tooltip_text="Return to Workspace Home"
 
         self.subtitle = ctk.CTkLabel(
             self,

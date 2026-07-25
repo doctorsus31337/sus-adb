@@ -39,7 +39,7 @@ from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
-from app.gui.device_panel import DevicePanel
+from app.gui.device_dock import DeviceDock
 from app.gui.gothic_header import GothicHeader
 from app.gui.menu_bar import MenuBar
 from app.gui.lazy_panel_host import LazyPanelHost
@@ -68,16 +68,23 @@ from app.core.learning_center import LearningCenterService,LearningProgressStore
 from app.core.objection_session_recovery import ObjectionSessionRecovery
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
+from app.core.workspace_navigation import (
+    PrincipalWorkspaceController,
+    WorkspaceHomeState,
+)
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
 from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
 from app.gui.addons_center import AddonsCenter
 from app.gui.addon_window_host import AddonWindowHost
+from app.gui.workspace_home import WorkspaceHome
 from app.plugins.host_workspace import HostWorkspaceBinding
 
 
 class SusADBWindow(ctk.CTk):
-    BOOTSTRAP_STAGES = ("Tk root", "Splash", "Configuration", "Core services", "Console shell")
+    BOOTSTRAP_STAGES = (
+        "Tk root", "Splash", "Configuration", "Core services", "Workspace Home"
+    )
 
     def __init__(self, *, startup_origin=None, startup_intervals=()):
         self.startup_profiler = StartupProfiler(origin=startup_origin)
@@ -101,10 +108,15 @@ class SusADBWindow(ctk.CTk):
             self.splash.update_stage(3, len(self.BOOTSTRAP_STAGES), "Preparing core services…", rotate_tip=True)
             with self.startup_profiler.stage("core-services"):
                 self._initialize_core_services()
-            self.splash.update_stage(4, len(self.BOOTSTRAP_STAGES), "Constructing responsive Console shell…")
+            self.splash.update_stage(
+                4, len(self.BOOTSTRAP_STAGES),
+                "Constructing responsive Workspace Home…",
+            )
             with self.startup_profiler.stage("console-shell"):
                 self._initialize_shell()
-            self.splash.update_stage(5, len(self.BOOTSTRAP_STAGES), "Console Home is ready.")
+            self.splash.update_stage(
+                5, len(self.BOOTSTRAP_STAGES), "Workspace Home is ready."
+            )
             responsive_started = time.perf_counter()
             responsive = []
             self.after_idle(lambda: responsive.append(time.perf_counter()))
@@ -113,7 +125,8 @@ class SusADBWindow(ctk.CTk):
             self.update()
             if responsive:
                 self.startup_profiler.record_interval(
-                    "first-responsive-idle", responsive_started, responsive[0], note="Console shell visible"
+                    "first-responsive-idle", responsive_started, responsive[0],
+                    note="Workspace Home shell visible",
                 )
             self.splash.close()
             self.logging_manager.log("INFO", self.startup_profiler.summary())
@@ -335,7 +348,7 @@ class SusADBWindow(ctk.CTk):
         self.title(METADATA.display_version)
         self.minsize(1100, 700)
         self.configure(fg_color=self.theme["bg"])
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         with self.startup_profiler.stage("menu-bar"):
@@ -386,33 +399,27 @@ class SusADBWindow(ctk.CTk):
         self.startup_profiler.record_interval("gothic-header",started,time.perf_counter())
 
         started=time.perf_counter()
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-        body.grid_columnconfigure(1, weight=1)
-        body.grid_rowconfigure(0, weight=1)
-
-        left = ctk.CTkFrame(
-            body,
-            width=270,
-            fg_color=self.theme["panel"],
-            border_width=1,
-            border_color=self.theme["border"],
-            corner_radius=12,
-        )
-        left.grid(row=0, column=0, sticky="ns", padx=(0, 12))
-        left.grid_propagate(False)
-
-        self.device_panel = DevicePanel(
-            left,
+        self.device_dock = DeviceDock(
+            self,
             self.theme,
             self.refresh_devices,
             self.connect_device,
             self.select_device,
+            expanded=False,
         )
-        self.device_panel.pack(fill="both", expand=True, padx=8, pady=8)
-        self.startup_profiler.record_interval("device-sidebar-shell",started,time.perf_counter())
+        self.device_dock.grid(
+            row=1, column=0, sticky="ew", padx=20, pady=(0, 5)
+        )
+        self.device_panel = self.device_dock
+        self.startup_profiler.record_interval(
+            "device-dock-shell", started, time.perf_counter()
+        )
 
         started=time.perf_counter()
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.grid(row=2, column=0, sticky="nsew", padx=20, pady=(4, 7))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=1)
         self.workspace = ctk.CTkTabview(
             body,
             fg_color=self.theme["panel"],
@@ -426,12 +433,16 @@ class SusADBWindow(ctk.CTk):
             border_color=self.theme["border"],
             command=self._workspace_selected,
         )
-        self.workspace.grid(row=0, column=1, sticky="nsew")
+        self.workspace.grid(row=0, column=0, sticky="nsew")
+        home_tab = self.workspace.add("Home")
         console_tab = self.workspace.add("Console")
         instrumentation_tab = self.workspace.add("Instrumentation")
         scripts_tab = self.workspace.add("Scripts")
         pentest_tab = self.workspace.add("Pentest")
 
+        home_tab.configure(fg_color=self.theme["bg"])
+        home_tab.grid_rowconfigure(0, weight=1)
+        home_tab.grid_columnconfigure(0, weight=1)
         console_tab.configure(fg_color=self.theme["bg"])
         console_tab.grid_rowconfigure(1, weight=1)
         console_tab.grid_columnconfigure(0, weight=1)
@@ -444,6 +455,29 @@ class SusADBWindow(ctk.CTk):
         pentest_tab.configure(fg_color=self.theme["bg"])
         pentest_tab.grid_rowconfigure(0, weight=1)
         pentest_tab.grid_columnconfigure(0, weight=1)
+
+        self.home_panel = WorkspaceHome(
+            home_tab,
+            self.theme,
+            {
+                "Console": lambda: self.navigate_workspace("Console"),
+                "Instrumentation": lambda: self.navigate_workspace(
+                    "Instrumentation"
+                ),
+                "Device Recovery": self.open_device_recovery,
+                "Script Studio": lambda: self.navigate_workspace("Scripts"),
+                "Pentest": lambda: self.navigate_workspace("Pentest"),
+                "Sessions": self.open_sessions_center,
+            },
+            (
+                ("Add-ons Center", self.open_addons_center),
+                ("Learning Center", self.open_learning_center),
+                ("Diagnostics", self.open_environment_diagnostics),
+                ("Contextual Help", self.open_current_help),
+                ("Command Reference", self.open_cheat_sheet),
+            ),
+        )
+        self.home_panel.grid(row=0, column=0, sticky="nsew")
 
         self.command_bar = CommandBar(console_tab, self.execute_command)
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -480,9 +514,23 @@ class SusADBWindow(ctk.CTk):
             host.grid(row=0, column=0, sticky="nsew")
         self.startup_profiler.record_interval("lazy-workspace-placeholders",started,time.perf_counter())
 
+        self.workspace_controller = PrincipalWorkspaceController(
+            self._show_principal_workspace,
+            initial=self.app_config.get("navigation", {}).get(
+                "last_principal_workspace", "Home"
+            ),
+        )
+        self.workspace.set(self.workspace_controller.current)
+        self._home_session_unsubscribe = self.interactive_sessions.subscribe(
+            lambda _record: self.call_on_ui(self._refresh_home_state)
+        )
+        self._refresh_home_state()
+        self.bind("<Alt-Home>", self._alt_home, add="+")
+        self.bind("<Escape>", self._escape_shell, add="+")
+
         started=time.perf_counter()
         self.status_bar = StatusBar(self, self.theme)
-        self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
+        self.status_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
         self.startup_profiler.record_interval("status-bar",started,time.perf_counter())
 
     def center_window(self):
@@ -583,7 +631,22 @@ class SusADBWindow(ctk.CTk):
         panel.set_selected_target(self.selected_target)
 
     def _workspace_selected(self):
-        self._ensure_workspace(self.workspace.get())
+        name = self.workspace.get()
+        if hasattr(self, "workspace_controller"):
+            self.workspace_controller.adopt(name)
+        self._ensure_workspace(name)
+        if name == "Home":
+            self._refresh_home_state()
+
+    def _show_principal_workspace(self, name):
+        if name not in self.workspace._tab_dict:
+            return None
+        if self.workspace.get() != name:
+            self.workspace.set(name)
+        panel = self._ensure_workspace(name)
+        if name == "Home":
+            self._refresh_home_state()
+        return panel
 
     def _ensure_workspace(self, name):
         host = self.workspace_hosts.get(name)
@@ -684,6 +747,8 @@ class SusADBWindow(ctk.CTk):
     def refresh_devices(self):
         if self._device_refresh_active or getattr(self,"_shutdown_started",False):return False
         self._device_refresh_active=True
+        if hasattr(self, "device_dock"):
+            self.device_dock.set_refreshing(True)
         self.status_bar.set_status(adb="Scanning")
         self._publish_host_state("device-refreshing")
         self.log("[ADB] Scanning for devices...")
@@ -700,6 +765,8 @@ class SusADBWindow(ctk.CTk):
 
     def _finish_device_refresh(self,result):
         self._device_refresh_active=False
+        if hasattr(self, "device_dock"):
+            self.device_dock.set_refreshing(False)
         if getattr(self,"_shutdown_started",False):return
         ok,value=result
         if not ok:self.status_bar.set_status(adb="Scan failed");self._publish_host_state("device-refresh-failed");self.log(f"[ADB] Discovery failed: {type(value).__name__}");return
@@ -815,6 +882,8 @@ class SusADBWindow(ctk.CTk):
             interface_mode=self.interface_mode,
             lifecycle=lifecycle,
         ))
+        if hasattr(self, "home_panel"):
+            self._refresh_home_state()
 
     @property
     def interface_mode(self):
@@ -827,6 +896,8 @@ class SusADBWindow(ctk.CTk):
         if not result.ok:self.log(f"[CONFIG] Could not save interface mode: {result.error}")
         if hasattr(self,"gothic_header"):
             self.gothic_header.mode.set(normalized.title())
+        if hasattr(self, "device_dock"):
+            self.device_dock.apply_interface_mode(normalized)
         for panel in (
             getattr(self,"instrumentation_panel",None),
             getattr(self,"script_studio_panel",None),
@@ -836,8 +907,52 @@ class SusADBWindow(ctk.CTk):
                 panel.apply_interface_mode(normalized)
         self._publish_host_state("interface-mode-changed")
 
+    def _home_state(self):
+        selected = self.devices.selected
+        target = self.selected_target
+        pentest = getattr(self, "pentest_workspace", None)
+        session = getattr(pentest, "session", None)
+        scope = getattr(session, "scope", None)
+        scripts = getattr(self, "script_studio_panel", None)
+        descriptor = getattr(scripts, "selected", None)
+        active = sum(
+            record.state in self.interactive_sessions.ACTIVE
+            for record in self.interactive_sessions.list()
+        )
+        return WorkspaceHomeState(
+            selected_device=selected.display_name if selected else "",
+            selected_serial=selected.serial if selected else "",
+            selected_target=(
+                getattr(target, "identifier", None)
+                or getattr(target, "name", "")
+                if target else ""
+            ),
+            active_assessment=getattr(scope, "case_name", "") if scope else "",
+            selected_script=getattr(descriptor, "name", "") if descriptor else "",
+            active_sessions=active,
+            interface_mode=self.interface_mode,
+        )
+
+    def _refresh_home_state(self):
+        if (
+            getattr(self, "_shutdown_started", False)
+            or not hasattr(self, "home_panel")
+        ):
+            return
+        self.home_panel.apply_state(self._home_state())
+
+    def _alt_home(self, _event=None):
+        self.go_home()
+        return "break"
+
+    def _escape_shell(self, _event=None):
+        if hasattr(self, "device_dock") and self.device_dock.collapse():
+            return "break"
+        return None
+
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
+        if workspace=="Home":return "console"
         if workspace=="Console":return "console"
         if workspace=="Instrumentation":
             panel=getattr(self,"instrumentation_panel",None)
@@ -952,11 +1067,21 @@ class SusADBWindow(ctk.CTk):
         return self.open_context_help(destination)
 
     def navigate_workspace(self, name: str):
-        if name in self.workspace._tab_dict:
-            self.workspace.set(name)
-            return self._ensure_workspace(name)
+        return self.workspace_controller.navigate(name)
 
-    def go_home(self):self.navigate_workspace("Console")
+    def go_home(self):return self.navigate_workspace("Home")
+
+    def open_device_recovery(self):
+        contribution = next(
+            (
+                item for item in self.plugin_registry.list("pentest-panel")
+                if item.contribution_id == "device-rescue.panel"
+            ),
+            None,
+        )
+        if contribution is not None:
+            return self.open_addon_window(contribution.contribution_id)
+        return self.open_addons_center()
 
     def open_addons_center(self):
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.deiconify();self.addons_center.lift();self.addons_center.focus_force();return self.addons_center
@@ -1031,6 +1156,9 @@ class SusADBWindow(ctk.CTk):
             except Exception:pass
             self._ui_poll_id=None
         for host in getattr(self,"workspace_hosts",{}).values():host.shutdown()
+        if getattr(self, "_home_session_unsubscribe", None):
+            self._home_session_unsubscribe()
+            self._home_session_unsubscribe = None
         if getattr(self,"splash",None) is not None and self.splash.winfo_exists():self.splash.close()
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
         if self.sessions_center is not None and self.sessions_center.winfo_exists():self.sessions_center.close()
