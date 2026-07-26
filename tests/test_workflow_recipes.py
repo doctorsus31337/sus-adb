@@ -382,7 +382,14 @@ class WorkflowRecipeIntegrationSourceTests(unittest.TestCase):
         self.assertIn('"<Button-1>"', source)
         self.assertIn('"<Double-Button-1>"', source)
         self.assertIn('"<Return>"', source)
+        self.assertIn('"<KP_Enter>"', source)
         self.assertIn('"<space>"', source)
+        self.assertIn("focus_target = keyboard_focus_target(card)", source)
+        keyboard = source.split("if focus_target is not None:", 2)[2].split(
+            "self._paint_card", 1
+        )[0]
+        self.assertIn("focus_target.bind(", keyboard)
+        self.assertNotIn("card.bind(", keyboard)
         self.assertIn("self._selected_recipe_id = recipe_id", selection)
         self.assertNotIn("controller.start", selection)
         self.assertNotIn("controller.start", focus_recipe)
@@ -423,6 +430,23 @@ class WorkflowRecipeIntegrationSourceTests(unittest.TestCase):
         ):
             self.assertIn(label, primary)
         self.assertNotIn('.configure(state="disabled")', footer)
+
+    def test_active_and_reviewed_recipe_ownership_is_explicit(self):
+        source = (ROOT / "app/gui/workflow_recipes_window.py").read_text()
+        overview = source.split("def render_overview", 1)[1].split(
+            "def start_selected_recipe", 1
+        )[0]
+        footer = source.split("def _render_footer", 1)[1].split(
+            "def _active_primary_action", 1
+        )[0]
+        self.assertIn("Active recipe:", overview)
+        self.assertIn("Only one recipe can be active at a time.", overview)
+        self.assertIn("You may review", overview)
+        self.assertIn("completing or cancelling", overview)
+        self.assertIn('self._named_action("Resume", active.title)', footer)
+        self.assertIn('self._named_action("Cancel", active.title, 26)', footer)
+        self.assertIn('self._named_action("Start", reviewed.title)', footer)
+        self.assertNotIn("controller.start", footer)
 
 
 if __name__ == "__main__":

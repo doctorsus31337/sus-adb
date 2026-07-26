@@ -17,6 +17,7 @@ from app.core.workflow_recipes import (
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
     focused_within,
+    keyboard_focus_target,
     safe_focus,
     widget_exists,
 )
@@ -352,6 +353,18 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             ).casefold()
         )
 
+    @staticmethod
+    def _named_action(verb, title, limit=48):
+        label = f"{verb} {title}"
+        if len(label) <= limit:
+            return label
+        available = max(1, limit - len(verb) - 2)
+        return f"{verb} {title[:available].rstrip()}…"
+
+    def _open_recipe_from_key(self, recipe_id):
+        self.show_overview(recipe_id)
+        return "break"
+
     def render_library(self):
         if self._closed:
             return
@@ -379,7 +392,9 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             )
             card.grid(row=row, column=0, sticky="ew", padx=6, pady=5)
             card.grid_columnconfigure(0, weight=1)
-            card._canvas.configure(takefocus=True)
+            focus_target = keyboard_focus_target(card)
+            if focus_target is not None:
+                focus_target.configure(takefocus=True)
             title = ctk.CTkLabel(
                 card,
                 text=recipe.title,
@@ -427,7 +442,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             review.grid(row=0, column=1, rowspan=3, padx=10, pady=8)
             parts = {
                 "card": card,
-                "focus": card._canvas,
+                "focus": focus_target,
                 "title": title,
                 "description": description,
                 "metadata": metadata,
@@ -459,36 +474,38 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                         self._paint_card(value),
                     add="+",
                 )
-            card.bind(
-                "<FocusIn>",
-                lambda _event, value=recipe.recipe_id:
-                    self.select_recipe(value),
-                add="+",
-            )
-            card.bind(
-                "<Return>",
-                lambda _event, value=recipe.recipe_id:
-                    self.show_overview(value),
-                add="+",
-            )
-            card.bind(
-                "<space>",
-                lambda _event, value=recipe.recipe_id:
-                    self.select_recipe(value),
-                add="+",
-            )
-            card.bind(
-                "<Up>",
-                lambda _event, value=recipe.recipe_id:
-                    self.move_selection(value, -1),
-                add="+",
-            )
-            card.bind(
-                "<Down>",
-                lambda _event, value=recipe.recipe_id:
-                    self.move_selection(value, 1),
-                add="+",
-            )
+            if focus_target is not None:
+                focus_target.bind(
+                    "<FocusIn>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.select_recipe(value),
+                    add="+",
+                )
+                for sequence in ("<Return>", "<KP_Enter>"):
+                    focus_target.bind(
+                        sequence,
+                        lambda _event, value=recipe.recipe_id:
+                            self._open_recipe_from_key(value),
+                        add="+",
+                    )
+                focus_target.bind(
+                    "<space>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.select_recipe(value),
+                    add="+",
+                )
+                focus_target.bind(
+                    "<Up>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.move_selection(value, -1),
+                    add="+",
+                )
+                focus_target.bind(
+                    "<Down>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.move_selection(value, 1),
+                    add="+",
+                )
             self._paint_card(recipe.recipe_id)
         if not recipes:
             ctk.CTkLabel(
@@ -500,12 +517,14 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 ),
                 text_color=self.theme["muted"],
             ).grid(row=0, column=0, padx=10, pady=30)
-        self.state_label.configure(
-            text=(
-                f"{len(recipes)} recipe{'' if len(recipes) == 1 else 's'} · "
-                "select a card to review it; no step runs"
-            )
+        active = self.controller.active_recipe
+        banner = (
+            f"Active recipe: {active.title} · library review does not replace it"
+            if self._live_run() else
+            f"{len(recipes)} recipe{'' if len(recipes) == 1 else 's'} · "
+            "select a card to review it; no step runs"
         )
+        self.state_label.configure(text=banner)
         self._render_footer()
         if focused_recipe in self.recipe_cards:
             safe_focus(self.recipe_cards[focused_recipe]["focus"])
@@ -623,16 +642,21 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         same = self._live_run() and active.recipe_id == recipe.recipe_id
         self.overview_widgets["active_warning"].configure(
             text=(
-                f"Active run preserved: {active.title}. "
-                "Cancel it explicitly before starting another recipe."
+                f"Active recipe: {active.title}\n\n"
+                "Only one recipe can be active at a time.\n"
+                f"You may review {recipe.title}, but starting it requires "
+                f"completing or cancelling {active.title} first."
                 if conflict else
-                "This recipe already has an active runtime run."
+                f"Active recipe: {active.title}\n"
+                "This overview belongs to the current runtime run."
                 if same else ""
             )
         )
-        self.state_label.configure(
-            text=f"Reviewing {recipe.title} · no run or step has started"
-        )
+        self.state_label.configure(text=(
+            f"Active recipe: {active.title} · reviewing: {recipe.title}"
+            if conflict else
+            f"Reviewing {recipe.title} · no run or step has started"
+        ))
         self._render_footer()
 
     def start_selected_recipe(self):
@@ -766,15 +790,19 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             active = self.controller.active_recipe
             if self._live_run():
                 self._footer_button(
-                    "primary", "Resume Active Recipe",
+                    "primary", self._named_action("Resume", active.title),
                     self.resume_active_recipe, 1, primary=True, columnspan=3,
                 )
                 self._footer_button(
-                    "cancel", "Cancel Active Recipe", self.cancel_run, 1, row=1
+                    "cancel", self._named_action("Cancel", active.title, 26),
+                    self.cancel_run, 1, row=1
                 )
             else:
+                reviewed = self._recipe(self._selected_recipe_id)
                 self._footer_button(
-                    "primary", "Start Recipe", self.start_selected_recipe,
+                    "primary",
+                    self._named_action("Start", reviewed.title),
+                    self.start_selected_recipe,
                     1, primary=True, columnspan=3,
                 )
             self._footer_button("help", "Help", self.open_help, 4)
@@ -782,7 +810,8 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 self.state_label.configure(
                     text=(
                         f"Active run preserved: {active.title}. "
-                        "Resume or cancel it explicitly."
+                        f"Reviewing {self._recipe(self._selected_recipe_id).title}; "
+                        "resume or cancel the named active recipe explicitly."
                     )
                 )
         else:

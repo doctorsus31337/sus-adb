@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from app.core.workflow_recipes import (
     RecipeRunController,
+    RecipeRunStatus,
     RecipeSpec,
     RecipeStepResult,
     RecipeStepSpec,
@@ -98,7 +99,11 @@ def specifications(calls):
         values.append(
             RecipeSpec(
                 f"fixture-{index}",
-                f"Fixture Recipe {index + 1}",
+                (
+                    "Fixture Recipe 1 With An Exceptionally Long Operator Review Title"
+                    if index == 0 else
+                    f"Fixture Recipe {index + 1}"
+                ),
                 "A synthetic local-only recipe with no backend operations.",
                 "Fixture",
                 "Low",
@@ -128,6 +133,7 @@ def main():
     tools.invoke(index)
     window = app.workflow_recipes_window
     assert window is app.open_workflow_recipes()
+    window.confirm_callback = lambda _title, _message: True
     app.update()
     assert app.host_state.subscription_count("workflow-recipes") == 1
     assert not app.plugin_manager._refreshed
@@ -149,43 +155,66 @@ def main():
         window.overview_widgets["notice"].cget("text")
     )
     assert "Informational" in window.overview_widgets["outline"].cget("text")
-    assert window.footer_buttons["primary"].cget("text") == "Start Recipe"
+    assert window.footer_buttons["primary"].cget("text") == "Start Device Readiness"
     window.footer_buttons["primary"].invoke()
     app.update()
     accepted_controller = window.controller
     assert accepted_controller.state.recipe_id == "device-readiness"
     assert accepted_controller.state.current_step_index == 0
     assert all(value is None for value in accepted_controller.state.step_results)
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    accepted_progress = accepted_controller.state.step_statuses
     window.show_library()
     assert accepted_controller.state.recipe_id == "device-readiness"
+    assert "Active recipe: Device Readiness" in window.state_label.cget("text")
     window.select_recipe("frida-readiness")
     window.show_overview()
     assert accepted_controller.state.recipe_id == "device-readiness"
-    assert window.footer_buttons["primary"].cget("text") == "Resume Active Recipe"
-    assert "Active run preserved" in window.overview_widgets["active_warning"].cget("text")
+    warning = window.overview_widgets["active_warning"].cget("text")
+    assert "Active recipe: Device Readiness" in warning
+    assert "review Frida Readiness" in warning
+    assert "Only one recipe can be active at a time." in warning
+    assert window.footer_buttons["primary"].cget("text") == "Resume Device Readiness"
+    assert window.footer_buttons["cancel"].cget("text") == "Cancel Device Readiness"
     window.footer_buttons["primary"].invoke()
     assert window._view == "active"
     assert accepted_controller.state.recipe_id == "device-readiness"
+    assert accepted_controller.state.step_statuses == accepted_progress
     window._escape()
     assert window._view == "overview"
     window._escape()
     assert window._view == "library"
+    window.select_recipe("frida-readiness")
+    window.show_overview()
+    window.footer_buttons["cancel"].invoke()
+    app.update()
+    assert window._view == "overview"
+    assert window._selected_recipe_id == "frida-readiness"
+    assert accepted_controller.state.recipe_id == "device-readiness"
+    assert accepted_controller.state.status is RecipeRunStatus.CANCELLED
+    assert window.footer_buttons["primary"].cget("text") == "Start Frida Readiness"
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert accepted_controller.state.recipe_id == "frida-readiness"
+    assert accepted_controller.state.current_step_index == 0
+    assert all(value is None for value in accepted_controller.state.step_results)
     window.close()
     assert app.workflow_recipes_window is None
     assert app.host_state.subscription_count("workflow-recipes") == 0
     recipe_command = next(
         command for command in app._command_palette_commands()
-        if command.command_id == "recipe.frida-readiness"
+        if command.command_id == "recipe.broken-screen-recovery"
     )
     recipe_command.invoke("")
     focused = app.workflow_recipes_window
-    assert focused.search.get() == "Frida Readiness"
-    assert focused._selected_recipe_id == "frida-readiness"
-    assert focused.controller.state.recipe_id == "device-readiness"
+    assert focused.search.get() == "Broken-Screen Recovery Preparation"
+    assert focused._selected_recipe_id == "broken-screen-recovery"
+    assert focused.controller.state.recipe_id == "frida-readiness"
     assert focused.controller.state.current_step_index == 0
     focused.close()
     reopened = app.open_workflow_recipes()
-    assert reopened.controller.state.recipe_id == "device-readiness"
+    assert reopened.controller.state.recipe_id == "frida-readiness"
     assert reopened.controller.state.current_step_index == 0
     reopened.close()
 
@@ -227,6 +256,7 @@ def main():
     app.update()
     assert window._view == "overview"
     assert controller.state.recipe_id == ""
+    assert not calls
     outline = window.overview_widgets["outline"].cget("text")
     assert all(
         value in outline

@@ -1,6 +1,6 @@
 import contextlib,io,tkinter as tk,unittest
 from types import SimpleNamespace
-from app.gui.customtkinter_compat import PendingCallbackOwner,clamp_scroll_offset,install_scroll_target_guard,safe_focus,wheel_scroll_units
+from app.gui.customtkinter_compat import PendingCallbackOwner,clamp_scroll_offset,install_scroll_target_guard,keyboard_focus_target,safe_focus,wheel_scroll_units
 
 def widget(master=None):
     value=object.__new__(tk.Misc);value.master=master;return value
@@ -50,6 +50,14 @@ class T(unittest.TestCase):
    def winfo_exists(self):return True
    def focus_set(self):raise tk.TclError("bad window path name")
   self.assertFalse(safe_focus(Stale()))
+ def test_keyboard_focus_target_uses_guarded_composed_surface_or_fallback(self):
+  outer=widget();canvas=widget(outer);outer._canvas=canvas
+  outer.winfo_exists=lambda:1;canvas.winfo_exists=lambda:1
+  self.assertIs(keyboard_focus_target(outer),canvas)
+  plain=widget();plain.winfo_exists=lambda:1
+  self.assertIs(keyboard_focus_target(plain),plain)
+  outer._canvas=object()
+  self.assertIs(keyboard_focus_target(outer),outer)
  def test_windows_and_touchpad_wheel_deltas_are_normalized(self):
   self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=120)),-3)
   self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=-240)),6)
