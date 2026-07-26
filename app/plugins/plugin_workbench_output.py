@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from app.core.app_metadata import METADATA
+from app.plugins.plugin_api import PLUGIN_API_VERSION
 from app.plugins.plugin_package import PluginPackage
 from app.plugins.plugin_validator import PluginValidator
 from app.plugins.plugin_workbench import (
@@ -96,7 +97,7 @@ def report_data(snapshot: PluginWorkbenchSnapshot):
         "host": {
             "application": METADATA.application_name,
             "version": METADATA.version,
-            "plugin_api": "1.0",
+            "plugin_api": PLUGIN_API_VERSION,
         },
         "manifest": (
             {

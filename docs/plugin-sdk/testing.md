@@ -4,4 +4,9 @@ Use temporary plugin stores and fake façades. Assert installation and validatio
 
 Tests must not contact ADB, Frida, a device, a network, or a real external process. The example plugin is suitable for static validation and explicit fake-loader tests.
 
+For 1.1 also test inert construction, validation bounds, duplicate-click
+suppression, confirmation, capability recheck, context invalidation, progress,
+cancellation, stale-result rejection, navigation, sensitive cleanup, and zero
+workers after shutdown.
+
 Official packages additionally test catalog-only discovery, deterministic digests, explicit installation, inactive defaults, fake/local engines, panel specifications, and tracked-only packaging. Skeleton derivatives should copy these tests after changing their ID.

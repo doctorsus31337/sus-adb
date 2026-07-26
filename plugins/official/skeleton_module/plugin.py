@@ -9,6 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from app.plugins.plugin_api import PluginResult
 from app.plugins.contribution_registry import Contribution
+from app.plugins.plugin_interactive import (
+    PluginActionResult,PluginActionSpec,PluginFieldSpec,PluginFieldType,
+    PluginFormSpec,PluginNavigationSpec,PluginOptionSpec,PluginRefreshBehavior,
+)
 from app.plugins.plugin_ui import PluginPanelSpec,PluginView
 
 @dataclass(frozen=True,slots=True)
@@ -16,8 +20,35 @@ class LocalState:
     """TODO: immutable plugin-local state; persist only through an approved façade."""
     message:str="inactive"
 
-def panel_spec(_context=None):
-    return PluginPanelSpec("Skeleton Module",(PluginView("Documentation","This is an inert educational template. Export a developer copy from the Add-ons Center; no device, process, network, evidence, or finding action is available."),),{"Capabilities":"0","Behavior":"No-op"})
+def demonstrate(request):
+    """Runs only after an explicit click; performs no operational work."""
+    name=request.values["display_name"]
+    return PluginActionResult(
+        True,f"Validated {name}. No external action was performed.",
+        (("Refresh","Host-owned immutable panel replacement"),),
+        panel_spec(message=f"Last explicit demonstration: {name}"),
+    )
+
+def open_help(_request):
+    return PluginActionResult(
+        True,"Opening host-owned contextual help.",
+        navigation=PluginNavigationSpec("contextual-help"),
+    )
+
+def panel_spec(_context=None,message="No action has run."):
+    form=PluginFormSpec("skeleton.demo",(
+        PluginFieldSpec("display_name","Display name",required=True,default="Derivative example",max_length=80,validation_hint="Choose a short educational label."),
+        PluginFieldSpec("presentation","Presentation",PluginFieldType.CHOICE,default="guided",options=(PluginOptionSpec("guided","Guided"),PluginOptionSpec("advanced","Advanced"))),
+        PluginFieldSpec("notes","Notes",PluginFieldType.MULTILINE,max_length=400,placeholder="Runtime-only notes"),
+    ),"Inert informational form","The host validates these runtime-only values before invoking the callback.")
+    actions=(
+        PluginActionSpec("skeleton.demonstrate","Validate and Refresh",demonstrate,"Explicit no-op demonstration; opening the panel never invokes it.",form=form,refresh=PluginRefreshBehavior.PANEL,primary=True),
+        PluginActionSpec("skeleton.help","Open Contextual Help",open_help,"Safe host-owned navigation only."),
+    )
+    # Capability-gated derivative examples may declare read-selected-device or
+    # read-selected-target and bind an action to that immutable context. Never
+    # invent capabilities or call ADB/process/network/filesystem APIs directly.
+    return PluginPanelSpec("Skeleton Module",(PluginView("Documentation","Plugin API 1.1 educational template. The host owns fields, actions, navigation, workers, theme, and cleanup."),),{"Capabilities":"0","Behavior":"Explicit only","Result":message},actions)
 
 class Plugin:
     def __init__(self):

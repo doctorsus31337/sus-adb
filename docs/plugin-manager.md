@@ -12,3 +12,8 @@ deterministic ZIP. It never imports candidate code or runs candidate tests.
 Forwarding a reviewed candidate invokes this same Plugin Manager installation
 path again; installation stores it disabled and does not trust, approve,
 enable, load, or open it.
+
+Plugin API 1.1 actions remain behind the same digest trust, capability,
+enablement, load, and open gates. The host rechecks required approvals
+immediately before a callback and owns confirmation, worker execution,
+progress, cancellation, navigation, refresh, and unload cleanup.
