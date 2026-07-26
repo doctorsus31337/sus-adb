@@ -1,5 +1,6 @@
 # GUI Framework
 customtkinter>=5.2,<6
+pillow>=10,<13
 
 # System Utilities
 psutil>=5.9,<8

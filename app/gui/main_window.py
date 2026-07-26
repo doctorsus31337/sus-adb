@@ -45,6 +45,7 @@ from app.gui.gothic_header import GothicHeader
 from app.gui.menu_bar import MenuBar
 from app.gui.lazy_panel_host import LazyPanelHost
 from app.gui.splash_screen import SplashScreen
+from app.gui.branding_images import BrandingImages
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
 from app.utils.clipboard import ClipboardManager
@@ -96,10 +97,14 @@ class SusADBWindow(ctk.CTk):
         self.startup_profiler.record_interval("tk-root", root_started, time.perf_counter())
         self.withdraw()
         self.theme = get_theme()
+        self.branding = BrandingImages()
+        self.branding.apply_window_icon(self, default=True)
         tip_catalog = load_startup_tips()
         splash_started=time.perf_counter()
         with self.startup_profiler.stage("splash-construction"):
-            self.splash = SplashScreen(self, self.theme, tip_catalog)
+            self.splash = SplashScreen(
+                self, self.theme, tip_catalog, branding=self.branding
+            )
             self.splash.paint_now()
         self.startup_profiler.record_interval("first-splash-paint",splash_started,time.perf_counter(),note="Local typographic splash")
         self.splash.update_stage(2, len(self.BOOTSTRAP_STAGES), "Loading local configuration…")
@@ -247,6 +252,7 @@ class SusADBWindow(ctk.CTk):
         self.command_palette_registry=None
         self.workflow_recipes_window=None
         self.workflow_recipe_controller=None
+        self.about_window=None
         self._palette_shortcut_id=None
         self._palette_shortcut_previous=""
         self.addon_window_host=AddonWindowHost(
@@ -395,6 +401,7 @@ class SusADBWindow(ctk.CTk):
         self.gothic_header=GothicHeader(
             self,self.theme,self.go_home,self.open_current_help,
             self.set_interface_mode,self.interface_mode,
+            branding=self.branding,
         )
         self.gothic_header.grid(
             row=0,
@@ -704,6 +711,22 @@ class SusADBWindow(ctk.CTk):
             return self.cheat_sheet
         self.cheat_sheet = CheatSheetWindow(self, self.theme)
         return self.cheat_sheet
+
+    def open_about(self):
+        if self.about_window is not None and self.about_window.winfo_exists():
+            self.about_window.deiconify()
+            self.about_window.lift()
+            safe_focus(self.about_window.close_button)
+            return self.about_window
+        from app.gui.about_window import AboutWindow
+        self.about_window = AboutWindow(
+            self,
+            self.theme,
+            self.branding,
+            help_callback=lambda: self.open_context_help("learning-center"),
+            on_close=lambda: setattr(self, "about_window", None),
+        )
+        return self.about_window
 
     def open_environment_diagnostics(self):
         if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
@@ -1605,6 +1628,7 @@ class SusADBWindow(ctk.CTk):
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
         if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
+        if self.about_window is not None and self.about_window.winfo_exists():self.about_window.close()
         self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))

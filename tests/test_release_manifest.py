@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -49,6 +50,19 @@ class ReleaseManifestTests(unittest.TestCase):
         (resources / "app/themes/gothic.json").write_text("{}", encoding="utf-8")
         (resources / "app/resources/startup_tips.json").write_text('{"format":1,"tips":["A local packaged startup tip long enough for validation."]}', encoding="utf-8")
         (resources / "docs/README.md").write_text("docs", encoding="utf-8")
+        shutil.copytree(
+            ROOT / "assets/branding/runtime",
+            resources / "assets/branding/runtime",
+        )
+        (resources / "packaging/linux").mkdir(parents=True)
+        shutil.copy2(
+            ROOT / "packaging/linux/sus-adb.desktop",
+            resources / "packaging/linux/sus-adb.desktop",
+        )
+        shutil.copy2(
+            ROOT / "assets/branding/runtime/sus-companion-icon-256.png",
+            package / "sus-companion.png",
+        )
         manifest = {"enabled": False, "contributed_components": [{"contribution_type": "script-asset"}]}
         (resources / "plugins/examples/hello_plugin/manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         for relative in VERIFY.EXAMPLE_ASSETS:

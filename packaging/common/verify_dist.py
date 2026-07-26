@@ -1,7 +1,17 @@
 from __future__ import annotations
 import argparse,hashlib,json
 from pathlib import Path
+from PIL import Image,UnidentifiedImageError
 REQUIRED=("VERSION","build-info.json","app/themes","app/resources/startup_tips.json","docs","plugins/examples","packaging/curated-script-assets.json")
+BRANDING_REQUIRED=(
+ "assets/branding/runtime/manifest.json",
+ "assets/branding/runtime/sus-companion-icon-1024.png",
+ "assets/branding/runtime/sus-companion-icon-256.png",
+ "assets/branding/runtime/sus-companion-icon-16.png",
+ "assets/branding/runtime/sus-companion.ico",
+ "assets/branding/runtime/sus-companion-header.png",
+ "assets/branding/runtime/sus-companion-about.png",
+)
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
@@ -32,11 +42,35 @@ def verify(root):
  if not any(part in root.name for part in ("linux","windows")):missing+=("platform-qualified package name",)
  platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-companion.exe").exists() else "linux"
  missing+=frida_runtime_errors(resource_root,platform_name)
+ missing+=tuple(path for path in BRANDING_REQUIRED if not (resource_root/path).is_file())
+ if platform_name=="linux":
+  if not (root/"sus-companion.png").is_file():missing+=("sus-companion.png",)
+  if not (resource_root/"packaging/linux/sus-adb.desktop").is_file():missing+=("packaging/linux/sus-adb.desktop",)
  unexpected=list(name for name in EXCLUDED if any(p.name==name for p in root.rglob("*")))
  unexpected.extend(p.relative_to(root).as_posix() for p in root.rglob("*") if any(part in BLOCKED_PARTS for part in p.relative_to(root).parts) or (p.is_file() and p.suffix.casefold() in {".pyc",".pyo"}))
  example_missing=tuple(path for path in EXAMPLE_ASSETS if not (resource_root/path).is_file())
  missing+=example_missing
  asset_errors=[];core_counts={};core_total=0;build_info={}
+ try:
+  expected_png_sizes={
+   "sus-companion-icon-1024.png":(1024,1024),
+   "sus-companion-icon-256.png":(256,256),
+   "sus-companion-icon-16.png":(16,16),
+   "sus-companion-header.png":(256,256),
+   "sus-companion-about.png":(392,584),
+  }
+  branding_root=resource_root/"assets/branding/runtime"
+  for filename,size in expected_png_sizes.items():
+   with Image.open(branding_root/filename) as image:
+    if image.format!="PNG" or image.size!=size or image.getexif():asset_errors.append(f"branding:{filename}")
+  with Image.open(branding_root/"sus-companion.ico") as image:
+   expected={(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)}
+   if image.format!="ICO" or set(image.info.get("sizes",()))!=expected:asset_errors.append("branding:sus-companion.ico")
+  if platform_name=="linux":
+   with Image.open(root/"sus-companion.png") as image:
+    if image.format!="PNG" or image.size!=(256,256):asset_errors.append("branding:linux-launcher")
+   if "Icon=sus-companion" not in (resource_root/"packaging/linux/sus-adb.desktop").read_text(encoding="utf-8"):asset_errors.append("branding:linux-desktop")
+ except (OSError,ValueError,KeyError,TypeError,UnidentifiedImageError):asset_errors.append("branding-runtime")
  try:
   build_info=json.loads((resource_root/"build-info.json").read_text(encoding="utf-8"))
   build_keys=("product","version","commit","short_commit","ref","timestamp","channel")

@@ -46,6 +46,9 @@ operational sections are built only on first explicit access.
 The Gothic title, **View → Home**, and **Alt+Home** return to Workspace Home.
 Guided mode keeps its descriptions and recommendation concise; Advanced mode
 adds compact target/serial context without placing raw commands on Home.
+The compact SUS Companion emblem shares the established title-to-Home action,
+and **About → About SUS Companion** opens a lazy themed build-information
+window. Missing branding assets fall back to the existing text presentation.
 Add-ons Center, Sessions Center, Device Rescue, assistants, Learning Center,
 Context Help, Diagnostics, and Advanced Command Reference remain detached
 singleton tools where designed.

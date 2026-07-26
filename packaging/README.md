@@ -2,7 +2,7 @@
 
 One-directory packages use `sus-companion` as the preferred executable. Linux adds a small `sus-adb` launcher and Windows adds `sus-adb.cmd`; neither duplicates the application resource bundle. The established storage directories remain unchanged.
 
-The packaged startup tip catalog is local data, and the release verifier requires it alongside centralized build metadata, themes, documentation, official addons, Python Frida runtime resources, manifests, checksums, and a verification report.
+The packaged startup tip catalog is local data, and the release verifier requires it alongside centralized build metadata, themes, runtime branding, documentation, official addons, Python Frida runtime resources, manifests, checksums, and a verification report. Runtime branding is generated deterministically from reviewed source art; packages contain metadata-free derivatives, not source artwork. The Windows executable uses the multi-resolution ICO, while Linux packages include the desktop metadata and launcher PNG.
 
 RC2 uses a PyInstaller one-folder build. Run the platform script from a clean checkout or `git archive` source after installing `requirements-build.txt`. `generate_build_info.py` records the product version, exact commit, selected ref when supplied, UTC build timestamp, and build channel before PyInstaller collects resources. Builds include required application resources, the disabled hello example plugin, and six disabled official addons. RC2 currently has zero reviewed core curated Script Studio assets; when reviewed assets are tracked, packaging includes and verifies only those release-approved files. Mutable user-local Script Studio libraries are never package inputs.
 
