@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
@@ -242,6 +243,10 @@ class SusADBWindow(ctk.CTk):
         self.learning_center_window=None
         self.addons_center=None
         self.sessions_center=None
+        self.command_palette=None
+        self.command_palette_registry=None
+        self._palette_shortcut_id=None
+        self._palette_shortcut_previous=""
         self.addon_window_host=AddonWindowHost(
             self,self.theme,self.plugin_manager,
             self.app_config.setdefault("addon_windows",{}),
@@ -527,6 +532,7 @@ class SusADBWindow(ctk.CTk):
         self._refresh_home_state()
         self.bind("<Alt-Home>", self._alt_home, add="+")
         self.bind("<Escape>", self._escape_shell, add="+")
+        self._install_command_palette_shortcut()
 
         started=time.perf_counter()
         self.status_bar = StatusBar(self, self.theme)
@@ -693,8 +699,9 @@ class SusADBWindow(ctk.CTk):
     def open_cheat_sheet(self):
         if self.cheat_sheet is not None and self.cheat_sheet.winfo_exists():
             self.cheat_sheet.lift()
-            return
+            return self.cheat_sheet
         self.cheat_sheet = CheatSheetWindow(self, self.theme)
+        return self.cheat_sheet
 
     def open_environment_diagnostics(self):
         if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
@@ -965,6 +972,297 @@ class SusADBWindow(ctk.CTk):
             return "break"
         return None
 
+    def _install_command_palette_shortcut(self):
+        sequence="<Control-k>"
+        self._palette_shortcut_previous=self.tk.call("bind","all",sequence)
+        self._palette_shortcut_id=self.bind_all(
+            sequence,self._command_palette_shortcut,add="+"
+        )
+
+    def _remove_command_palette_shortcut(self):
+        if self._palette_shortcut_id is None:return
+        sequence="<Control-k>"
+        self.tk.call(
+            "bind","all",sequence,self._palette_shortcut_previous
+        )
+        try:self.deletecommand(self._palette_shortcut_id)
+        except tk.TclError:pass
+        self._palette_shortcut_id=None
+
+    def _command_palette_shortcut(self,event=None):
+        widget=getattr(event,"widget",None)
+        if event is not None and not isinstance(widget,tk.Misc):
+            return None
+        self.open_command_palette()
+        return "break"
+
+    def _command_palette_commands(self):
+        """Project callbacks and current in-memory state into immutable commands."""
+        from app.core.command_palette import PaletteCommand
+        from app.plugins.addon_presenter import lifecycle_for
+
+        mode=self.interface_mode
+        snapshot=self.host_state.snapshot()
+        selected_target=(
+            snapshot.selected_target.identifier
+            or snapshot.selected_target.name
+            if snapshot.selected_target else "No target selected"
+        )
+        assessment=(
+            snapshot.assessment_scope.case_name
+            if snapshot.assessment_scope else "No active assessment"
+        )
+        active_sessions=sum(
+            record.state in self.interactive_sessions.ACTIVE
+            for record in self.interactive_sessions.list()
+        )
+        selected_script=getattr(
+            getattr(getattr(self,"script_studio_panel",None),"selected",None),
+            "name","",
+        )
+        technical=(
+            f"Device: {snapshot.selected_serial or 'none'} · "
+            f"Target: {selected_target}"
+        )
+
+        def command(
+            command_id,title,description,category,aliases,callback,
+            *,default_rank=100,context="",status="",hint=""
+        ):
+            return PaletteCommand(
+                command_id,title,description,category,tuple(aliases),hint,
+                True,status,command_id,"navigation",context,default_rank,
+                callback,
+            )
+
+        values=[
+            command(
+                "workspace.home","Workspace Home",
+                "Choose a principal workspace without scanning or executing.",
+                "Workspaces",("home","start","workspace home"),
+                lambda _query:self.navigate_workspace("Home"),default_rank=0,
+                context=technical,
+            ),
+            command(
+                "workspace.console","Console",
+                "Open the local one-shot command workspace.",
+                "Workspaces",("terminal","console","command line"),
+                lambda _query:self.navigate_workspace("Console"),default_rank=1,
+                context=technical,
+            ),
+            command(
+                "workspace.instrumentation","Instrumentation",
+                "Open target discovery and explicit observation workflows.",
+                "Workspaces",("instrumentation","frida","targets"),
+                lambda _query:self.navigate_workspace("Instrumentation"),
+                default_rank=2,context=technical,
+            ),
+            command(
+                "workspace.scripts","Script Studio",
+                "Open the local script library and editor.",
+                "Workspaces",("scripts","script studio","frida scripts"),
+                lambda _query:self.navigate_workspace("Scripts"),
+                default_rank=3,
+                context=f"Selected script: {selected_script or 'none'}",
+            ),
+            command(
+                "workspace.pentest","Pentest",
+                "Open the authorized assessment workspace.",
+                "Workspaces",("pentest","assessment","case"),
+                lambda _query:self.navigate_workspace("Pentest"),
+                default_rank=4,context=f"Assessment: {assessment}",
+            ),
+            command(
+                "tool.addons","Add-ons Center",
+                "Browse and manage explicit addon lifecycle steps.",
+                "Tools",("addons","add-ons","plugins","plugin manager"),
+                lambda _query:self.open_addons_center(),default_rank=5,
+            ),
+            command(
+                "tool.sessions","Sessions Center",
+                "Open or focus the session planner; no shell is launched.",
+                "Tools",
+                ("sessions","adb","adb shell","shell","objection sessions"),
+                lambda _query:self.open_sessions_center(),default_rank=6,
+                context=f"Active sessions: {active_sessions}",
+            ),
+            command(
+                "tool.learning","Learning Center",
+                "Browse local lessons, glossary entries, and bookmarks.",
+                "Help",("learning","learn","tutorials"),
+                lambda _query:self.open_learning_center(),default_rank=7,
+            ),
+            command(
+                "tool.context-help","Contextual Help",
+                "Search local help and glossary content.",
+                "Help",
+                (
+                    "help","context help","glossary","adb","frida","objection",
+                    *(topic.title for topic in self.help_registry.topics()),
+                    *(entry.term for entry in self.help_registry.glossary()),
+                ),
+                lambda query:self.open_context_help_search(query),
+                default_rank=8,context=f"Interface mode: {mode}",
+            ),
+            command(
+                "tool.diagnostics","Environment Diagnostics",
+                "Open local build, environment, and startup diagnostics.",
+                "Tools",("diagnostics","environment","readiness"),
+                lambda _query:self.open_environment_diagnostics(),
+                default_rank=9,
+            ),
+            command(
+                "tool.command-reference","Advanced Command Reference",
+                "Open the read-only local command grimoire.",
+                "Help",
+                ("command reference","reference","grimoire","commands"),
+                lambda _query:self.open_cheat_sheet(),default_rank=10,
+            ),
+        ]
+        installed_names={
+            record[2].name.casefold() for record in self.plugin_manager.records.values()
+        }
+        known_specs=tuple(
+            card.spec for card in getattr(
+                getattr(self,"addons_center",None),"cards",{}
+            ).values()
+            if getattr(card,"spec",None) is not None
+        )
+        known_names={spec.name.casefold() for spec in known_specs}
+        initial_addons=(
+            (
+                "addon.device-rescue","Device Rescue & Recovery",
+                ("rescue","recovery","broken screen","device recovery"),
+            ),
+            (
+                "addon.frida-assistant","Frida Assistant",
+                ("frida","assistant","frida help"),
+            ),
+            (
+                "addon.objection-assistant","Objection Assistant",
+                ("objection","assistant","objection help"),
+            ),
+        )
+        for command_id,title,aliases in initial_addons:
+            if title.casefold() in installed_names|known_names:continue
+            values.append(command(
+                command_id,title,
+                "Open Add-ons Center focused on this available addon.",
+                "Add-ons",aliases,
+                lambda _query,value=title:self.open_addons_center(value),
+                default_rank=20,
+                status="Available through Add-ons Center",
+            ))
+        for plugin_id,record in sorted(self.plugin_manager.records.items()):
+            manifest=record[2]
+            panels=tuple(
+                contribution for contribution
+                in self.plugin_registry.by_plugin(plugin_id)
+                if contribution.contribution_type=="pentest-panel"
+            )
+            lifecycle=lifecycle_for(
+                self.plugin_manager,plugin_id,self.addon_window_host
+            )
+            panel=panels[0] if panels else None
+            openable=panel is not None and lifecycle in {"Loaded","Window Open"}
+            if openable:
+                callback=(
+                    lambda _query,value=panel.contribution_id:
+                    self.open_addon_window(value)
+                )
+                description="Open or focus the existing loaded addon window."
+                status=""
+            else:
+                callback=(
+                    lambda _query,value=manifest.name:
+                    self.open_addons_center(value)
+                )
+                description="Open Add-ons Center at this addon; no lifecycle step runs."
+                status={
+                    "Permissions Required":"Requires permission approval",
+                    "Trust Required":"Requires package trust",
+                    "Installed":"Requires Enable",
+                    "Enabled":"Requires Load",
+                }.get(lifecycle,f"Current state: {lifecycle}")
+            presented=next(
+                (spec for spec in known_specs if spec.plugin_id==plugin_id),
+                None,
+            )
+            if presented is not None and presented.update_available:
+                status=(
+                    "Update review required"
+                    if not presented.update_reviewed else
+                    "Update ready after explicit unload"
+                    if not presented.update_installable else
+                    "Reviewed update ready in Add-ons Center"
+                )
+            values.append(command(
+                f"addon.installed.{plugin_id}",manifest.name,description,
+                "Add-ons",
+                (
+                    manifest.name,plugin_id,
+                    *(component.title for component in panels),
+                ),
+                callback,default_rank=25,status=status,
+                context=(
+                    f"Package: {plugin_id} · State: {lifecycle}"
+                    + (
+                        f" · Contribution: {panel.contribution_id}"
+                        if panel is not None else ""
+                    )
+                ),
+            ))
+        for spec in known_specs:
+            if spec.plugin_id in self.plugin_manager.records:continue
+            values.append(command(
+                f"addon.available.{spec.plugin_id}",spec.name,
+                "Open Add-ons Center focused on this available addon.",
+                "Add-ons",(spec.name,spec.plugin_id),
+                lambda _query,value=spec.name:self.open_addons_center(value),
+                default_rank=30,status="Available · not installed",
+                context=f"Package: {spec.plugin_id} · State: Available",
+            ))
+        return tuple(values)
+
+    def _command_palette_subscriptions(self):
+        def host_subscribe(refresh):
+            return self.host_state.subscribe(
+                "command-palette",
+                lambda _snapshot:self.call_on_ui(refresh),
+                replay=False,
+            )
+        return (
+            host_subscribe,
+            lambda refresh:self.plugin_manager.subscribe(
+                lambda _event,_plugin:self.call_on_ui(refresh)
+            ),
+            lambda refresh:self.plugin_registry.subscribe(
+                lambda _items:self.call_on_ui(refresh)
+            ),
+            lambda refresh:self.interactive_sessions.subscribe(
+                lambda _record:self.call_on_ui(refresh)
+            ),
+        )
+
+    def open_command_palette(self):
+        if (
+            self.command_palette is not None
+            and self.command_palette.winfo_exists()
+        ):
+            return self.command_palette.focus_search()
+        if self.command_palette_registry is None:
+            from app.core.command_palette import CommandPaletteRegistry
+            self.command_palette_registry=CommandPaletteRegistry()
+        from app.gui.command_palette import CommandPaletteWindow
+        self.command_palette=CommandPaletteWindow(
+            self,self.theme,self.command_palette_registry,
+            self._command_palette_commands,
+            subscriptions=self._command_palette_subscriptions(),
+            mode_provider=lambda:self.interface_mode,
+            on_close=lambda:setattr(self,"command_palette",None),
+        )
+        return self.command_palette
+
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
         if workspace=="Home":return "console"
@@ -1001,6 +1299,10 @@ class SusADBWindow(ctk.CTk):
             )
         self.context_help_window.show_topic(topic_id)
         return self.context_help_window
+
+    def open_context_help_search(self,query):
+        window=self.open_context_help(self.current_help_topic())
+        return window.show_search(query)
 
     def _guide_state(self):
         selected=self.devices.selected
@@ -1098,13 +1400,18 @@ class SusADBWindow(ctk.CTk):
             return self.open_addon_window(contribution.contribution_id)
         return self.open_addons_center()
 
-    def open_addons_center(self):
-        if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.deiconify();self.addons_center.lift();self.addons_center.focus_force();return self.addons_center
+    def open_addons_center(self,focus_query=None):
+        if self.addons_center is not None and self.addons_center.winfo_exists():
+            self.addons_center.deiconify();self.addons_center.lift()
+            if focus_query is not None:return self.addons_center.focus_addon(focus_query)
+            self.addons_center.focus_force();return self.addons_center
         self.addons_center=AddonsCenter(
             self,self.theme,self.plugin_manager,self.addon_window_host,
             on_close=lambda:setattr(self,"addons_center",None),
             help_callback=self.open_context_help,
-        );return self.addons_center
+        )
+        if focus_query is not None:self.addons_center.focus_addon(focus_query)
+        return self.addons_center
 
     def open_addon_window(self,contribution_id):return self.addon_window_host.open(contribution_id)
 
@@ -1180,6 +1487,8 @@ class SusADBWindow(ctk.CTk):
         if self.context_help_window is not None and self.context_help_window.winfo_exists():self.context_help_window.close()
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
+        if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         life.add_cleanup("deferred-workers",self._join_background_workers)

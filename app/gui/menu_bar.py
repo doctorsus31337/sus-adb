@@ -48,6 +48,12 @@ class MenuBar:
             label="Pentest",
             command=lambda: window.navigate_workspace("Pentest"),
         )
+        view_menu.add_separator()
+        view_menu.add_command(
+            label="Command Palette",
+            accelerator="Ctrl+K",
+            command=window.open_command_palette,
+        )
         menu.add_cascade(label="View", menu=view_menu)
 
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
