@@ -44,6 +44,8 @@ class ReleaseManifestTests(unittest.TestCase):
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
         (resources / "frida-17.15.5.dist-info").mkdir()
         (resources / "frida-17.15.5.dist-info/METADATA").write_text("Name: frida\nVersion: 17.15.5\n", encoding="utf-8")
+        (resources / "pillow-12.1.1.dist-info").mkdir()
+        (resources / "pillow-12.1.1.dist-info/METADATA").write_text("Name: pillow\nVersion: 12.1.1\n", encoding="utf-8")
         official_names=("device_rescue_recovery","rootability_advisor","webview_security_inspector","skeleton_module","frida_tutorial","objection_tutorial")
         for folder,plugin_id in zip(official_names,VERIFY.OFFICIAL_IDS):
             target=resources/"plugins/official"/folder;target.mkdir(parents=True,exist_ok=True);(target/"manifest.json").write_text(json.dumps({"plugin_id":plugin_id,"enabled":False,"requested_capabilities":VERIFY.OFFICIAL_CAPABILITIES[plugin_id]}),encoding="utf-8");(target/"plugin.py").write_text("class Plugin: pass",encoding="utf-8")
@@ -116,6 +118,16 @@ class ReleaseManifestTests(unittest.TestCase):
             native.rename(native.with_suffix(".pyd"))
             CHECKSUMS.generate(windows)
             self.assertTrue(VERIFY.verify(windows)["ok"], VERIFY.verify(windows))
+
+    def test_pillow_distribution_metadata_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            (package / "_internal/pillow-12.1.1.dist-info/METADATA").unlink()
+            CHECKSUMS.generate(package)
+            self.assertIn(
+                "Pillow distribution metadata",
+                VERIFY.verify(package)["missing"],
+            )
 
     def test_checksum_helper(self):
         with tempfile.TemporaryDirectory() as directory:

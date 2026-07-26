@@ -33,6 +33,49 @@ class BrandingAssetTests(unittest.TestCase):
             with Image.open(path) as image:
                 self.assertEqual(image.format, "JPEG")
                 self.assertEqual(image.size, (784, 1168))
+                self.assertEqual(image.mode, "RGB")
+                self.assertFalse(image.getexif())
+                self.assertFalse(
+                    {"exif", "xmp", "comment", "photoshop"}
+                    & set(image.info)
+                )
+            self.assertEqual(
+                GENERATOR.sanitize_jpeg_metadata(path.read_bytes()),
+                path.read_bytes(),
+            )
+
+    def test_marker_sanitizer_preserves_scan_and_decoded_pixels(self):
+        source = (
+            ROOT
+            / "assets/branding/source/sus-companion-app-icon-source.jpg"
+        ).read_bytes()
+        metadata = (
+            b"\xff\xe1\x00\x16Exif\x00\x00synthetic-only"
+            b"\xff\xfe\x00\x0bcomment!!"
+        )
+        decorated = source[:2] + metadata + source[2:]
+        sanitized = GENERATOR.sanitize_jpeg_metadata(decorated)
+        self.assertEqual(sanitized, source)
+        with tempfile.TemporaryDirectory() as directory:
+            decorated_path = Path(directory) / "decorated.jpg"
+            sanitized_path = Path(directory) / "sanitized.jpg"
+            decorated_path.write_bytes(decorated)
+            sanitized_path.write_bytes(sanitized)
+            self.assertEqual(
+                GENERATOR._pixel_digest(decorated_path),
+                GENERATOR._pixel_digest(sanitized_path),
+            )
+        self.assertEqual(GENERATOR.sanitize_jpeg_metadata(sanitized), sanitized)
+
+    def test_marker_sanitizer_rejects_malformed_jpeg(self):
+        for value in (
+            b"not-jpeg",
+            b"\xff\xd8\xff\xe1\x00\x01\xff\xd9",
+            b"\xff\xd8\xff\xda\x00\x08truncated",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    GENERATOR.sanitize_jpeg_metadata(value)
 
     def test_runtime_formats_dimensions_metadata_and_ico_frames(self):
         runtime = ROOT / "assets/branding/runtime"

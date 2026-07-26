@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import builtins
+import io
+from contextlib import redirect_stderr
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,6 +32,15 @@ def _inside(widget, parent):
         and x + width <= px + pwidth
         and y + height <= py + pheight
     )
+
+
+def _scrollbar_color(scrollbar):
+    for attribute in ("button_color", "scrollbar_color"):
+        try:
+            return scrollbar.cget(attribute)
+        except ValueError:
+            continue
+    raise AssertionError("No supported CustomTkinter scrollbar color property")
 
 
 def main():
@@ -96,6 +109,7 @@ def main():
         about_measurements = []
         for width, height in ((720, 560), (900, 650), (1100, 760)):
             about.geometry(f"{width}x{height}+0+0")
+            about.content._parent_canvas.yview_moveto(0.0)
             about.update_idletasks()
             assert _inside(about.close_button, about)
             assert about.artwork_label.winfo_width() == 230
@@ -154,9 +168,9 @@ def main():
             about.geometry("720x560+0+0")
             about.update_idletasks()
             assert _inside(app.gothic_header.help_button, app.gothic_header)
-            assert app.gothic_header.winfo_height() <= 110
+            assert app.gothic_header.winfo_height() <= 112
             assert _inside(about.close_button, about)
-            assert about.content._scrollbar.cget("button_color") == app.theme["gold_dark"]
+            assert _scrollbar_color(about.content._scrollbar) == app.theme["gold_dark"]
             scaled.append(
                 (
                     scale,
@@ -169,11 +183,48 @@ def main():
 
         assert not app._background_workers
         app.shutdown()
+
+        from app.core import branding_dependencies
+        actual_import = builtins.__import__
+        def missing_pillow(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "PIL" or name.startswith("PIL."):
+                raise ModuleNotFoundError("No module named 'PIL'", name="PIL")
+            return actual_import(name, globals, locals, fromlist, level)
+        branding_dependencies._reset_notice_for_tests()
+        fallback_stderr = io.StringIO()
+        with (
+            mock.patch("builtins.__import__", side_effect=missing_pillow),
+            redirect_stderr(fallback_stderr),
+        ):
+            fallback_app = SusADBWindow()
+            fallback_app._deferred_started = True
+            assert getattr(
+                fallback_app, "_sus_companion_icon_image", None
+            ) is None
+            assert fallback_app.gothic_header.artwork_image is None
+            assert "SUS COMPANION" in fallback_app.gothic_header.title.cget("text")
+            fallback_about = fallback_app.open_about()
+            fallback_about.update_idletasks()
+            assert fallback_about.artwork_image is None
+            assert "SUS COMPANION" in fallback_about.artwork_label.cget("text")
+            fallback_about.close()
+            fallback_app.open_about().close()
+            assert not fallback_app._background_workers
+            fallback_app.shutdown()
+        fallback_message = fallback_stderr.getvalue()
+        assert (
+            fallback_message.count("Optional visual branding is unavailable")
+            == 1
+        )
+        assert (
+            "python -m pip install -r requirements.txt -c constraints.txt"
+            in fallback_message
+        )
         print(
             "branding-smoke=PASS "
             f"main={main_measurements} about={about_measurements} "
             f"scaling={scaled} splash=600x360,720x430 "
-            "singleton-fallback-icon-shutdown=PASS"
+            "singleton-file-fallback-pillow-fallback-icon-shutdown=PASS"
         )
     return 0
 

@@ -1,7 +1,11 @@
+import builtins
+import importlib.util
+import io
 import tempfile
 import tkinter as tk
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -13,9 +17,20 @@ from app.core.branding_assets import (
     application_resource_root,
 )
 from app.gui.branding_images import BrandingImages
+from app.core import branding_dependencies
 
 
 ROOT = Path(__file__).parents[1]
+UPDATE_COMMAND = "python -m pip install -r requirements.txt -c constraints.txt"
+
+
+def missing_pillow_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if name == "PIL" or name.startswith("PIL."):
+        raise ModuleNotFoundError("No module named 'PIL'", name="PIL")
+    return _REAL_IMPORT(name, globals, locals, fromlist, level)
+
+
+_REAL_IMPORT = builtins.__import__
 
 
 class FakeWindow:
@@ -27,6 +42,52 @@ class FakeWindow:
 
 
 class BrandingIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        branding_dependencies._reset_notice_for_tests()
+
+    def test_branding_module_imports_when_pillow_is_unavailable(self):
+        spec = importlib.util.spec_from_file_location(
+            "branding_images_without_pillow",
+            ROOT / "app/gui/branding_images.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch("builtins.__import__", side_effect=missing_pillow_import):
+            spec.loader.exec_module(module)
+        self.assertTrue(hasattr(module, "BrandingImages"))
+
+    def test_missing_pillow_is_once_only_actionable_safe_noop(self):
+        stderr = io.StringIO()
+        window = FakeWindow()
+        images = BrandingImages(BrandingAssetResolver(ROOT))
+        with (
+            mock.patch("builtins.__import__", side_effect=missing_pillow_import),
+            mock.patch("app.gui.branding_images.tk.PhotoImage") as photo_image,
+            redirect_stderr(stderr),
+        ):
+            self.assertIsNone(images.pil_image(HEADER_ARTWORK))
+            self.assertIsNone(images.ctk_image(ABOUT_ARTWORK, (230, 343)))
+            self.assertFalse(images.apply_window_icon(window))
+            self.assertFalse(images.apply_window_icon(window))
+        message = stderr.getvalue()
+        self.assertIn(UPDATE_COMMAND, message)
+        self.assertEqual(message.count("Optional visual branding"), 1)
+        photo_image.assert_not_called()
+        self.assertEqual(window.calls, [])
+
+    def test_unrelated_pillow_import_failure_propagates(self):
+        def unrelated(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "PIL":
+                raise ModuleNotFoundError(
+                    "No module named 'unrelated'",
+                    name="unrelated",
+                )
+            return _REAL_IMPORT(name, globals, locals, fromlist, level)
+        images = BrandingImages(BrandingAssetResolver(ROOT))
+        with (
+            mock.patch("builtins.__import__", side_effect=unrelated),
+            self.assertRaises(ModuleNotFoundError),
+        ):
+            images.pil_image(HEADER_ARTWORK)
     def test_resolver_works_in_checkout_bundle_and_paths_with_spaces(self):
         checkout = BrandingAssetResolver(ROOT)
         self.assertTrue(checkout.resolve(APP_ICON_PNG).is_file())
@@ -96,6 +157,10 @@ class BrandingIntegrationTests(unittest.TestCase):
         linux = (ROOT / "packaging/linux/build_linux.sh").read_text()
         desktop = (ROOT / "packaging/linux/sus-adb.desktop").read_text()
         verifier = (ROOT / "packaging/common/verify_dist.py").read_text()
+        requirements = (ROOT / "requirements.txt").read_text()
+        constraints = (ROOT / "constraints.txt").read_text()
+        installation = (ROOT / "docs/installation.md").read_text()
+        readme = (ROOT / "README.md").read_text()
         for value in (spec, linux, desktop, verifier):
             self.assertNotIn("/" + "ho" + "me/", value)
         self.assertIn("assets/branding/runtime", spec)
@@ -103,6 +168,11 @@ class BrandingIntegrationTests(unittest.TestCase):
         self.assertIn("sus-companion-icon-256.png", linux)
         self.assertIn("Icon=sus-companion", desktop)
         self.assertIn("BRANDING_REQUIRED", verifier)
+        self.assertIn("copy_metadata('pillow')", spec)
+        self.assertIn("pillow>=10,<13", requirements)
+        self.assertIn("pillow<13", constraints)
+        self.assertIn(UPDATE_COMMAND, installation)
+        self.assertIn(UPDATE_COMMAND, readme)
 
 
 if __name__ == "__main__":

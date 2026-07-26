@@ -10,7 +10,7 @@ Use CPython 3.11–3.13 in a virtual environment:
 
 ```sh
 python -m venv .venv
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 python main.py
 ```
 
@@ -24,7 +24,7 @@ ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/p
 For a source checkout, select the intended branch or commit and run:
 
 ```sh
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 python main.py
 ```
 

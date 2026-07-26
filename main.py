@@ -7,6 +7,10 @@ import argparse,json
 from app.core.app_metadata import METADATA
 from app.core.config_manager import ConfigManager
 from app.core.environment_diagnostics import EnvironmentDiagnostics
+from app.core.branding_dependencies import (
+    is_missing_pillow_error,
+    report_missing_pillow,
+)
 
 
 def cli(argv=None):
@@ -22,7 +26,14 @@ def cli(argv=None):
         print(f"BUILD\tBuild channel\t{METADATA.build_channel}")
         for r in EnvironmentDiagnostics().run(ConfigManager().directory,"workspaces"):print(f"{'OK' if r.available else 'MISSING'}\t{r.name}\t{r.version or r.path}")
         return 0
-    gui_import_started=time.perf_counter();from app.gui.main_window import SusADBWindow
+    gui_import_started=time.perf_counter()
+    try:
+        from app.gui.main_window import SusADBWindow
+    except ModuleNotFoundError as error:
+        if not is_missing_pillow_error(error):
+            raise
+        report_missing_pillow(gui_required=True)
+        return 1
     gui_import_finished=time.perf_counter();app=SusADBWindow(startup_origin=PROCESS_STARTED,startup_intervals=(("command-line-parsing",parse_started,parse_finished),("gui-imports",gui_import_started,gui_import_finished)));app.mainloop();return 0
 def main():return cli()
 

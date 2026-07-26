@@ -32,6 +32,9 @@ def frida_runtime_errors(resource_root,platform_name):
  if not metadata:errors.append("frida distribution metadata")
  if not native:errors.append(f"frida native runtime (*{suffix})")
  return tuple(errors)
+def pillow_runtime_errors(resource_root):
+ metadata=tuple(resource_root.glob("pillow-*.dist-info/METADATA"))
+ return () if metadata else ("Pillow distribution metadata",)
 def verify(root):
  root=Path(root);resource_root=root/"_internal" if (root/"_internal").is_dir() else root
  missing=tuple(v for v in REQUIRED if not (resource_root/v).exists())
@@ -42,6 +45,7 @@ def verify(root):
  if not any(part in root.name for part in ("linux","windows")):missing+=("platform-qualified package name",)
  platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-companion.exe").exists() else "linux"
  missing+=frida_runtime_errors(resource_root,platform_name)
+ missing+=pillow_runtime_errors(resource_root)
  missing+=tuple(path for path in BRANDING_REQUIRED if not (resource_root/path).is_file())
  if platform_name=="linux":
   if not (root/"sus-companion.png").is_file():missing+=("sus-companion.png",)

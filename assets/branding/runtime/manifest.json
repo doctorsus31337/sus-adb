@@ -104,7 +104,7 @@
   "sources": {
     "sus-companion-about-source.jpg": {
       "format": "JPEG",
-      "sha256": "ac2c8919574fd0d8a184ec004a691c6df9226543483b4f59a3b58530bb2f3d89",
+      "sha256": "001f0babc99edb477790af06c58df5779305419532f7c95dd22faf42b6b41c27",
       "size": [
         784,
         1168
@@ -112,7 +112,7 @@
     },
     "sus-companion-app-icon-source.jpg": {
       "format": "JPEG",
-      "sha256": "30dd1ab014c265c9be882e542ca936c7df9598c390e76f52e4fae27381d43b34",
+      "sha256": "f72293471a93768ab7fd779e4775b1fc7a629b84119a6dd6f74cd9a114fda0bd",
       "size": [
         784,
         1168
@@ -120,7 +120,7 @@
     },
     "sus-companion-header-source.jpg": {
       "format": "JPEG",
-      "sha256": "297c150aff6f92d080626dd0d67a2e75522a64294720737b408ff196ab8c5ebd",
+      "sha256": "99d81e6a14db5ecbb4fd20cd4935383a2b322c1266d42d0d9962f338c5c67d4b",
       "size": [
         784,
         1168
