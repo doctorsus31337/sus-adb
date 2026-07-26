@@ -1,5 +1,7 @@
 import customtkinter as ctk
 from app.core.app_metadata import METADATA
+from app.core.branding_assets import HEADER_ARTWORK
+from app.gui.customtkinter_compat import keyboard_focus_target
 
 
 class GothicHeader(ctk.CTkFrame):
@@ -12,6 +14,7 @@ class GothicHeader(ctk.CTkFrame):
         help_callback=None,
         mode_callback=None,
         interface_mode="guided",
+        branding=None,
     ):
         super().__init__(
             parent,
@@ -21,6 +24,18 @@ class GothicHeader(ctk.CTkFrame):
 
         brand = ctk.CTkFrame(self, fg_color="transparent")
         brand.grid(row=0, column=0, sticky="w", padx=(4, 12), pady=(2, 5))
+        self.artwork_image = (
+            branding.ctk_image(HEADER_ARTWORK, (48, 48)) if branding else None
+        )
+        self.artwork = ctk.CTkLabel(
+            brand,
+            text="",
+            image=self.artwork_image,
+            width=48 if self.artwork_image else 0,
+            height=48 if self.artwork_image else 0,
+        )
+        if self.artwork_image is not None:
+            self.artwork.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 10))
         self.title = ctk.CTkLabel(
             brand,
             text=f"⚔ {METADATA.display_mark} ⚔",
@@ -28,16 +43,22 @@ class GothicHeader(ctk.CTkFrame):
             text_color=theme["gold"],
             anchor="w",
         )
-        self.title.grid(row=0, column=0, sticky="w")
+        self.title.grid(row=0, column=1, sticky="w")
         if home_callback:
-            self.title.configure(cursor="hand2")
-            self.title.bind("<Button-1>",lambda _event:home_callback())
-            self.title.bind("<Return>",lambda _event:home_callback())
-            self.title.bind("<space>",lambda _event:home_callback())
+            for widget in (self.title, self.artwork):
+                if widget is self.artwork and self.artwork_image is None:
+                    continue
+                widget.configure(cursor="hand2")
+                widget.bind("<Button-1>",lambda _event:home_callback())
+                target=keyboard_focus_target(widget)
+                if target is not None:
+                    target.configure(takefocus=True)
+                    target.bind("<Return>",lambda _event:home_callback())
+                    target.bind("<space>",lambda _event:home_callback())
             self.title.bind("<Enter>",lambda _event:self.title.configure(text_color=theme["text"]))
             self.title.bind("<Leave>",lambda _event:self.title.configure(text_color=theme["gold"]))
-            self.title._canvas.configure(takefocus=True)
             self.title.tooltip_text="Return to Workspace Home"
+            self.artwork.tooltip_text="Return to Workspace Home"
 
         self.subtitle = ctk.CTkLabel(
             brand,
@@ -46,7 +67,7 @@ class GothicHeader(ctk.CTkFrame):
             text_color=theme["muted"],
             anchor="w",
         )
-        self.subtitle.grid(row=1, column=0, sticky="w", pady=(0, 1))
+        self.subtitle.grid(row=1, column=1, sticky="w", pady=(0, 1))
 
         controls = ctk.CTkFrame(self, fg_color="transparent")
         controls.grid(row=0, column=1, sticky="e", padx=(12, 4), pady=(2, 5))

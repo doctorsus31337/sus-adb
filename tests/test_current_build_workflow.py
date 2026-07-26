@@ -36,6 +36,10 @@ class CurrentBuildWorkflowTests(unittest.TestCase):
         spec = (ROOT / "packaging/pyinstaller/sus_adb.spec").read_text()
         self.assertIn("name='sus-companion'", spec)
         self.assertIn("build-info.json", spec)
+        self.assertIn("assets/branding/runtime", spec)
+        self.assertIn("sus-companion.ico", spec)
+        self.assertIn("Icon=sus-companion", (ROOT / "packaging/linux/sus-adb.desktop").read_text())
+        self.assertIn("sus-companion.png", linux)
 
     def test_readme_and_publication_plan_identify_rc2(self):
         readme = (ROOT / "README.md").read_text()

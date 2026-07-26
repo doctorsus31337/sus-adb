@@ -10,7 +10,7 @@ Use CPython 3.11–3.13 in a virtual environment:
 
 ```sh
 python -m venv .venv
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 python main.py
 ```
 
@@ -24,7 +24,7 @@ ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/p
 For a source checkout, select the intended branch or commit and run:
 
 ```sh
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt -c constraints.txt
 python main.py
 ```
 
@@ -46,6 +46,9 @@ operational sections are built only on first explicit access.
 The Gothic title, **View → Home**, and **Alt+Home** return to Workspace Home.
 Guided mode keeps its descriptions and recommendation concise; Advanced mode
 adds compact target/serial context without placing raw commands on Home.
+The compact SUS Companion emblem shares the established title-to-Home action,
+and **About → About SUS Companion** opens a lazy themed build-information
+window. Missing branding assets fall back to the existing text presentation.
 Add-ons Center, Sessions Center, Device Rescue, assistants, Learning Center,
 Context Help, Diagnostics, and Advanced Command Reference remain detached
 singleton tools where designed.
