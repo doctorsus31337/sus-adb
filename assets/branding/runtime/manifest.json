@@ -1,0 +1,130 @@
+{
+  "format": 1,
+  "generator": "scripts/generate_branding_assets.py",
+  "outputs": {
+    "sus-companion-about.png": {
+      "format": "PNG",
+      "sha256": "818005a983862319ff6e2e30feaa04f119ada84c2a8a0ba4f37c79fe59b31ab1",
+      "size": [
+        392,
+        584
+      ]
+    },
+    "sus-companion-header.png": {
+      "format": "PNG",
+      "sha256": "9aa6bd861d73a54687dd8cd14bca46a1cd42b3f90eca0fa9936905e250d1df4e",
+      "size": [
+        256,
+        256
+      ],
+      "source_crop": [
+        220,
+        140,
+        564,
+        484
+      ]
+    },
+    "sus-companion-icon-1024.png": {
+      "format": "PNG",
+      "sha256": "a6a319341f05a2dc56bf98839060a8925d7e8eeafef33d485931c020ba4f575c",
+      "size": [
+        1024,
+        1024
+      ]
+    },
+    "sus-companion-icon-128.png": {
+      "format": "PNG",
+      "sha256": "772f9d3f3990224520a57b5691a1ac75dce034bb5a7954d45222ed76c820ce26",
+      "size": [
+        128,
+        128
+      ]
+    },
+    "sus-companion-icon-16.png": {
+      "format": "PNG",
+      "sha256": "1d3dc9777cb3ba26378952d9cb0061776b9dc075916a637fa96dedf754ac982c",
+      "size": [
+        16,
+        16
+      ]
+    },
+    "sus-companion-icon-256.png": {
+      "format": "PNG",
+      "sha256": "5669417030907bb73b058f45875d8de978ccacc903c17ca36210a69e516749c5",
+      "size": [
+        256,
+        256
+      ]
+    },
+    "sus-companion-icon-32.png": {
+      "format": "PNG",
+      "sha256": "b33fa8c90d76003f72adf1e33eae6095a6dd64a9c7cb6de30f1f3e05d5cac180",
+      "size": [
+        32,
+        32
+      ]
+    },
+    "sus-companion-icon-48.png": {
+      "format": "PNG",
+      "sha256": "a5b9a67d760c31bb33e5637a5a8305375326dea50ec8c9ab35447f7302ac0641",
+      "size": [
+        48,
+        48
+      ]
+    },
+    "sus-companion-icon-512.png": {
+      "format": "PNG",
+      "sha256": "5a467dc5f38fffb56e2af45ea39b0153960b4d3bc885ac38d9917d04eea937d4",
+      "size": [
+        512,
+        512
+      ]
+    },
+    "sus-companion-icon-64.png": {
+      "format": "PNG",
+      "sha256": "608c22b5e3fe3fcd0865a0557cd7770132b84741b6f7e9667773fe78df0c7344",
+      "size": [
+        64,
+        64
+      ]
+    },
+    "sus-companion.ico": {
+      "format": "ICO",
+      "sha256": "f6f91261bed1e91a22c5894011999cb5d44ca406848430f22b9d55a908bed33d",
+      "sizes": [
+        16,
+        32,
+        48,
+        64,
+        128,
+        256
+      ]
+    }
+  },
+  "sources": {
+    "sus-companion-about-source.jpg": {
+      "format": "JPEG",
+      "sha256": "ac2c8919574fd0d8a184ec004a691c6df9226543483b4f59a3b58530bb2f3d89",
+      "size": [
+        784,
+        1168
+      ]
+    },
+    "sus-companion-app-icon-source.jpg": {
+      "format": "JPEG",
+      "sha256": "30dd1ab014c265c9be882e542ca936c7df9598c390e76f52e4fae27381d43b34",
+      "size": [
+        784,
+        1168
+      ]
+    },
+    "sus-companion-header-source.jpg": {
+      "format": "JPEG",
+      "sha256": "297c150aff6f92d080626dd0d67a2e75522a64294720737b408ff196ab8c5ebd",
+      "size": [
+        784,
+        1168
+      ]
+    }
+  }
+}
