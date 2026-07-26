@@ -61,6 +61,7 @@ class MenuBar:
         tools_menu.add_command(label="Environment Diagnostics", command=window.open_environment_diagnostics)
         tools_menu.add_command(label="Sessions Center", command=window.open_sessions_center)
         tools_menu.add_command(label="Workflow Recipes", command=window.open_workflow_recipes)
+        tools_menu.add_command(label="Plugin Project Wizard", command=window.open_plugin_project_wizard)
         tools_menu.add_command(label="Plugin Developer Workbench", command=window.open_plugin_workbench)
         tools_menu.add_command(label="Advanced Command Reference", command=window.open_cheat_sheet)
         tools_menu.add_separator()

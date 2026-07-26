@@ -253,6 +253,8 @@ class SusADBWindow(ctk.CTk):
         self.workflow_recipes_window=None
         self.workflow_recipe_controller=None
         self.plugin_workbench_window=None
+        self.plugin_project_wizard_window=None
+        self.plugin_project_wizard_controller=None
         self.about_window=None
         self._palette_shortcut_id=None
         self._palette_shortcut_previous=""
@@ -959,6 +961,9 @@ class SusADBWindow(ctk.CTk):
         workbench=getattr(self,"plugin_workbench_window",None)
         if workbench is not None and workbench.winfo_exists():
             workbench.apply_mode()
+        wizard=getattr(self,"plugin_project_wizard_window",None)
+        if wizard is not None and wizard.winfo_exists():
+            wizard.apply_mode()
         self._publish_host_state("interface-mode-changed")
 
     def _home_state(self):
@@ -1127,6 +1132,18 @@ class SusADBWindow(ctk.CTk):
                 context=technical,
             ),
             command(
+                "tool.plugin-project-wizard","Plugin Project Wizard",
+                "Create a documented, statically validated Plugin API 1.1 starter.",
+                "Tools",
+                (
+                    "create plugin","create addon","new module","new addon",
+                    "plugin wizard","addon wizard","module template",
+                    "plugin scaffold","SDK project",
+                ),
+                lambda _query:self.open_plugin_project_wizard(),default_rank=8,
+                context=technical,
+            ),
+            command(
                 "tool.plugin-workbench","Plugin Developer Workbench",
                 "Statically inspect and package a local addon without executing it.",
                 "Tools",
@@ -1135,7 +1152,7 @@ class SusADBWindow(ctk.CTk):
                     "addon validator","inspect plugin","plugin package",
                     "package addon","plugin workbench",
                 ),
-                lambda _query:self.open_plugin_workbench(),default_rank=8,
+                lambda _query:self.open_plugin_workbench(),default_rank=9,
             ),
             command(
                 "tool.learning","Learning Center",
@@ -1441,12 +1458,14 @@ class SusADBWindow(ctk.CTk):
             for item in catalog.list(self.plugin_manager.records)
         }
 
-    def open_plugin_workbench(self):
+    def open_plugin_workbench(self, candidate=None):
         if (
             self.plugin_workbench_window is not None
             and self.plugin_workbench_window.winfo_exists()
         ):
-            return self.plugin_workbench_window.focus_window()
+            window=self.plugin_workbench_window.focus_window()
+            if candidate is not None:window.select_candidate(candidate)
+            return window
         from app.gui.plugin_workbench_window import PluginWorkbenchWindow
         from app.plugins.plugin_workbench import PluginWorkbenchAnalyzer
         self.plugin_workbench_window=PluginWorkbenchWindow(
@@ -1462,7 +1481,39 @@ class SusADBWindow(ctk.CTk):
             help_callback=self.open_context_help,
             on_close=lambda:setattr(self,"plugin_workbench_window",None),
         )
+        if candidate is not None:
+            self.plugin_workbench_window.select_candidate(candidate)
         return self.plugin_workbench_window
+
+    def open_plugin_project_wizard(self):
+        if (
+            self.plugin_project_wizard_window is not None
+            and self.plugin_project_wizard_window.winfo_exists()
+        ):
+            return self.plugin_project_wizard_window.focus_window()
+        if self.plugin_project_wizard_controller is None:
+            from app.plugins.plugin_project import PluginProjectGenerator
+            from app.plugins.plugin_project_wizard import (
+                PluginProjectWizardController,
+            )
+            self.plugin_project_wizard_controller=PluginProjectWizardController(
+                generator_factory=lambda:PluginProjectGenerator(
+                    self._plugin_workbench_official_identities()
+                )
+            )
+        from app.gui.plugin_project_wizard import PluginProjectWizardWindow
+        self.plugin_project_wizard_window=PluginProjectWizardWindow(
+            self,self.theme,self.plugin_project_wizard_controller,
+            start_background=self._start_background,
+            ui_dispatch=self.call_on_ui,
+            mode_provider=lambda:self.interface_mode,
+            workbench_callback=self.open_plugin_workbench,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(
+                self,"plugin_project_wizard_window",None
+            ),
+        )
+        return self.plugin_project_wizard_window
 
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
@@ -1708,6 +1759,7 @@ class SusADBWindow(ctk.CTk):
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
         if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
+        if self.plugin_project_wizard_window is not None and self.plugin_project_wizard_window.winfo_exists():self.plugin_project_wizard_window.close()
         if self.plugin_workbench_window is not None and self.plugin_workbench_window.winfo_exists():self.plugin_workbench_window.close()
         if self.about_window is not None and self.about_window.winfo_exists():self.about_window.close()
         self._remove_command_palette_shortcut()
