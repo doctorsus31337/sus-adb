@@ -370,6 +370,60 @@ class WorkflowRecipeIntegrationSourceTests(unittest.TestCase):
         self.assertIn("host_subscription.cancel()", source)
         self.assertIn("run_subscription.cancel()", source)
 
+    def test_library_selection_is_separate_from_runtime_start(self):
+        source = (ROOT / "app/gui/workflow_recipes_window.py").read_text()
+        selection = source.split("def select_recipe", 1)[1].split(
+            "def move_selection", 1
+        )[0]
+        focus_recipe = source.split("def focus_recipe", 1)[1].split(
+            "def show_library", 1
+        )[0]
+        self.assertIn('text="Review"', source)
+        self.assertIn('"<Button-1>"', source)
+        self.assertIn('"<Double-Button-1>"', source)
+        self.assertIn('"<Return>"', source)
+        self.assertIn('"<space>"', source)
+        self.assertIn("self._selected_recipe_id = recipe_id", selection)
+        self.assertNotIn("controller.start", selection)
+        self.assertNotIn("controller.start", focus_recipe)
+
+    def test_overview_is_the_only_pre_run_start_boundary(self):
+        source = (ROOT / "app/gui/workflow_recipes_window.py").read_text()
+        overview = source.split("def render_overview", 1)[1].split(
+            "def start_selected_recipe", 1
+        )[0]
+        starter = source.split("def start_selected_recipe", 1)[1].split(
+            "def resume_active_recipe", 1
+        )[0]
+        self.assertIn("Starting this recipe does not run a step.", overview)
+        self.assertIn("Ordered step outline", overview)
+        self.assertIn("step.classification.display_name", overview)
+        self.assertIn("self._live_run()", starter)
+        self.assertEqual(starter.count("controller.start"), 1)
+
+    def test_active_footer_uses_progressive_disclosure(self):
+        source = (ROOT / "app/gui/workflow_recipes_window.py").read_text()
+        footer = source.split("def _render_footer", 1)[1].split(
+            "def _active_primary_action", 1
+        )[0]
+        primary = source.split("def _active_primary_action", 1)[1].split(
+            "def _binding_issue", 1
+        )[0]
+        self.assertIn('"primary"', footer)
+        self.assertIn("primary=True", footer)
+        self.assertIn("step.optional", footer)
+        self.assertIn("state.current_step_index > 0", footer)
+        for label in (
+            "Run Check",
+            "Open Tool",
+            "Review Action",
+            "Mark Complete",
+            "Continue",
+            "Retry",
+        ):
+            self.assertIn(label, primary)
+        self.assertNotIn('.configure(state="disabled")', footer)
+
 
 if __name__ == "__main__":
     unittest.main()

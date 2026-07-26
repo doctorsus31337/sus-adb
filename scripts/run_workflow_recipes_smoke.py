@@ -13,6 +13,7 @@ from app.core.workflow_recipes import (
     StepActionClass,
 )
 from app.gui.main_window import SusADBWindow
+from app.gui.customtkinter_compat import focused_within
 from app.gui.workflow_recipes_window import WorkflowRecipesWindow
 
 
@@ -34,8 +35,27 @@ def button_text_fits(button):
     )
 
 
+def click(widget):
+    """Generate a real CustomTkinter surface click."""
+    surface = getattr(widget, "_label", None) or getattr(widget, "_canvas", widget)
+    surface.event_generate("<Button-1>", x=3, y=3)
+
+
 def specifications(calls):
     values = []
+    attempts = {}
+    def check(state, value):
+        attempts[value] = attempts.get(value, 0) + 1
+        calls.append((value, state.selected_serial, "check"))
+        return RecipeStepResult(
+            attempts[value] > 1,
+            (
+                "Synthetic local check complete."
+                if attempts[value] > 1 else
+                "Synthetic local check failed."
+            ),
+            next_guidance="Choose Continue explicitly.",
+        )
     for index in range(12):
         steps = (
             RecipeStepSpec(
@@ -46,19 +66,32 @@ def specifications(calls):
                 StepActionClass.INFORMATIONAL,
             ),
             RecipeStepSpec(
+                f"optional-{index}",
+                "Review an optional note",
+                "This optional manual step may be skipped explicitly.",
+                "Prove optional progressive disclosure.",
+                StepActionClass.MANUAL,
+                optional=True,
+            ),
+            RecipeStepSpec(
                 f"check-{index}",
                 "Run a bounded local check",
                 "Invoke exactly one injected callback.",
                 "Prove explicit one-step execution.",
                 StepActionClass.READ_ONLY,
                 action_label="Run Check",
+                invoke=lambda state, value=index: check(state, value),
+            ),
+            RecipeStepSpec(
+                f"review-{index}",
+                "Review one state-changing action",
+                "This synthetic callback retains explicit confirmation.",
+                "Prove the existing confirmation semantics are unchanged.",
+                StepActionClass.STATE_CHANGING,
+                action_label="Review Action",
                 invoke=lambda state, value=index: (
-                    calls.append((value, state.selected_serial))
-                    or RecipeStepResult(
-                        True,
-                        "Synthetic local check complete.",
-                        next_guidance="Choose Continue explicitly.",
-                    )
+                    calls.append((value, state.selected_serial, "review"))
+                    or RecipeStepResult(True, "Synthetic review complete.")
                 ),
             ),
         )
@@ -95,21 +128,66 @@ def main():
     tools.invoke(index)
     window = app.workflow_recipes_window
     assert window is app.open_workflow_recipes()
+    app.update()
     assert app.host_state.subscription_count("workflow-recipes") == 1
     assert not app.plugin_manager._refreshed
     assert len(window.controller.recipes) == 5
+    card = window.recipe_cards["device-readiness"]
+    for part in ("card", "title", "description", "metadata"):
+        window._selected_recipe_id = ""
+        click(card[part])
+        app.update()
+        assert window._selected_recipe_id == "device-readiness"
+        assert window.controller.state.recipe_id == ""
+    assert card["card"].cget("border_color") == app.theme["gold"]
+    assert card["review"].cget("text") == "Review"
+    card["review"].invoke()
+    app.update()
+    assert window._view == "overview"
+    assert window.controller.state.recipe_id == ""
+    assert "Starting this recipe does not run a step." == (
+        window.overview_widgets["notice"].cget("text")
+    )
+    assert "Informational" in window.overview_widgets["outline"].cget("text")
+    assert window.footer_buttons["primary"].cget("text") == "Start Recipe"
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    accepted_controller = window.controller
+    assert accepted_controller.state.recipe_id == "device-readiness"
+    assert accepted_controller.state.current_step_index == 0
+    assert all(value is None for value in accepted_controller.state.step_results)
+    window.show_library()
+    assert accepted_controller.state.recipe_id == "device-readiness"
+    window.select_recipe("frida-readiness")
+    window.show_overview()
+    assert accepted_controller.state.recipe_id == "device-readiness"
+    assert window.footer_buttons["primary"].cget("text") == "Resume Active Recipe"
+    assert "Active run preserved" in window.overview_widgets["active_warning"].cget("text")
+    window.footer_buttons["primary"].invoke()
+    assert window._view == "active"
+    assert accepted_controller.state.recipe_id == "device-readiness"
+    window._escape()
+    assert window._view == "overview"
+    window._escape()
+    assert window._view == "library"
     window.close()
     assert app.workflow_recipes_window is None
     assert app.host_state.subscription_count("workflow-recipes") == 0
     recipe_command = next(
         command for command in app._command_palette_commands()
-        if command.command_id == "recipe.device-readiness"
+        if command.command_id == "recipe.frida-readiness"
     )
     recipe_command.invoke("")
     focused = app.workflow_recipes_window
-    assert focused.search.get() == "Device Readiness"
-    assert focused.controller.state.recipe_id == ""
+    assert focused.search.get() == "Frida Readiness"
+    assert focused._selected_recipe_id == "frida-readiness"
+    assert focused.controller.state.recipe_id == "device-readiness"
+    assert focused.controller.state.current_step_index == 0
     focused.close()
+    reopened = app.open_workflow_recipes()
+    assert reopened.controller.state.recipe_id == "device-readiness"
+    assert reopened.controller.state.current_step_index == 0
+    reopened.close()
 
     calls = []
     controller = RecipeRunController(specifications(calls))
@@ -121,23 +199,90 @@ def main():
         mode_provider=lambda: app.interface_mode,
         confirm_callback=lambda _title, _message: True,
     )
-    window.update_idletasks()
+    app.update()
     assert len(window.library.winfo_children()) == 12
     assert not calls
     window.focus_recipe("fixture-11")
     assert "Fixture Recipe 12" == window.search.get()
+    assert window._selected_recipe_id == "fixture-11"
     assert controller.state.recipe_id == ""
     window.search.delete(0, "end")
     window.render_library()
-    window.start_recipe("fixture-0")
+    assert window._selected_recipe_id == "fixture-11"
+    window.search.insert(0, "Fixture Recipe 2")
+    window.render_library()
+    assert window._selected_recipe_id == ""
+    window.search.delete(0, "end")
+    window.render_library()
+    app.update()
+    parts = window.recipe_cards["fixture-0"]
+    click(parts["title"])
+    app.update()
+    assert window._selected_recipe_id == "fixture-0"
+    click(parts["description"])
+    app.update()
+    assert window._selected_recipe_id == "fixture-0"
+    parts["focus"].focus_set()
+    parts["focus"].event_generate("<Return>")
+    app.update()
+    assert window._view == "overview"
+    assert controller.state.recipe_id == ""
+    outline = window.overview_widgets["outline"].cget("text")
+    assert all(
+        value in outline
+        for value in ("Informational", "Manual", "Read Only", "State Changing")
+    )
+    window.footer_buttons["primary"].invoke()
+    app.update()
     assert not calls
     assert controller.state.current_step_index == 0
-    window.mark_complete()
-    window.continue_run()
+    assert window.footer_buttons["primary"].cget("text") == "Mark Complete"
+    assert "skip" not in window.footer_buttons
+    assert "previous" not in window.footer_buttons
+    assert len(
+        tuple(
+            button for button in window.footer_buttons.values()
+            if button.cget("fg_color") == app.theme["red"]
+        )
+    ) == 1
+    window.footer_buttons["primary"].focus_force()
+    app.update()
+    assert focused_within(window.footer_buttons["primary"])
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert window.footer_buttons["primary"].cget("text") == "Continue"
+    assert focused_within(window.footer_buttons["primary"])
+    window.footer_buttons["primary"].invoke()
+    app.update()
     assert controller.state.current_step_index == 1 and not calls
-    window.run_step()
-    assert calls == [(0, "")]
-    assert controller.state.current_step_index == 1
+    assert window.footer_buttons["primary"].cget("text") == "Mark Complete"
+    assert "skip" in window.footer_buttons
+    assert "previous" in window.footer_buttons
+    window.footer_buttons["skip"].invoke()
+    app.update()
+    assert window.footer_buttons["primary"].cget("text") == "Continue"
+    assert "skip" not in window.footer_buttons
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert controller.state.current_step_index == 2
+    assert window.footer_buttons["primary"].cget("text") == "Run Check"
+    assert "skip" not in window.footer_buttons
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert calls == [(0, "", "check")]
+    assert window.footer_buttons["primary"].cget("text") == "Retry"
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert calls == [(0, "", "check"), (0, "", "check")]
+    assert window.footer_buttons["primary"].cget("text") == "Continue"
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert controller.state.current_step_index == 3
+    assert window.footer_buttons["primary"].cget("text") == "Review Action"
+    window.footer_buttons["primary"].invoke()
+    app.update()
+    assert calls[-1] == (0, "", "review")
+    assert window.footer_buttons["primary"].cget("text") == "Continue"
 
     measurements = []
     for width, height in ((900, 650), (980, 650), (1180, 780), (1400, 860)):
@@ -153,19 +298,17 @@ def main():
             window.footer.winfo_rooty() + window.footer.winfo_height()
             <= window.winfo_rooty() + window.winfo_height()
         )
-        assert all(
-            button_text_fits(button)
-            for button in (
-                window.back_button,
-                window.previous_button,
-                window.action_button,
-                window.complete_button,
-                window.retry_button,
-                window.skip_button,
-                window.continue_button,
-                window.cancel_button,
-                window.help_button,
+        assert all(button_text_fits(button) for button in window.footer_buttons.values())
+        assert len(
+            tuple(
+                button for button in window.footer_buttons.values()
+                if button.cget("fg_color") == app.theme["red"]
             )
+        ) == 1
+        assert all(
+            button.cget("fg_color") == app.theme["panel_alt"]
+            for role, button in window.footer_buttons.items()
+            if role != "primary"
         )
         measurements.append(
             (
@@ -196,7 +339,8 @@ def main():
     app.update_idletasks()
     window.refresh()
     assert window.mode_label.cget("text") == "Advanced mode"
-    assert controller.state.current_step_index == 1
+    assert controller.state.current_step_index == 3
+    assert window._selected_recipe_id == "fixture-0"
     window.close()
     assert app.host_state.subscription_count("workflow-recipes") == 0
     assert controller.subscription_count() == 0

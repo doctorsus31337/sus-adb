@@ -16,6 +16,7 @@ from app.core.workflow_recipes import (
 )
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
+    focused_within,
     safe_focus,
     widget_exists,
 )
@@ -48,7 +49,11 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.on_close = on_close
         self._closed = False
         self._view = "library"
-        self._focused_recipe_id = ""
+        self._selected_recipe_id = (
+            controller.state.recipe_id if controller.active_recipe else ""
+        )
+        self.recipe_cards = {}
+        self.footer_buttons = {}
         self.callbacks = PendingCallbackOwner(self)
         self.title(f"{METADATA.application_name} — Workflow Recipes")
         self.configure(fg_color=theme["bg"])
@@ -57,7 +62,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
         self.protocol("WM_DELETE_WINDOW", self.close)
-        self.bind("<Escape>", lambda _event: self.close(), add="+")
+        self.bind("<Escape>", self._escape, add="+")
         self._build_header()
         self._build_views()
         self._build_footer()
@@ -138,6 +143,38 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         )
         self.library.grid(row=0, column=0, sticky="nsew")
         self.library.grid_columnconfigure(0, weight=1)
+        self.overview = ctk.CTkScrollableFrame(
+            self.body,
+            fg_color=self.theme["panel"],
+            border_width=1,
+            border_color=self.theme["border"],
+            scrollbar_button_color=self.theme["gold_dark"],
+            scrollbar_button_hover_color=self.theme["red_hover"],
+        )
+        self.overview.grid_columnconfigure(0, weight=1)
+        self.overview_widgets = {}
+        overview_fields = (
+            ("title", ("Times New Roman", 24, "bold"), self.theme["gold"]),
+            ("description", ("Segoe UI", 13), self.theme["text"]),
+            ("metadata", ("Segoe UI", 11, "bold"), self.theme["gold"]),
+            ("prerequisites", ("Segoe UI", 11), self.theme["muted"]),
+            ("requirements", ("Consolas", 11), self.theme["text"]),
+            ("notice", ("Segoe UI", 12, "bold"), self.theme["gold"]),
+            ("outline", ("Segoe UI", 11), self.theme["text"]),
+            ("active_warning", ("Segoe UI", 11, "bold"), self.theme["error"]),
+        )
+        for row, (name, font, color) in enumerate(overview_fields):
+            label = ctk.CTkLabel(
+                self.overview,
+                text="",
+                text_color=color,
+                font=font,
+                anchor="w",
+                justify="left",
+                wraplength=820,
+            )
+            label.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
+            self.overview_widgets[name] = label
         self.active = ctk.CTkScrollableFrame(
             self.body,
             fg_color=self.theme["panel"],
@@ -174,21 +211,23 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             label.grid(row=row, column=0, sticky="ew", padx=14, pady=5)
             self.active_widgets[name] = label
 
-    def _button(
-        self, parent, text, command, column, *, row=0, secondary=False
-    ):
+    def _button(self, parent, text, command, column, *, row=0, primary=False):
         button = ctk.CTkButton(
             parent,
             text=text,
             command=command,
-            fg_color=(
-                self.theme["panel_alt"] if secondary else self.theme["red"]
+            fg_color=self.theme["red"] if primary else self.theme["panel_alt"],
+            hover_color=(
+                self.theme["red_hover"]
+                if primary else self.theme["gold_dark"]
             ),
-            hover_color=self.theme["red_hover"],
             text_color=self.theme["text"],
             border_width=1,
-            border_color=self.theme["gold_dark"],
+            border_color=(
+                self.theme["gold"] if primary else self.theme["gold_dark"]
+            ),
             width=116,
+            height=34 if primary else 30,
         )
         button.grid(row=row, column=column, sticky="ew", padx=3, pady=4)
         return button
@@ -203,34 +242,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.footer.grid(row=3, column=0, sticky="ew", padx=12, pady=(3, 12))
         for column in range(5):
             self.footer.grid_columnconfigure(column, weight=1)
-        self.back_button = self._button(
-            self.footer, "Back to Library", self.show_library, 0, secondary=True
-        )
-        self.previous_button = self._button(
-            self.footer, "Previous Step", self.previous_step, 1, secondary=True
-        )
-        self.action_button = self._button(
-            self.footer, "Run Check", self.run_step, 2
-        )
-        self.complete_button = self._button(
-            self.footer, "Mark Complete", self.mark_complete, 3
-        )
-        self.retry_button = self._button(
-            self.footer, "Retry", self.retry_step, 4
-        )
-        self.skip_button = self._button(
-            self.footer, "Skip", self.skip_step, 0, row=1, secondary=True
-        )
-        self.continue_button = self._button(
-            self.footer, "Continue", self.continue_run, 1, row=1
-        )
-        self.cancel_button = self._button(
-            self.footer, "Cancel Recipe", self.cancel_run, 2, row=1,
-            secondary=True
-        )
-        self.help_button = self._button(
-            self.footer, "Help", self.open_help, 3, row=1, secondary=True
-        )
+        self.footer.grid_remove()
 
     def _host_changed(self, snapshot):
         if self._closed:
@@ -251,23 +263,18 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         return self
 
     def focus_recipe(self, recipe_id):
-        recipe = next(
-            (
-                item for item in self.controller.recipes
-                if item.recipe_id == recipe_id
-            ),
-            None,
-        )
-        self._focused_recipe_id = recipe_id if recipe else ""
+        recipe = self._recipe(recipe_id)
         self.show_library()
         if recipe is not None:
             self.search.delete(0, "end")
             self.search.insert(0, recipe.title)
             self.render_library()
+            self.select_recipe(recipe_id, focus=True)
         return self.focus_window()
 
     def show_library(self):
         self._view = "library"
+        self.overview.grid_remove()
         self.active.grid_remove()
         self.library.grid(row=0, column=0, sticky="nsew")
         self.search.configure(state="normal")
@@ -275,13 +282,40 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         safe_focus(self.search)
         return self
 
+    def show_overview(self, recipe_id=None):
+        selected = recipe_id or self._selected_recipe_id
+        recipe = self._recipe(selected)
+        if recipe is None:
+            return self.show_library()
+        self._selected_recipe_id = recipe.recipe_id
+        self._view = "overview"
+        self.library.grid_remove()
+        self.active.grid_remove()
+        self.overview.grid(row=0, column=0, sticky="nsew")
+        self.search.configure(state="disabled")
+        self.refresh()
+        return self
+
     def show_active(self):
+        if self.controller.active_recipe is None:
+            return self.show_overview()
         self._view = "active"
         self.library.grid_remove()
+        self.overview.grid_remove()
         self.active.grid(row=0, column=0, sticky="nsew")
         self.search.configure(state="disabled")
         self.refresh()
         return self
+
+    def _escape(self, _event=None):
+        if self._view == "active":
+            recipe = self.controller.active_recipe
+            self.show_overview(recipe.recipe_id if recipe else None)
+        elif self._view == "overview":
+            self.show_library()
+        else:
+            self.close()
+        return "break"
 
     def refresh(self):
         if self._closed or not widget_exists(self):
@@ -289,16 +323,23 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.mode_label.configure(text=f"{self.mode_provider().title()} mode")
         if self._view == "library":
             self.render_library()
+        elif self._view == "overview":
+            self.render_overview()
         else:
             self.render_active()
 
-    def render_library(self):
-        if self._closed:
-            return
-        for child in self.library.winfo_children():
-            child.destroy()
+    def _recipe(self, recipe_id):
+        return next(
+            (
+                recipe for recipe in self.controller.recipes
+                if recipe.recipe_id == recipe_id
+            ),
+            None,
+        )
+
+    def _visible_recipes(self):
         query = " ".join(self.search.get().casefold().split())
-        recipes = tuple(
+        return tuple(
             recipe for recipe in self.controller.recipes
             if not query or query in " ".join(
                 (
@@ -310,31 +351,44 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 )
             ).casefold()
         )
+
+    def render_library(self):
+        if self._closed:
+            return
+        focused = self.focus_get()
+        focused_recipe = next(
+            (
+                recipe_id for recipe_id, parts in self.recipe_cards.items()
+                if focused in parts.values()
+            ),
+            "",
+        )
+        for child in self.library.winfo_children():
+            child.destroy()
+        self.recipe_cards.clear()
+        recipes = self._visible_recipes()
+        visible_ids = {recipe.recipe_id for recipe in recipes}
+        if self._selected_recipe_id not in visible_ids:
+            self._selected_recipe_id = ""
         for row, recipe in enumerate(recipes):
             card = ctk.CTkFrame(
                 self.library,
-                fg_color=(
-                    self.theme["panel_alt"]
-                    if recipe.recipe_id != self._focused_recipe_id
-                    else self.theme["red"]
-                ),
+                fg_color=self.theme["panel_alt"],
                 border_width=1,
-                border_color=(
-                    self.theme["gold"]
-                    if recipe.recipe_id == self._focused_recipe_id
-                    else self.theme["border"]
-                ),
+                border_color=self.theme["border"],
             )
             card.grid(row=row, column=0, sticky="ew", padx=6, pady=5)
             card.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(
+            card._canvas.configure(takefocus=True)
+            title = ctk.CTkLabel(
                 card,
                 text=recipe.title,
                 text_color=self.theme["gold"],
                 font=("Times New Roman", 19, "bold"),
                 anchor="w",
-            ).grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
-            ctk.CTkLabel(
+            )
+            title.grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
+            description = ctk.CTkLabel(
                 card,
                 text=(
                     recipe.advanced_description
@@ -345,8 +399,9 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 anchor="w",
                 justify="left",
                 wraplength=720,
-            ).grid(row=1, column=0, sticky="ew", padx=10, pady=2)
-            ctk.CTkLabel(
+            )
+            description.grid(row=1, column=0, sticky="ew", padx=10, pady=2)
+            metadata = ctk.CTkLabel(
                 card,
                 text=(
                     f"{recipe.category} · {recipe.estimated_complexity} · "
@@ -356,18 +411,85 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 anchor="w",
                 justify="left",
                 wraplength=720,
-            ).grid(row=2, column=0, sticky="ew", padx=10, pady=(2, 8))
-            ctk.CTkButton(
+            )
+            metadata.grid(row=2, column=0, sticky="ew", padx=10, pady=(2, 8))
+            review = ctk.CTkButton(
                 card,
-                text="Start",
-                command=lambda value=recipe.recipe_id: self.start_recipe(value),
-                fg_color=self.theme["red"],
-                hover_color=self.theme["red_hover"],
+                text="Review",
+                command=lambda value=recipe.recipe_id: self.show_overview(value),
+                fg_color=self.theme["panel_alt"],
+                hover_color=self.theme["gold_dark"],
                 text_color=self.theme["text"],
                 border_width=1,
                 border_color=self.theme["gold_dark"],
                 width=100,
-            ).grid(row=0, column=1, rowspan=3, padx=10, pady=8)
+            )
+            review.grid(row=0, column=1, rowspan=3, padx=10, pady=8)
+            parts = {
+                "card": card,
+                "focus": card._canvas,
+                "title": title,
+                "description": description,
+                "metadata": metadata,
+                "review": review,
+            }
+            self.recipe_cards[recipe.recipe_id] = parts
+            for widget in (card, title, description, metadata):
+                widget.bind(
+                    "<Button-1>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.select_recipe(value),
+                    add="+",
+                )
+                widget.bind(
+                    "<Double-Button-1>",
+                    lambda _event, value=recipe.recipe_id:
+                        self.show_overview(value),
+                    add="+",
+                )
+                widget.bind(
+                    "<Enter>",
+                    lambda _event, value=recipe.recipe_id:
+                        self._paint_card(value, hovered=True),
+                    add="+",
+                )
+                widget.bind(
+                    "<Leave>",
+                    lambda _event, value=recipe.recipe_id:
+                        self._paint_card(value),
+                    add="+",
+                )
+            card.bind(
+                "<FocusIn>",
+                lambda _event, value=recipe.recipe_id:
+                    self.select_recipe(value),
+                add="+",
+            )
+            card.bind(
+                "<Return>",
+                lambda _event, value=recipe.recipe_id:
+                    self.show_overview(value),
+                add="+",
+            )
+            card.bind(
+                "<space>",
+                lambda _event, value=recipe.recipe_id:
+                    self.select_recipe(value),
+                add="+",
+            )
+            card.bind(
+                "<Up>",
+                lambda _event, value=recipe.recipe_id:
+                    self.move_selection(value, -1),
+                add="+",
+            )
+            card.bind(
+                "<Down>",
+                lambda _event, value=recipe.recipe_id:
+                    self.move_selection(value, 1),
+                add="+",
+            )
+            self._paint_card(recipe.recipe_id)
         if not recipes:
             ctk.CTkLabel(
                 self.library,
@@ -381,16 +503,149 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.state_label.configure(
             text=(
                 f"{len(recipes)} recipe{'' if len(recipes) == 1 else 's'} · "
-                "starting never runs a step"
+                "select a card to review it; no step runs"
             )
         )
+        self._render_footer()
+        if focused_recipe in self.recipe_cards:
+            safe_focus(self.recipe_cards[focused_recipe]["focus"])
+
+    def _paint_card(self, recipe_id, *, hovered=False):
+        parts = self.recipe_cards.get(recipe_id)
+        if not parts or not widget_exists(parts["card"]):
+            return
+        selected = recipe_id == self._selected_recipe_id
+        parts["card"].configure(
+            fg_color=(
+                self.theme["red"]
+                if selected else
+                self.theme["gold_dark"]
+                if hovered else
+                self.theme["panel_alt"]
+            ),
+            border_width=2 if selected else 1,
+            border_color=self.theme["gold"] if selected else self.theme["border"],
+        )
+
+    def select_recipe(self, recipe_id, *, focus=False):
+        if self._recipe(recipe_id) is None:
+            return self
+        previous = self._selected_recipe_id
+        self._selected_recipe_id = recipe_id
+        if previous:
+            self._paint_card(previous)
+        self._paint_card(recipe_id)
+        if focus and recipe_id in self.recipe_cards:
+            safe_focus(self.recipe_cards[recipe_id]["focus"])
+        self.state_label.configure(
+            text=f"Selected: {self._recipe(recipe_id).title} · Review does not start it"
+        )
+        return self
+
+    def move_selection(self, recipe_id, amount):
+        recipes = self._visible_recipes()
+        identifiers = tuple(recipe.recipe_id for recipe in recipes)
+        if recipe_id not in identifiers:
+            return "break"
+        index = min(max(0, identifiers.index(recipe_id) + amount), len(identifiers) - 1)
+        target = identifiers[index]
+        self.select_recipe(target, focus=True)
+        card = self.recipe_cards[target]["card"]
+        try:
+            self.library._parent_canvas.yview_moveto(
+                max(0, card.winfo_y() - 8)
+                / max(1, self.library.winfo_reqheight())
+            )
+        except tk.TclError:
+            pass
+        return "break"
 
     def _projected(self):
         return RecipeProjectedState.from_host_snapshot(self.host_state.snapshot())
 
-    def start_recipe(self, recipe_id):
-        self.controller.start(recipe_id, self._projected())
+    def _live_run(self):
+        return (
+            self.controller.active_recipe is not None
+            and self.controller.state.status not in {
+                RecipeRunStatus.NOT_STARTED,
+                RecipeRunStatus.CANCELLED,
+                RecipeRunStatus.COMPLETED,
+            }
+        )
+
+    def render_overview(self):
+        recipe = self._recipe(self._selected_recipe_id)
+        if recipe is None:
+            return self.show_library()
+        projected = self._projected()
+        device_required = any(step.requires_device for step in recipe.steps)
+        target_required = any(step.requires_target for step in recipe.steps)
+        outline = "\n".join(
+            f"{index}. {step.title}  [{step.classification.display_name}]"
+            for index, step in enumerate(recipe.steps, 1)
+        )
+        self.overview_widgets["title"].configure(text=recipe.title)
+        self.overview_widgets["description"].configure(
+            text=(
+                recipe.advanced_description
+                if self.mode_provider() == "advanced"
+                else recipe.guided_description or recipe.description
+            )
+        )
+        self.overview_widgets["metadata"].configure(
+            text=(
+                f"Category: {recipe.category} · "
+                f"Complexity: {recipe.estimated_complexity} · "
+                f"Steps: {len(recipe.steps)}"
+            )
+        )
+        self.overview_widgets["prerequisites"].configure(
+            text="Prerequisites\n• " + "\n• ".join(recipe.prerequisites)
+        )
+        self.overview_widgets["requirements"].configure(
+            text=(
+                f"Known device requirement: "
+                f"{projected.selected_serial or 'Selection can occur during the recipe'}"
+                f"{' (required)' if device_required else ' (optional)'}\n"
+                f"Known target requirement: "
+                f"{projected.selected_target or 'Selection can occur during the recipe'}"
+                f"{' (required)' if target_required else ' (optional)'}"
+            )
+        )
+        self.overview_widgets["notice"].configure(
+            text="Starting this recipe does not run a step."
+        )
+        self.overview_widgets["outline"].configure(
+            text="Ordered step outline\n" + outline
+        )
+        active = self.controller.active_recipe
+        conflict = self._live_run() and active.recipe_id != recipe.recipe_id
+        same = self._live_run() and active.recipe_id == recipe.recipe_id
+        self.overview_widgets["active_warning"].configure(
+            text=(
+                f"Active run preserved: {active.title}. "
+                "Cancel it explicitly before starting another recipe."
+                if conflict else
+                "This recipe already has an active runtime run."
+                if same else ""
+            )
+        )
+        self.state_label.configure(
+            text=f"Reviewing {recipe.title} · no run or step has started"
+        )
+        self._render_footer()
+
+    def start_selected_recipe(self):
+        recipe = self._recipe(self._selected_recipe_id)
+        if recipe is None or self._live_run():
+            return
+        self.controller.start(recipe.recipe_id, self._projected())
         self.show_active()
+
+    def resume_active_recipe(self):
+        if self._live_run():
+            self._selected_recipe_id = self.controller.active_recipe.recipe_id
+            self.show_active()
 
     def render_active(self):
         recipe = self.controller.active_recipe
@@ -470,59 +725,200 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
                 )
             )
         )
-        blocked = state.status in {
-            RecipeRunStatus.PAUSED_STATE_CHANGED,
-            RecipeRunStatus.CANCELLED,
-            RecipeRunStatus.COMPLETED,
-        }
-        action_visible = step.invoke is not None
-        self.action_button.configure(
-            text=step.action_label or {
-                StepActionClass.NAVIGATION: "Open Tool",
-                StepActionClass.READ_ONLY: "Run Check",
-                StepActionClass.STATE_CHANGING: "Review Action",
-            }.get(step.classification, "Continue"),
-            state="normal" if action_visible and availability.available and not blocked else "disabled",
+        self.state_label.configure(text=state.message)
+        self._render_footer(availability=availability)
+
+    def _clear_footer(self):
+        focused = self.focus_get()
+        focused_role = next(
+            (
+                role for role, button in self.footer_buttons.items()
+                if focused is button or focused_within(button)
+            ),
+            "",
         )
-        self.complete_button.configure(
-            state=(
-                "normal"
-                if not blocked
-                and availability.available
-                and status is not RecipeStepStatus.COMPLETED
-                else "disabled"
+        for child in self.footer.winfo_children():
+            child.destroy()
+        self.footer_buttons.clear()
+        return focused_role
+
+    def _footer_button(
+        self, role, text, command, column, *, row=0, primary=False, columnspan=1
+    ):
+        button = self._button(
+            self.footer, text, command, column, row=row, primary=primary
+        )
+        if columnspan > 1:
+            button.grid_configure(columnspan=columnspan)
+        self.footer_buttons[role] = button
+        return button
+
+    def _render_footer(self, *, availability=None):
+        focused_role = self._clear_footer()
+        if self._view == "library":
+            self.footer.grid_remove()
+            return
+        self.footer.grid()
+        if self._view == "overview":
+            self._footer_button(
+                "back", "Back to Library", self.show_library, 0
             )
-        )
-        self.retry_button.configure(
-            state="normal" if not blocked and status is RecipeStepStatus.FAILED else "disabled"
-        )
-        self.skip_button.configure(
-            state="normal" if not blocked and step.optional else "disabled"
-        )
-        self.continue_button.configure(
-            state=(
-                "normal"
-                if not blocked and status in {
+            active = self.controller.active_recipe
+            if self._live_run():
+                self._footer_button(
+                    "primary", "Resume Active Recipe",
+                    self.resume_active_recipe, 1, primary=True, columnspan=3,
+                )
+                self._footer_button(
+                    "cancel", "Cancel Active Recipe", self.cancel_run, 1, row=1
+                )
+            else:
+                self._footer_button(
+                    "primary", "Start Recipe", self.start_selected_recipe,
+                    1, primary=True, columnspan=3,
+                )
+            self._footer_button("help", "Help", self.open_help, 4)
+            if active is not None and self._live_run():
+                self.state_label.configure(
+                    text=(
+                        f"Active run preserved: {active.title}. "
+                        "Resume or cancel it explicitly."
+                    )
+                )
+        else:
+            self._footer_button(
+                "back", "Back to Library", self.show_library, 0
+            )
+            self._footer_button("help", "Help", self.open_help, 4)
+            primary = self._active_primary_action(availability)
+            if primary is not None:
+                text, command, enabled = primary
+                button = self._footer_button(
+                    "primary", text, command, 1, primary=True, columnspan=3
+                )
+                button.configure(state="normal" if enabled else "disabled")
+            state = self.controller.state
+            step = self.controller.current_step
+            step_status = (
+                state.step_statuses[state.current_step_index]
+                if step is not None else None
+            )
+            if step is not None and state.current_step_index > 0:
+                self._footer_button(
+                    "previous", "Previous Step", self.previous_step, 0, row=1
+                )
+            if (
+                step is not None
+                and step.optional
+                and step_status not in {
                     RecipeStepStatus.COMPLETED,
                     RecipeStepStatus.SKIPPED,
                 }
-                else "disabled"
+                and self._live_run()
+            ):
+                self._footer_button(
+                    "skip", "Skip", self.skip_step, 1, row=1
+                )
+            if self._live_run():
+                self._footer_button(
+                    "cancel", "Cancel Recipe", self.cancel_run, 4, row=1
+                )
+        target_role = (
+            focused_role
+            if focused_role in self.footer_buttons
+            else "primary"
+            if focused_role and "primary" in self.footer_buttons
+            else ""
+        )
+        if target_role:
+            safe_focus(self.footer_buttons[target_role])
+
+    def _active_primary_action(self, availability):
+        state = self.controller.state
+        step = self.controller.current_step
+        if step is None:
+            return None
+        status = state.step_statuses[state.current_step_index]
+        if state.status is RecipeRunStatus.PAUSED_STATE_CHANGED:
+            return "Restart Recipe", self.restart_run, True
+        if state.status in {
+            RecipeRunStatus.CANCELLED,
+            RecipeRunStatus.COMPLETED,
+        }:
+            return (
+                "Review Recipe",
+                lambda: self.show_overview(self.controller.state.recipe_id),
+                True,
             )
-        )
-        self.previous_button.configure(
-            state="normal" if index > 0 else "disabled"
-        )
-        self.cancel_button.configure(
-            state=(
-                "disabled"
-                if state.status in {
-                    RecipeRunStatus.CANCELLED,
-                    RecipeRunStatus.COMPLETED,
-                }
-                else "normal"
+        if state.status is RecipeRunStatus.RUNNING_STEP:
+            return None
+        if status is RecipeStepStatus.FAILED:
+            return "Retry", self.retry_step, bool(availability.available)
+        if status in {
+            RecipeStepStatus.COMPLETED,
+            RecipeStepStatus.SKIPPED,
+        }:
+            return "Continue", self.continue_run, True
+        binding_issue = self._binding_issue(step)
+        if binding_issue:
+            self.state_label.configure(text=binding_issue)
+            projected = self._projected()
+            can_rebind = (
+                (not step.requires_device or projected.device_present)
+                and (not step.requires_target or projected.selected_target)
             )
-        )
-        self.state_label.configure(text=state.message)
+            return "Restart Recipe", self.restart_run, bool(can_rebind)
+        if not availability.available:
+            self.state_label.configure(
+                text=availability.explanation or "Current prerequisites are unavailable."
+            )
+            return None
+        if step.invoke is not None:
+            return (
+                step.action_label or {
+                    StepActionClass.NAVIGATION: "Open Tool",
+                    StepActionClass.READ_ONLY: "Run Check",
+                    StepActionClass.STATE_CHANGING: "Review Action",
+                }.get(step.classification, "Run Step"),
+                self.run_step,
+                True,
+            )
+        return "Mark Complete", self.mark_complete, True
+
+    def _binding_issue(self, step):
+        state = self.controller.state
+        projected = self._projected()
+        if step.requires_device and (
+            not state.bound_serial
+            or projected.selected_serial != state.bound_serial
+        ):
+            return (
+                "This step requires an exact bound device. "
+                "Restart explicitly with the intended serial."
+            )
+        if step.requires_target and (
+            not state.bound_target
+            or projected.selected_target != state.bound_target
+        ):
+            return (
+                "This step requires an exact bound target. "
+                "Restart explicitly with the intended package."
+            )
+        return ""
+
+    def restart_run(self):
+        recipe = self.controller.active_recipe
+        if recipe is None:
+            return
+        if self.confirm_callback(
+            "Restart Recipe",
+            (
+                f"Restart {recipe.title} with the currently selected device "
+                "and target? Existing runtime progress will be replaced."
+            ),
+        ):
+            self.controller.restart_with_current_state(self._projected())
+            self.show_active()
 
     def _confirmed(self, step):
         if step.classification is not StepActionClass.STATE_CHANGING:
