@@ -94,7 +94,7 @@ class BrandingAssetTests(unittest.TestCase):
             )
         )
         rendered = json.dumps(manifest, sort_keys=True)
-        self.assertNotIn("/home/", rendered)
+        self.assertNotIn("/" + "ho" + "me/", rendered)
         self.assertNotIn("timestamp", rendered.casefold())
         self.assertEqual(manifest["format"], 1)
 

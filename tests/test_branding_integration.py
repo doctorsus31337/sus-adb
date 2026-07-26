@@ -97,7 +97,7 @@ class BrandingIntegrationTests(unittest.TestCase):
         desktop = (ROOT / "packaging/linux/sus-adb.desktop").read_text()
         verifier = (ROOT / "packaging/common/verify_dist.py").read_text()
         for value in (spec, linux, desktop, verifier):
-            self.assertNotIn("/home/" + "doctorsus", value)
+            self.assertNotIn("/" + "ho" + "me/", value)
         self.assertIn("assets/branding/runtime", spec)
         self.assertIn("sus-companion.ico", spec)
         self.assertIn("sus-companion-icon-256.png", linux)
