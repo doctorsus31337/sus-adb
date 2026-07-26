@@ -12,6 +12,22 @@ _VALIDATORS=("_check_if_valid_scroll","check_if_master_is_canvas")
 class ScrollGuardResult:
     installed:bool;method_name:str=""
 
+def wheel_scroll_units(event,lines=3):
+    """Normalize Tk wheel events without depending on the host platform."""
+    button=getattr(event,"num",None)
+    if button==4:return -max(1,int(lines))
+    if button==5:return max(1,int(lines))
+    try:delta=int(getattr(event,"delta",0))
+    except (TypeError,ValueError):return 0
+    if not delta:return 0
+    steps=max(1,abs(delta)//120)
+    return (-steps if delta>0 else steps)*max(1,int(lines))
+
+def clamp_scroll_offset(offset,content_height,viewport_height):
+    """Clamp an absolute canvas offset after content or viewport changes."""
+    maximum=max(0.0,float(content_height)-float(viewport_height))
+    return min(max(0.0,float(offset)),maximum)
+
 def widget_exists(widget):
     """Return False for destroyed or partially torn-down Tk widgets."""
     if widget is None:return False
@@ -37,7 +53,7 @@ def focused_within(widget):
 class PendingCallbackOwner:
     """Tracks only callbacks scheduled by one host and cancels them on close."""
     def __init__(self,widget):self._widget=weakref.ref(widget);self._pending=set();self._closed=False
-    def schedule(self,delay_ms,callback,*args):
+    def _schedule(self,scheduler,callback,*args):
         widget=self._widget()
         if self._closed or not widget_exists(widget):return None
         callback_id=None
@@ -45,7 +61,15 @@ class PendingCallbackOwner:
             self._pending.discard(callback_id)
             owner=self._widget()
             if not self._closed and widget_exists(owner):callback(*args)
-        callback_id=widget.after(delay_ms,guarded);self._pending.add(callback_id);return callback_id
+        callback_id=scheduler(guarded);self._pending.add(callback_id);return callback_id
+    def schedule(self,delay_ms,callback,*args):
+        widget=self._widget()
+        if not widget_exists(widget):return None
+        return self._schedule(lambda guarded:widget.after(delay_ms,guarded),callback,*args)
+    def schedule_idle(self,callback,*args):
+        widget=self._widget()
+        if not widget_exists(widget):return None
+        return self._schedule(widget.after_idle,callback,*args)
     def cancel_all(self):
         self._closed=True;widget=self._widget()
         if widget_exists(widget):

@@ -50,10 +50,12 @@ class AcceptanceLayoutTests(unittest.TestCase):
                     failures.append(path.relative_to(ROOT).as_posix())
         self.assertEqual(failures, [])
 
-    def test_sidebar_is_device_only_and_reference_is_under_tools(self):
+    def test_sidebar_is_replaced_by_device_dock_and_reference_is_under_tools(self):
         main = (ROOT / "app/gui/main_window.py").read_text(encoding="utf-8")
         menu = (ROOT / "app/gui/menu_bar.py").read_text(encoding="utf-8")
         self.assertNotIn("ActionPanel", main)
+        self.assertNotIn("DevicePanel", main)
+        self.assertIn("DeviceDock", main)
         self.assertNotIn('text="⚔ Advanced Command Reference"', main)
         self.assertIn(
             'tools_menu.add_command(label="Advanced Command Reference"', menu
@@ -62,6 +64,15 @@ class AcceptanceLayoutTests(unittest.TestCase):
             "help_menu = tk.Menu", 1
         )[1].split('menu.add_cascade(label="Help"', 1)[0]
         self.assertNotIn("Advanced Command Reference", help_section)
+
+    def test_view_menu_and_shell_use_the_shared_navigation_controller(self):
+        main = (ROOT / "app/gui/main_window.py").read_text(encoding="utf-8")
+        menu = (ROOT / "app/gui/menu_bar.py").read_text(encoding="utf-8")
+        header = (ROOT / "app/gui/gothic_header.py").read_text(encoding="utf-8")
+        self.assertIn('menu.add_cascade(label="View"', menu)
+        self.assertIn("return self.workspace_controller.navigate(name)", main)
+        self.assertIn('self.bind("<Alt-Home>"', main)
+        self.assertIn("Return to Workspace Home", header)
 
 
 if __name__ == "__main__":
