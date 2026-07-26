@@ -43,6 +43,14 @@ class PluginManager:
     def subscribe_context(self,plugin_id,callback,replay=True):
         record=self.records.get(plugin_id)
         return self._api(record[2]).subscribe_context(callback,replay=replay) if record else None
+    def authorize_action(self,plugin_id,required_capabilities=()):
+        record=self.records.get(plugin_id);status=self.loader.statuses.get(plugin_id)
+        if not record or status is None or status.state is not LoaderState.ACTIVE:return ManagerResult(False,error="The addon is no longer loaded.")
+        if not self.trust.verify(plugin_id,record[1].package_digest):return ManagerResult(False,error="Trust for this exact package digest is no longer valid.")
+        approved=set(self.trust.approved(plugin_id,record[1].package_digest));required=set(required_capabilities)
+        if not required<=set(record[2].requested_capabilities):return ManagerResult(False,error="The action requires an undeclared capability.")
+        if not required<=approved:return ManagerResult(False,error="Required capabilities are not approved for this package digest.")
+        return ManagerResult(True,record[2])
     def _event(self,plugin_id,title,description="",severity="info"):
         timeline=self.timeline_provider()
         if timeline:timeline.append(PentestEvent(EventCategory.SESSION,"plugin-manager",title,description,payload={"plugin_id":plugin_id},severity=severity))
@@ -169,7 +177,7 @@ class PluginManager:
         if status.state is not LoaderState.ACTIVE:self._release_api(plugin_id)
         self._event(plugin_id,"Plugin loaded" if status.state is LoaderState.ACTIVE else "Plugin load failed",status.last_error,severity="error" if status.last_error else "info");return ManagerResult(status.state is LoaderState.ACTIVE,record[2],status=status,error=status.last_error or None)
     def unload(self,plugin_id):
-        status=self.loader.unload(plugin_id);self._release_api(plugin_id);self._event(plugin_id,"Plugin unloaded",status.last_error,severity="warning" if status.last_error else "info");self._changed("unload",plugin_id);return ManagerResult(status.state is LoaderState.UNLOADED,status=status,error=status.last_error or None)
+        self._changed("unloading",plugin_id);status=self.loader.unload(plugin_id);self._release_api(plugin_id);self._event(plugin_id,"Plugin unloaded",status.last_error,severity="warning" if status.last_error else "info");self._changed("unload",plugin_id);return ManagerResult(status.state is LoaderState.UNLOADED,status=status,error=status.last_error or None)
     def reload(self,plugin_id):self.unload(plugin_id);return self.load(plugin_id)
     def uninstall(self,plugin_id,confirmed=False):
         record=self.records.get(plugin_id)

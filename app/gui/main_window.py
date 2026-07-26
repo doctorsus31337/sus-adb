@@ -294,6 +294,9 @@ class SusADBWindow(ctk.CTk):
                     "read-selected-device",
                 ),
             },
+            start_background=self._start_background,
+            ui_dispatch=self.call_on_ui,
+            navigate=self._plugin_navigation,
         )
         self.first_run_dialog = None
         self.crash_dialog = None
@@ -1583,6 +1586,24 @@ class SusADBWindow(ctk.CTk):
 
     def navigate_workspace(self, name: str):
         return self.workspace_controller.navigate(name)
+
+    def _plugin_navigation(self,spec):
+        destinations={
+            "workspace-home":lambda:self.navigate_workspace("Home"),
+            "console":lambda:self.navigate_workspace("Console"),
+            "instrumentation":lambda:self.navigate_workspace("Instrumentation"),
+            "script-studio":lambda:self.navigate_workspace("Scripts"),
+            "pentest":lambda:self.navigate_workspace("Pentest"),
+            "addons-center":self.open_addons_center,
+            "sessions-center":self.open_sessions_center,
+            "workflow-recipes":self.open_workflow_recipes,
+            "environment-diagnostics":self.open_environment_diagnostics,
+            "contextual-help":self.open_context_help,
+            "plugin-workbench":self.open_plugin_workbench,
+        }
+        callback=destinations.get(getattr(spec,"destination",""))
+        if callback is None:return False
+        callback();return True
 
     def go_home(self):return self.navigate_workspace("Home")
 

@@ -90,7 +90,7 @@ class AppMetadata:
     python_version: str = platform.python_version()
     platform_name: str = platform.system()
     architecture: str = platform.machine()
-    plugin_api_version: str = "1.0"
+    plugin_api_version: str = "1.1"
     configuration_schema_version: int = 4
     case_workspace_schema_version: int = 1
 
