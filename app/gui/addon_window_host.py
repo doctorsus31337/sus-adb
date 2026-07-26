@@ -14,12 +14,12 @@ from app.plugins.plugin_ui import AddonWindowSpec,PluginPanelSpec,resolve_ui_mod
 from app.widgets.addon_device_selector import AddonDeviceSelector
 
 class AddonWindowHost:
-    def __init__(self,parent,theme,manager,geometry_store=None,refresh_devices=None,select_device=None,workspace_factories=None):
+    def __init__(self,parent,theme,manager,geometry_store=None,refresh_devices=None,select_device=None,workspace_factories=None,*,start_background=None,ui_dispatch=None,navigate=None,confirm=None):
         self.parent=parent;self.theme=theme;self.manager=manager;self.geometry_store=geometry_store if geometry_store is not None else {};self.refresh_devices=refresh_devices or (lambda:False);self.select_device=select_device or (lambda _serial:None)
-        self.workspace_factories=normalize_host_workspace_bindings(workspace_factories)
+        self.workspace_factories=normalize_host_workspace_bindings(workspace_factories);self.start_background=start_background;self.ui_dispatch=ui_dispatch;self.navigate=navigate;self.confirm=confirm
         self.windows={};self.frames={};self.selectors={};self.state_subscriptions={};self.owners={};self.errors={};self.unsubscribe=manager.subscribe(self._manager_event)
     def _manager_event(self,event,plugin_id):
-        if event in {"unload","uninstall"}:self.close_plugin(plugin_id)
+        if event in {"unloading","unload","uninstall"}:self.close_plugin(plugin_id)
     def spec_for(self,contribution):
         try:
             panel=contribution.factory(self.manager.plugin_context(contribution.plugin_id)) if contribution.factory else None
@@ -50,7 +50,7 @@ class AddonWindowHost:
             row=0
             if spec.device_selector or bool(binding and binding.device_selector):
                 selector=AddonDeviceSelector(window,self.theme,select_callback=self.select_device,refresh_callback=self.refresh_devices);selector.grid(row=0,column=0,sticky="ew",padx=12,pady=(12,0));self.selectors[contribution_id]=selector;row=1
-            window.grid_rowconfigure(row,weight=1);frame=binding.factory(window) if binding else PluginSpecFrame(window,self.theme,spec.panel);frame.grid(row=row,column=0,sticky="nsew",padx=12,pady=12)
+            window.grid_rowconfigure(row,weight=1);frame=binding.factory(window) if binding else PluginSpecFrame(window,self.theme,spec.panel,plugin_id=contribution.plugin_id,context_provider=lambda:self.manager.plugin_context(contribution.plugin_id),authorize=lambda capabilities:self.manager.authorize_action(contribution.plugin_id,capabilities),start_background=self.start_background,ui_dispatch=self.ui_dispatch,confirm=self.confirm,navigate=self.navigate,refresh_factory=contribution.factory);frame.grid(row=row,column=0,sticky="nsew",padx=12,pady=12)
             self.windows[contribution_id]=window;self.frames[contribution_id]=frame;self.owners[contribution_id]=contribution.plugin_id
             def state_changed(context):
                 current=self.windows.get(contribution_id)

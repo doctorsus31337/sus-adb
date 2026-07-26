@@ -1,8 +1,8 @@
-# SUS Companion Plugin SDK v1
+# SUS Companion Plugin SDK v1.1
 
-The local Plugin SDK extends SUS Companion without changing core files. The stable `susadb.*` plugin IDs and Plugin API v1 remain unchanged for compatibility. A package is inspected and stored disabled; those steps never import it. Package-digest trust, requested-capability approval, enablement, loading, and window opening are distinct explicit states. A zero-capability package still needs explicit digest trust, but it has no permission grant to review.
+The host accepts Plugin API `1.0` and `1.1`; existing 1.0 addons require no changes. Version 1.1 adds immutable host-rendered forms, explicit actions, confirmations, progress, cancellation, refresh, and safe navigation. See [interactive contracts](interactive.md) and the [migration guide](migration-1.1.md).
 
-Start with `plugins/examples/hello_plugin`. Its manifest is disabled, requests no device or network capability, and contributes only local read-only UI/report/script metadata.
+Start with the disabled, zero-capability `plugins/official/skeleton_module` v0.2.0 template. Inspection, installation, trust, capability approval, enable, load, and open remain separate; panel construction starts no work.
 
 `plugins/official` is a bundled, read-only source catalog. Official packages remain uninstalled and inactive until explicit install, digest trust, capability approval, enable, and load. The harmless example is packaging validation material; installed third-party packages live in mutable user storage; Skeleton derivatives are user-created packages with new IDs and digests.
 

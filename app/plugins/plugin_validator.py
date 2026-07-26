@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import json
 from pathlib import Path,PurePosixPath
+from app.plugins.plugin_api import PLUGIN_API_VERSION,SUPPORTED_PLUGIN_API_VERSIONS
 from app.plugins.plugin_capabilities import CAPABILITIES,HIGH_IMPACT
 from app.plugins.plugin_manifest import CONTRIBUTION_TYPES
 @dataclass(frozen=True,slots=True)
@@ -10,14 +11,14 @@ class PluginValidation:
     @property
     def valid(self):return not self.errors
 class PluginValidator:
-    def __init__(self,api_version="1.0"):self.api_version=api_version
+    def __init__(self,api_version=PLUGIN_API_VERSION,supported_api_versions=SUPPORTED_PLUGIN_API_VERSIONS):self.api_version=api_version;self.supported_api_versions=tuple(supported_api_versions)
     def validate(self,inspection,root=None,existing_ids=()):
         if not inspection.ok or not inspection.manifest:return PluginValidation((inspection.error or "Package inspection failed.",))
         m=inspection.manifest;errors=[];warnings=[];cautions=[];suggestions=[];files={v[0] for v in inspection.files}
         entry=m.entry_point.split(":",1)[0].replace("\\","/")
         if not entry.endswith(".py"):entry=entry.replace(".","/")+".py"
         if entry not in files:errors.append("Declared entry-point module is missing.")
-        if m.plugin_api_version!=self.api_version:errors.append(f"Plugin API {m.plugin_api_version} is incompatible with host API {self.api_version}.")
+        if m.plugin_api_version not in self.supported_api_versions:errors.append(f"Plugin API {m.plugin_api_version} is incompatible with host API {self.api_version}.")
         if m.plugin_id in existing_ids:errors.append("Duplicate plugin ID.")
         unknown=set(m.requested_capabilities)-set(CAPABILITIES)
         if unknown:errors.append("Unknown capabilities: "+", ".join(sorted(unknown)))

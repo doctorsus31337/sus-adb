@@ -24,3 +24,9 @@ Plugin Manager handoff before installation. Exported educational templates
 remain inspectable and reportable, but derivatives must choose a new stable
 plugin ID and keep unique contribution IDs synchronized between the manifest
 and Python registration.
+
+For API 1.1 the Workbench indexes interactive models and reports `Plugin API
+1.1 interactive contract detected`. Static checks cover IDs, bounds,
+navigation, confirmations, capabilities, callback shape, sensitive defaults,
+`.success` misuse, and 1.1 symbols under a 1.0 manifest where the AST supports
+a deterministic conclusion. Candidate code is never executed.

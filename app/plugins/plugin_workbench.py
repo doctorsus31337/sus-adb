@@ -187,6 +187,16 @@ class PublicSDKIndex:
     @classmethod
     def current(cls):
         modules = {
+            "app.plugins": tuple(sorted({
+                "PLUGIN_API_VERSION","SUPPORTED_PLUGIN_API_VERSIONS",
+                "PLUGIN_NAVIGATION_DESTINATIONS","PluginAPI","PluginContext",
+                "PluginResult","PluginPanelSpec","PluginView",
+                "PluginActionClassification","PluginActionRequest",
+                "PluginActionResult","PluginActionSpec","PluginConfirmationSpec",
+                "PluginContextBinding","PluginFieldSpec","PluginFieldType",
+                "PluginFormSpec","PluginNavigationSpec","PluginOptionSpec",
+                "PluginProgressUpdate","PluginRefreshBehavior",
+            })),
             "app.plugins.plugin_api": tuple(
                 sorted({"PluginAPI", "PluginContext", "PluginResult", "PLUGIN_API_VERSION"})
             ),
@@ -195,6 +205,13 @@ class PublicSDKIndex:
                 "AddonCardSpec", "AddonCatalogAction", "AddonUIMode",
                 "AddonWindowSpec", "PluginPanelSpec", "PluginView",
                 "empty_views", "resolve_ui_mode",
+            })),
+            "app.plugins.plugin_interactive": tuple(sorted({
+                "PLUGIN_NAVIGATION_DESTINATIONS","PluginActionClassification",
+                "PluginActionRequest","PluginActionResult","PluginActionSpec",
+                "PluginConfirmationSpec","PluginContextBinding","PluginFieldSpec",
+                "PluginFieldType","PluginFormSpec","PluginNavigationSpec",
+                "PluginOptionSpec","PluginProgressUpdate","PluginRefreshBehavior",
             })),
         }
         methods = tuple(
@@ -354,6 +371,7 @@ class PluginWorkbenchAnalyzer:
             findings.extend(self._official_identity_findings(manifest))
             findings.extend(self._factory_findings(manifest, factories))
             findings.extend(self._capability_findings(manifest, observed))
+            findings.extend(self._interactive_manifest_findings(manifest, observed))
         comparison = self._comparison(manifest, inspection, content)
         return self._snapshot(
             source, content, findings, manifest, manifest_data,
@@ -544,6 +562,45 @@ class PluginWorkbenchAnalyzer:
             node.name for node in ast.walk(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         }
+        function_args = {
+            node.name: len(node.args.args)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        interactive=("PluginFieldSpec","PluginFormSpec","PluginActionSpec","PluginConfirmationSpec","PluginActionRequest","PluginActionResult","PluginNavigationSpec","PluginProgressUpdate")
+        calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call)]
+        for model in interactive:
+            model_calls=[node for node in calls if self._call_name(node.func).split(".")[-1]==model]
+            if model_calls:observed.add(f"sdk-symbol:{model}")
+            if model in {"PluginFieldSpec","PluginActionSpec"}:
+                ids=[node.args[0].value for node in model_calls if node.args and isinstance(node.args[0],ast.Constant) and isinstance(node.args[0].value,str)]
+                if len(ids)!=len(set(ids)):
+                    findings.append(_finding("SDK111","error","Interactive SDK",f"Duplicate {model.removeprefix('Plugin').removesuffix('Spec').lower()} ID","Interactive IDs must be stable and unique within their container.","Choose unique field and action IDs.",path,model_calls[0]))
+        for node in calls:
+            name=self._call_name(node.func).split(".")[-1]
+            if name=="PluginNavigationSpec" and node.args and isinstance(node.args[0],ast.Constant):
+                from app.plugins.plugin_interactive import PLUGIN_NAVIGATION_DESTINATIONS
+                if node.args[0].value not in PLUGIN_NAVIGATION_DESTINATIONS:findings.append(_finding("SDK112","error","Interactive SDK","Unknown navigation destination","The navigation destination is not host-owned.","Use a documented safe navigation destination.",path,node))
+            if name=="PluginActionSpec":
+                keywords={value.arg:value.value for value in node.keywords}
+                classification=keywords.get("classification")
+                state_changing=isinstance(classification,ast.Constant) and classification.value=="state_changing" or isinstance(classification,ast.Attribute) and classification.attr=="STATE_CHANGING"
+                if state_changing and "confirmation" not in keywords:findings.append(_finding("SDK113","error","Interactive SDK","State-changing action has no confirmation","State-changing actions require a host-owned confirmation.","Declare PluginConfirmationSpec on the action.",path,node))
+                capabilities=keywords.get("required_capabilities")
+                if isinstance(capabilities,(ast.Tuple,ast.List)):
+                    from app.plugins.plugin_capabilities import CAPABILITIES
+                    unknown=sorted(value.value for value in capabilities.elts if isinstance(value,ast.Constant) and isinstance(value.value,str) and value.value not in CAPABILITIES)
+                    if unknown:findings.append(_finding("SDK114","error","Interactive SDK","Unknown action capability","Unknown capabilities: "+", ".join(unknown),"Use only documented capability names.",path,node))
+                callback=node.args[2] if len(node.args)>2 else keywords.get("callback")
+                if isinstance(callback,ast.Name) and (callback.id not in definitions or function_args.get(callback.id,1)!=1):findings.append(_finding("SDK115","error","Interactive SDK","Action callback is missing or incompatible","Action callbacks must resolve to a function accepting one immutable request.","Define callback(request).",path,node))
+            if name=="PluginFieldSpec":
+                keywords={value.arg:value.value for value in node.keywords}
+                field_type=node.args[2] if len(node.args)>2 else keywords.get("field_type")
+                if isinstance(field_type,ast.Constant) and field_type.value not in {"text","password","multiline","checkbox","choice","integer","read_only"}:findings.append(_finding("SDK118","error","Interactive SDK","Unsupported field type",f"{field_type.value!r} is not a host-rendered field type.","Use a documented PluginFieldType.",path,node))
+                sensitive=keywords.get("sensitive");default=keywords.get("default")
+                if isinstance(sensitive,ast.Constant) and sensitive.value is True and isinstance(default,ast.Constant) and default.value not in (None,""):findings.append(_finding("SDK116","error","Secrets","Sensitive default literal","A sensitive field contains a source-code default literal.","Remove the sensitive default and collect it at runtime.",path,node))
+                minimum=keywords.get("minimum");maximum=keywords.get("maximum")
+                if isinstance(minimum,ast.Constant) and isinstance(maximum,ast.Constant) and isinstance(minimum.value,int) and isinstance(maximum.value,int) and minimum.value>maximum.value:findings.append(_finding("SDK117","error","Interactive SDK","Invalid field bounds","Field minimum exceeds maximum.","Correct the bounded field range.",path,node))
         imported = {}
         api_names = {"api", "plugin_api"}
         for node in ast.walk(tree):
@@ -618,6 +675,16 @@ class PluginWorkbenchAnalyzer:
                     "Review TODO/FIXME notes before packaging.", path, number, 0,
                 ))
         return findings, definitions, observed
+
+    @staticmethod
+    def _interactive_manifest_findings(manifest,observed):
+        symbols=sorted(value.split(":",1)[1] for value in observed if value.startswith("sdk-symbol:"))
+        if not symbols:return ()
+        if manifest.plugin_api_version=="1.0":
+            return (_finding("SDK110","error","Interactive SDK","Plugin API 1.1 symbols used under a 1.0 manifest","The candidate uses: "+", ".join(symbols),"Declare Plugin API 1.1 or remove the v1.1 contracts.","manifest.json"),)
+        if manifest.plugin_api_version=="1.1":
+            return (_finding("SDK100","information","Interactive SDK","Plugin API 1.1 interactive contract detected","The candidate uses host-owned immutable interactive specifications.","Review forms, actions, capabilities, confirmations, and cleanup.","manifest.json"),)
+        return ()
 
     def _import_findings(self, path, module, names, node):
         findings = []

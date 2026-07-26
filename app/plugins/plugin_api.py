@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from app.plugins.plugin_capabilities import CapabilityPolicy
-PLUGIN_API_VERSION="1.0"
+PLUGIN_API_VERSION="1.1"
+SUPPORTED_PLUGIN_API_VERSIONS=("1.0","1.1")
 @dataclass(frozen=True,slots=True)
 class PluginResult:
     ok:bool;value:object=None;error:str|None=None

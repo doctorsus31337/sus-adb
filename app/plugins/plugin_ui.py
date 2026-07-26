@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass,field
 from enum import Enum
 import re
-from typing import Mapping
+from types import MappingProxyType
+from typing import Any,Mapping
 
 class AddonUIMode(str,Enum):
     EMBEDDED="embedded";WINDOW="window";HYBRID="hybrid"
@@ -14,8 +15,10 @@ class PluginView:
 
 @dataclass(frozen=True,slots=True)
 class PluginPanelSpec:
-    title:str;views:tuple[PluginView,...];status:Mapping[str,str]=field(default_factory=dict)
-    def __post_init__(self):object.__setattr__(self,"status",dict(self.status))
+    title:str;views:tuple[PluginView,...];status:Mapping[str,str]=field(default_factory=dict);actions:tuple[Any,...]=()
+    def __post_init__(self):
+        from app.plugins.plugin_interactive import validate_actions
+        object.__setattr__(self,"views",tuple(self.views));object.__setattr__(self,"status",MappingProxyType(dict(self.status)));object.__setattr__(self,"actions",validate_actions(self.actions))
 
 @dataclass(frozen=True,slots=True)
 class AddonWindowSpec:
