@@ -34,6 +34,17 @@ def widget_exists(widget):
     try:return bool(widget.winfo_exists())
     except (AttributeError,tk.TclError):return False
 
+def widget_within(widget,container):
+    """Return true only when a live Tk widget belongs to one owned container."""
+    if not isinstance(widget,tk.Misc) or not widget_exists(container):return False
+    seen=set()
+    try:
+        while widget is not None and id(widget) not in seen:
+            if widget is container:return True
+            seen.add(id(widget));widget=getattr(widget,"master",None)
+    except (AttributeError,tk.TclError):return False
+    return False
+
 def safe_focus(widget):
     """Focus a live widget without masking exceptions from unrelated work."""
     if not widget_exists(widget):return False
@@ -84,6 +95,25 @@ class PendingCallbackOwner:
                 try:widget.after_cancel(callback_id)
                 except tk.TclError:pass
         self._pending.clear()
+
+class ScopedEventBindings:
+    """Track additive widget bindings and remove exactly those bindings."""
+    def __init__(self):self._bindings=[];self._closed=False
+    @property
+    def count(self):return len(self._bindings)
+    def bind(self,owner,sequence,callback):
+        if self._closed or not widget_exists(owner):return None
+        binding_id=owner.bind(sequence,callback,add="+")
+        if binding_id:self._bindings.append((weakref.ref(owner),sequence,binding_id))
+        return binding_id
+    def close(self):
+        self._closed=True
+        for owner_ref,sequence,binding_id in tuple(self._bindings):
+            owner=owner_ref()
+            if widget_exists(owner):
+                try:owner.unbind(sequence,binding_id)
+                except tk.TclError:pass
+        self._bindings.clear()
 
 def install_scroll_target_guard(scrollable_class=None):
     """Guard CTk's global wheel validator; preserve all valid-widget behavior."""
