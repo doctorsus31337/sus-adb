@@ -245,6 +245,8 @@ class SusADBWindow(ctk.CTk):
         self.sessions_center=None
         self.command_palette=None
         self.command_palette_registry=None
+        self.workflow_recipes_window=None
+        self.workflow_recipe_controller=None
         self._palette_shortcut_id=None
         self._palette_shortcut_previous=""
         self.addon_window_host=AddonWindowHost(
@@ -1087,6 +1089,14 @@ class SusADBWindow(ctk.CTk):
                 context=f"Active sessions: {active_sessions}",
             ),
             command(
+                "tool.workflow-recipes","Workflow Recipes",
+                "Open guided, operator-reviewed procedures; no step runs automatically.",
+                "Tools",
+                ("recipes","workflows","guided workflow","procedure","checklist"),
+                lambda _query:self.open_workflow_recipes(),default_rank=7,
+                context=technical,
+            ),
+            command(
                 "tool.learning","Learning Center",
                 "Browse local lessons, glossary entries, and bookmarks.",
                 "Help",("learning","learn","tutorials"),
@@ -1262,6 +1272,37 @@ class SusADBWindow(ctk.CTk):
             on_close=lambda:setattr(self,"command_palette",None),
         )
         return self.command_palette
+
+    def _workflow_recipe_specs(self):
+        """Return the lazy host-owned recipe catalog."""
+        return ()
+
+    def _workflow_recipe_controller(self):
+        if self.workflow_recipe_controller is None:
+            from app.core.workflow_recipes import RecipeRunController
+            self.workflow_recipe_controller=RecipeRunController(
+                self._workflow_recipe_specs()
+            )
+        return self.workflow_recipe_controller
+
+    def open_workflow_recipes(self,recipe_id=None):
+        if (
+            self.workflow_recipes_window is not None
+            and self.workflow_recipes_window.winfo_exists()
+        ):
+            if recipe_id is not None:
+                return self.workflow_recipes_window.focus_recipe(recipe_id)
+            return self.workflow_recipes_window.focus_window()
+        from app.gui.workflow_recipes_window import WorkflowRecipesWindow
+        self.workflow_recipes_window=WorkflowRecipesWindow(
+            self,self.theme,self._workflow_recipe_controller(),self.host_state,
+            mode_provider=lambda:self.interface_mode,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(self,"workflow_recipes_window",None),
+        )
+        if recipe_id is not None:
+            self.workflow_recipes_window.focus_recipe(recipe_id)
+        return self.workflow_recipes_window
 
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
@@ -1488,6 +1529,7 @@ class SusADBWindow(ctk.CTk):
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
         self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
