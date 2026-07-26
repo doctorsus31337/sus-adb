@@ -174,7 +174,9 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             label.grid(row=row, column=0, sticky="ew", padx=14, pady=5)
             self.active_widgets[name] = label
 
-    def _button(self, parent, text, command, column, *, secondary=False):
+    def _button(
+        self, parent, text, command, column, *, row=0, secondary=False
+    ):
         button = ctk.CTkButton(
             parent,
             text=text,
@@ -188,7 +190,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             border_color=self.theme["gold_dark"],
             width=116,
         )
-        button.grid(row=0, column=column, sticky="ew", padx=3, pady=4)
+        button.grid(row=row, column=column, sticky="ew", padx=3, pady=4)
         return button
 
     def _build_footer(self):
@@ -199,7 +201,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             border_color=self.theme["border"],
         )
         self.footer.grid(row=3, column=0, sticky="ew", padx=12, pady=(3, 12))
-        for column in range(9):
+        for column in range(5):
             self.footer.grid_columnconfigure(column, weight=1)
         self.back_button = self._button(
             self.footer, "Back to Library", self.show_library, 0, secondary=True
@@ -217,16 +219,17 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             self.footer, "Retry", self.retry_step, 4
         )
         self.skip_button = self._button(
-            self.footer, "Skip", self.skip_step, 5, secondary=True
+            self.footer, "Skip", self.skip_step, 0, row=1, secondary=True
         )
         self.continue_button = self._button(
-            self.footer, "Continue", self.continue_run, 6
+            self.footer, "Continue", self.continue_run, 1, row=1
         )
         self.cancel_button = self._button(
-            self.footer, "Cancel Recipe", self.cancel_run, 7, secondary=True
+            self.footer, "Cancel Recipe", self.cancel_run, 2, row=1,
+            secondary=True
         )
         self.help_button = self._button(
-            self.footer, "Help", self.open_help, 8, secondary=True
+            self.footer, "Help", self.open_help, 3, row=1, secondary=True
         )
 
     def _host_changed(self, snapshot):
@@ -333,7 +336,11 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             ).grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
             ctk.CTkLabel(
                 card,
-                text=recipe.description,
+                text=(
+                    recipe.advanced_description
+                    if self.mode_provider() == "advanced"
+                    else recipe.guided_description or recipe.description
+                ),
                 text_color=self.theme["text"],
                 anchor="w",
                 justify="left",
@@ -478,7 +485,13 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             state="normal" if action_visible and availability.available and not blocked else "disabled",
         )
         self.complete_button.configure(
-            state="normal" if not blocked and status is not RecipeStepStatus.COMPLETED else "disabled"
+            state=(
+                "normal"
+                if not blocked
+                and availability.available
+                and status is not RecipeStepStatus.COMPLETED
+                else "disabled"
+            )
         )
         self.retry_button.configure(
             state="normal" if not blocked and status is RecipeStepStatus.FAILED else "disabled"
@@ -541,7 +554,10 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             )
 
     def mark_complete(self):
-        self.controller.mark_complete()
+        try:
+            self.controller.mark_complete(self._projected())
+        except ValueError as exc:
+            self.state_label.configure(text=str(exc))
 
     def skip_step(self):
         try:

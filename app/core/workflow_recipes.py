@@ -367,6 +367,26 @@ class RecipeRunController:
             return RecipeStepResult(
                 False, "This recipe is not active.", code="inactive"
             )
+        if step.requires_device and (
+            not self._state.bound_serial
+            or host_state.selected_serial != self._state.bound_serial
+        ):
+            return RecipeStepResult(
+                False,
+                "This run is not bound to the currently selected device.",
+                "Return to the library and restart explicitly to bind that serial.",
+                code="device_binding_required",
+            )
+        if step.requires_target and (
+            not self._state.bound_target
+            or host_state.selected_target != self._state.bound_target
+        ):
+            return RecipeStepResult(
+                False,
+                "This run is not bound to the currently selected target.",
+                "Return to the library and restart explicitly to bind that target.",
+                code="target_binding_required",
+            )
         availability = step.availability(host_state)
         if not availability.available:
             result = RecipeStepResult(
@@ -426,10 +446,28 @@ class RecipeRunController:
         )
         return value
 
-    def mark_complete(self) -> RecipeRunState:
+    def mark_complete(
+        self, host_state: RecipeProjectedState | None = None
+    ) -> RecipeRunState:
         step = self.current_step
         if step is None:
             return self._state
+        if step.requires_device and (
+            host_state is None
+            or not self._state.bound_serial
+            or host_state.selected_serial != self._state.bound_serial
+        ):
+            raise ValueError(
+                "Restart explicitly with the intended device before completing this step."
+            )
+        if step.requires_target and (
+            host_state is None
+            or not self._state.bound_target
+            or host_state.selected_target != self._state.bound_target
+        ):
+            raise ValueError(
+                "Restart explicitly with the intended target before completing this step."
+            )
         result = RecipeStepResult(
             True,
             f"{step.title} marked complete by the operator.",

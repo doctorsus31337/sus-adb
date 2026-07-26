@@ -24,6 +24,16 @@ def menu_named(root, label):
     raise AssertionError(f"Missing menu: {label}")
 
 
+def button_text_fits(button):
+    font = getattr(button, "_font", None)
+    return (
+        font is None
+        or max(font.measure(line) for line in str(button.cget("text")).splitlines())
+        + 18
+        <= button.winfo_width()
+    )
+
+
 def specifications(calls):
     values = []
     for index in range(12):
@@ -87,9 +97,19 @@ def main():
     assert window is app.open_workflow_recipes()
     assert app.host_state.subscription_count("workflow-recipes") == 1
     assert not app.plugin_manager._refreshed
+    assert len(window.controller.recipes) == 5
     window.close()
     assert app.workflow_recipes_window is None
     assert app.host_state.subscription_count("workflow-recipes") == 0
+    recipe_command = next(
+        command for command in app._command_palette_commands()
+        if command.command_id == "recipe.device-readiness"
+    )
+    recipe_command.invoke("")
+    focused = app.workflow_recipes_window
+    assert focused.search.get() == "Device Readiness"
+    assert focused.controller.state.recipe_id == ""
+    focused.close()
 
     calls = []
     controller = RecipeRunController(specifications(calls))
@@ -132,6 +152,20 @@ def main():
         assert (
             window.footer.winfo_rooty() + window.footer.winfo_height()
             <= window.winfo_rooty() + window.winfo_height()
+        )
+        assert all(
+            button_text_fits(button)
+            for button in (
+                window.back_button,
+                window.previous_button,
+                window.action_button,
+                window.complete_button,
+                window.retry_button,
+                window.skip_button,
+                window.continue_button,
+                window.cancel_button,
+                window.help_button,
+            )
         )
         measurements.append(
             (

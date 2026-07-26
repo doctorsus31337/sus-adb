@@ -68,6 +68,18 @@ they never launch a shell, attach or spawn, run a script, change a device, or
 silently install, trust, approve, enable, load, or open an unready addon.
 Unready and uninstalled addons route to their Add-ons Center card.
 
+Choose **Tools → Workflow Recipes** or search `recipes` with **Ctrl+K** for
+guided Device Readiness, Frida Readiness, Instrumentation Session,
+Broken-Screen Recovery Preparation, and Authorized App Assessment Setup
+procedures. A recipe is a reviewable checklist, not a macro: starting it runs
+nothing, one classified step is handled at a time, and Continue is always
+explicit. State-changing steps show a preview and retain the existing scope
+and confirmation gates. Runs bind to the exact selected serial and target;
+state changes pause rather than silently adopting a replacement. Guided mode
+explains why each step matters, while Advanced mode adds exact known
+identifiers and technical previews. Individual palette results focus a recipe
+without starting it.
+
 The established `sus-adb` command and user-local storage directory remain supported; packaged builds prefer `sus-companion` and include a lightweight compatibility launcher. Existing configuration, cases, workspaces, plugin IDs, and trust records remain compatible. Cases and evidence are sensitive local data; back them up securely. SUS Companion has no telemetry or automatic upload.
 
 See [installation](docs/installation.md), [responsive startup](docs/startup.md), [quick start](docs/quick-start.md), [user guide](docs/user-guide.md), [privacy/security](docs/privacy-security.md), and [testing](docs/testing.md).

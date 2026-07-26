@@ -1232,6 +1232,21 @@ class SusADBWindow(ctk.CTk):
                 default_rank=30,status="Available · not installed",
                 context=f"Package: {spec.plugin_id} · State: Available",
             ))
+        for index,recipe in enumerate(self._workflow_recipe_specs()):
+            values.append(command(
+                f"recipe.{recipe.recipe_id}",
+                f"{recipe.title} Recipe",
+                recipe.description,
+                "Recent",
+                (*recipe.aliases,recipe.title,recipe.category,"checklist"),
+                lambda _query,value=recipe.recipe_id:
+                    self.open_workflow_recipes(value),
+                default_rank=40+index,
+                context=(
+                    f"Complexity: {recipe.estimated_complexity} · "
+                    "Focus only; recipe does not start automatically."
+                ),
+            ))
         return tuple(values)
 
     def _command_palette_subscriptions(self):
@@ -1275,7 +1290,67 @@ class SusADBWindow(ctk.CTk):
 
     def _workflow_recipe_specs(self):
         """Return the lazy host-owned recipe catalog."""
-        return ()
+        from app.core.workflow_recipe_catalog import (
+            RecipeHostCallbacks,
+            build_recipe_catalog,
+        )
+        return build_recipe_catalog(RecipeHostCallbacks(
+            focus_device_selector=self._focus_recipe_device_selector,
+            open_environment_diagnostics=self.open_environment_diagnostics,
+            open_installed_applications=self._open_recipe_installed_apps,
+            open_readiness_advisor=lambda:self._open_recipe_addon(
+                "Instrumentation & Root Readiness Advisor",
+                ("rootability.panel","readiness-advisor"),
+            ),
+            open_frida_assistant=lambda:self._open_recipe_addon(
+                "Frida Assistant",
+                ("frida-assistant.panel","frida-assistant"),
+            ),
+            open_frida_sessions=self._open_recipe_frida_sessions,
+            open_device_recovery=lambda:self._open_recipe_addon(
+                "Device Rescue & Recovery",
+                ("device-rescue.panel","device-recovery"),
+            ),
+            open_pentest=lambda:self.navigate_workspace("Pentest"),
+            open_assessment_scope=self.new_assessment_case,
+            open_findings=self.open_findings,
+            open_timeline=self._open_recipe_timeline,
+        ))
+
+    def _focus_recipe_device_selector(self):
+        self.device_dock.expand()
+        safe_focus(self.device_dock.select_button)
+        return self.device_dock
+
+    def _open_recipe_installed_apps(self):
+        panel=self.navigate_workspace("Instrumentation")
+        if panel is not None:
+            panel.internal_workspace.set("Targets")
+            panel.target_sources.set("Installed Applications")
+        return panel
+
+    def _open_recipe_addon(self,title,contribution_ids):
+        contribution=next(
+            (
+                item for item in self.plugin_registry.list("pentest-panel")
+                if item.contribution_id in set(contribution_ids)
+            ),
+            None,
+        )
+        if contribution is not None:
+            return self.open_addon_window(contribution.contribution_id)
+        return self.open_addons_center(title)
+
+    def _open_recipe_frida_sessions(self):
+        center=self.open_sessions_center()
+        center.tabs.set("Frida REPL")
+        return center
+
+    def _open_recipe_timeline(self):
+        panel=self.navigate_workspace("Pentest")
+        if panel is not None:
+            panel._select_section("Timeline")
+        return panel
 
     def _workflow_recipe_controller(self):
         if self.workflow_recipe_controller is None:
