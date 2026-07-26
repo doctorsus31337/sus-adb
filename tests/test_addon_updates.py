@@ -60,7 +60,14 @@ class T(unittest.TestCase):
    root,_candidate,store,trust,manager=self.fixture(d);item=manager.official()[0];old_digest=manager.records[PID][1].package_digest
    self.assertTrue(manager.mark_official_update_reviewed(PID,item.package_digest).ok);result=manager.install_official_update(PID,item.package_digest);self.assertTrue(result.ok,result.error)
    record=manager.records[PID];self.assertEqual(record[2].version,"1.1.0");self.assertEqual(record[1].package_digest,item.package_digest);self.assertFalse(record[2].enabled);self.assertFalse(trust.verify(PID,old_digest));self.assertFalse(trust.verify(PID,item.package_digest));self.assertEqual(trust.approved(PID,item.package_digest),());self.assertFalse(manager.registry.by_plugin(PID));self.assertEqual(len(tuple((store.root/"disabled"/PID).iterdir())),1)
-   reopened=PluginManager(store,PluginTrustStore(trust.path),ContributionRegistry(),official_root=root/"official");self.assertEqual(reopened.records[PID][2].version,"1.1.0");self.assertFalse(card_spec(reopened.official()[0],reopened).update_available);self.assertEqual(lifecycle_for(reopened,PID),"Permissions Required")
+   spec=card_spec(manager.official()[0],manager);self.assertEqual(spec.lifecycle_status,"Permissions Required");self.assertEqual(spec.update_status,"Update installed.\nReview and approve this package’s new exact digest before enabling it.");self.assertIn("Review Permissions",card_actions(spec));self.assertNotIn("Review Update",card_actions(spec));self.assertNotIn("Install Update",card_actions(spec))
+   reopened=PluginManager(store,PluginTrustStore(trust.path),ContributionRegistry(),official_root=root/"official");reopened_spec=card_spec(reopened.official()[0],reopened);self.assertEqual(reopened.records[PID][2].version,"1.1.0");self.assertEqual(reopened_spec.lifecycle_status,"Permissions Required");self.assertIn("Review Permissions",card_actions(reopened_spec));self.assertFalse(reopened_spec.update_available)
+   self.assertTrue(manager.approve(PID,manager.records[PID][2].requested_capabilities).ok);self.assertEqual(card_actions(card_spec(manager.official()[0],manager)),("Details","Enable"));self.assertFalse(manager.post_update_activation_pending(PID))
+   self.assertTrue(manager.enable(PID).ok);self.assertEqual(card_actions(card_spec(manager.official()[0],manager)),("Details","Load"))
+   def fake_load(path,inspection,enabled=False):
+    status=LoaderStatus(PID,LoaderState.ACTIVE);manager.loader.statuses[PID]=status;return status
+   with mock.patch.object(manager.loader,"load",side_effect=fake_load):self.assertTrue(manager.load(PID).ok)
+   self.assertEqual(card_actions(card_spec(manager.official()[0],manager)),("Details","Open","Unload"))
  def test_validation_copy_and_replacement_failures_preserve_usable_old_package(self):
   with tempfile.TemporaryDirectory() as d:
    _root,candidate,store,trust,manager=self.fixture(d);item=manager.official()[0];old_path,old_inspection,_manifest=manager.records[PID];self.assertTrue(manager.mark_official_update_reviewed(PID,item.package_digest).ok)

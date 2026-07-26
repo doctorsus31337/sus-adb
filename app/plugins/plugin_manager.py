@@ -108,6 +108,9 @@ class PluginManager:
         item=self.catalog.get(plugin_id,self.records) if self.catalog else None
         digest=candidate_digest or (item.package_digest if item else "")
         return bool(record and item and digest==item.package_digest and digest!=record[1].package_digest and self.store.update_reviewed(plugin_id,record[1].package_digest,digest))
+    def post_update_activation_pending(self,plugin_id):
+        record=self.records.get(plugin_id)
+        return bool(record and self.store.post_update_activation_pending(plugin_id,record[1].package_digest))
     def mark_official_update_reviewed(self,plugin_id,expected_digest=""):
         result=self.official_update_review(plugin_id,expected_digest)
         if not result.ok:return result
@@ -138,13 +141,15 @@ class PluginManager:
         if not approved<=requested or not approved<=set(CAPABILITIES):return ManagerResult(False,error="Only requested, known capabilities may be approved.")
         if not requested and not confirmed:return ManagerResult(False,error="Explicit package-digest trust confirmation is required.")
         if approved&HIGH_IMPACT and not confirmed:return ManagerResult(False,error="Explicit high-impact capability confirmation is required.")
-        self.trust.approve(plugin_id,record[1].package_digest,tuple(sorted(approved)));self.refresh();self._event(plugin_id,"Plugin trust approved","Approval is bound to the current package digest.");return ManagerResult(True,self.records[plugin_id][2])
+        self.trust.approve(plugin_id,record[1].package_digest,tuple(sorted(approved)))
+        if requested<=approved:self.store.clear_post_update_activation(plugin_id,record[1].package_digest)
+        self.refresh();self._event(plugin_id,"Plugin trust approved","Approval is bound to the current package digest.");return ManagerResult(True,self.records[plugin_id][2])
     def trust_zero_capability(self,plugin_id,confirmed=False):
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")
         if record[2].requested_capabilities:return ManagerResult(False,error="This addon requests capabilities; review them through Permissions.")
         if not confirmed:return ManagerResult(False,error="Explicit package-digest trust confirmation is required.")
-        self.trust.approve(plugin_id,record[1].package_digest,());self.refresh();self._event(plugin_id,"Plugin digest trusted","Zero capabilities approved; enablement and loading remain separate.");return ManagerResult(True,self.records[plugin_id][2])
+        self.trust.approve(plugin_id,record[1].package_digest,());self.store.clear_post_update_activation(plugin_id,record[1].package_digest);self.refresh();self._event(plugin_id,"Plugin digest trusted","Zero capabilities approved; enablement and loading remain separate.");return ManagerResult(True,self.records[plugin_id][2])
     def revoke(self,plugin_id):self.unload(plugin_id);self.trust.revoke(plugin_id);self.refresh();return ManagerResult(True)
     def enable(self,plugin_id):
         record=self.records.get(plugin_id)

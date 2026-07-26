@@ -201,9 +201,57 @@ def main():
         assert center.cards[target_id] is stable_card
         assert center.cards[target_id].spec.version=="1.1.0"
         assert center.cards[target_id].spec.lifecycle_status=="Permissions Required"
+        assert center.cards[target_id].spec.update_status==(
+            "Update installed.\n"
+            "Review and approve this package’s new exact digest before enabling it."
+        )
+        assert "Review Permissions" in center.cards[target_id].actions
+        assert "Review Update" not in center.cards[target_id].actions
+        assert "Install Update" not in center.cards[target_id].actions
         assert not center.cards[target_id].spec.update_available
         assert not manager.records[target_id][2].enabled
         assert not trust.verify(target_id,item.package_digest)
+        assert not manager.registry.by_plugin(target_id)
+        assert center.search.get()==search_value
+        center.close();pump(root)
+        center=AddonsCenter(root,get_theme(),manager,host)
+        center.deiconify();pump(root)
+        card=center.cards[target_id]
+        stable_card=card
+        assert card.spec.lifecycle_status=="Permissions Required"
+        assert "Review Permissions" in card.actions
+        center.search.insert(0,search_value)
+        center.refresh();pump(root)
+        activation_position=center.card_area.scroll_offset()
+        card.buttons["Review Permissions"].invoke()
+        pump(root)
+        assert center.cards[target_id] is stable_card
+        assert center.search.get()==search_value
+        assert abs(center.card_area.scroll_offset()-activation_position)<=2
+        assert card.actions==("Details","Enable")
+        assert not manager.records[target_id][2].enabled
+        card.buttons["Enable"].invoke();pump(root)
+        assert center.cards[target_id] is stable_card
+        assert card.actions==("Details","Load")
+        def fake_load(_path,_inspection,enabled=False):
+            status=LoaderStatus(target_id,LoaderState.ACTIVE)
+            manager.loader.statuses[target_id]=status
+            manager.registry.register(
+                target_id,
+                (Contribution(
+                    f"{target_id}.panel","pentest-panel",
+                    "Update Demo",target_id,
+                ),),
+            )
+            return status
+        with mock.patch.object(manager.loader,"load",side_effect=fake_load):
+            card.buttons["Load"].invoke()
+        pump(root)
+        assert center.cards[target_id] is stable_card
+        assert card.actions==("Details","Open","Unload")
+        assert not host.opened
+        card.buttons["Unload"].invoke();pump(root)
+        assert card.actions==("Details","Load")
         assert not manager.registry.by_plugin(target_id)
         center.search.delete(0,"end")
         center.refresh();pump(root)
@@ -217,6 +265,7 @@ def main():
         reopened.deiconify();pump(root)
         assert reopened.cards[target_id].spec.version=="1.1.0"
         assert not reopened.cards[target_id].spec.update_available
+        assert reopened.cards[target_id].actions==("Details","Load")
         reopened.close();pump(root)
         assert not errors,errors
         assert not manager.registry.list()

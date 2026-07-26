@@ -51,7 +51,7 @@ class PluginStore:
     def set_enabled(self,plugin_id,version,enabled,digest=""):
         data=self.state(plugin_id)
         if data.get("package_digest")!=digest:
-            data.pop("reviewed_update_digest",None);data.pop("reviewed_for_digest",None)
+            data.pop("reviewed_update_digest",None);data.pop("reviewed_for_digest",None);data.pop("post_update_activation_digest",None)
         data.update({"plugin_id":plugin_id,"version":version,"enabled":bool(enabled),"package_digest":digest})
         return self._write_state(plugin_id,data)
     def mark_update_reviewed(self,plugin_id,installed_digest,candidate_digest):
@@ -62,6 +62,12 @@ class PluginStore:
     def update_reviewed(self,plugin_id,installed_digest,candidate_digest):
         data=self.state(plugin_id)
         return data.get("reviewed_for_digest")==installed_digest and data.get("reviewed_update_digest")==candidate_digest
+    def post_update_activation_pending(self,plugin_id,digest):
+        return self.state(plugin_id).get("post_update_activation_digest")==digest
+    def clear_post_update_activation(self,plugin_id,digest):
+        data=self.state(plugin_id)
+        if data.get("post_update_activation_digest")!=digest:return False
+        data.pop("post_update_activation_digest",None);self._write_state(plugin_id,data);return True
     def state(self,plugin_id):
         try:return json.loads(self.state_path(plugin_id).read_text(encoding="utf-8"))
         except (OSError,ValueError):return {"plugin_id":plugin_id,"enabled":False}
@@ -108,7 +114,7 @@ class PluginStore:
             self._replace_path(current,backup)
             try:
                 self._replace_path(staged,destination)
-                self._write_state(plugin_id,{"plugin_id":plugin_id,"version":manifest.version,"enabled":False,"package_digest":expected_digest})
+                self._write_state(plugin_id,{"plugin_id":plugin_id,"version":manifest.version,"enabled":False,"package_digest":expected_digest,"post_update_activation_digest":expected_digest})
             except Exception:
                 if destination.exists():shutil.rmtree(destination)
                 if backup.exists():self._replace_path(backup,current)

@@ -24,12 +24,21 @@ def card_spec(item,manager,window_host=None):
     update_available=bool(record and item.package_digest!=record[1].package_digest)
     reviewed=bool(update_available and manager.official_update_reviewed(manifest.plugin_id,item.package_digest))
     lifecycle=lifecycle_for(manager,manifest.plugin_id,window_host)
+    post_update_activation=bool(record and manager.post_update_activation_pending(manifest.plugin_id) and lifecycle in {"Permissions Required","Trust Required"})
     blocked=lifecycle in {"Loaded","Window Open"}
     update_status=""
     if update_available:
         update_status=f"Update available · Candidate v{item.manifest.version}"
         if item.manifest.version==manifest.version:update_status+="\nPackage contents changed without a version change"
         if reviewed:update_status="Update ready — unload addon before installing" if blocked else "Update reviewed — Install Update is ready"
+    elif post_update_activation:
+        update_status=(
+            "Update installed.\n"
+            "Review and approve this package’s new exact digest before enabling it."
+            if lifecycle=="Permissions Required" else
+            "Update installed.\n"
+            "Review and trust this package’s new exact digest before enabling it."
+        )
     return AddonCardSpec(
         manifest.plugin_id,manifest.name,manifest.version,manifest.description,
         len(manifest.requested_capabilities),True,
@@ -39,13 +48,14 @@ def card_spec(item,manager,window_host=None):
         openable=panel is not None,update_available=update_available,
         update_reviewed=reviewed,update_installable=reviewed and not blocked,
         update_status=update_status,candidate_version=item.manifest.version,
+        post_update_activation=post_update_activation,
     )
 
 def card_actions(spec):
     lifecycle={
         "Available":("Details","Install"),
         "Trust Required":("Details","Trust"),
-        "Permissions Required":("Details","Permissions"),
+        "Permissions Required":("Details","Review Permissions" if spec.post_update_activation else "Permissions"),
         "Installed":("Details","Enable"),
         "Enabled":("Details","Load"),
         "Loaded":("Details","Open","Unload"),

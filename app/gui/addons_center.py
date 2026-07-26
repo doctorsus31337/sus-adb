@@ -709,7 +709,7 @@ class AddonsCenter(ctk.CTkToplevel):
             self._result(
                 self.manager.trust_zero_capability(plugin_id,confirmed)
             )
-        elif name=="Permissions":
+        elif name in {"Permissions","Review Permissions"}:
             manifest=self.manager.records[plugin_id][2]
             confirmed=(
                 not bool(set(manifest.requested_capabilities)&HIGH_IMPACT)
