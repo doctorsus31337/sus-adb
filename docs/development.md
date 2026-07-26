@@ -10,5 +10,9 @@ tool probes, plugin discovery, filesystem traversal, or command execution to
 its constructor. Detached tools should remain detached rather than becoming
 new principal tabs.
 
-A searchable command palette is a possible future milestone. Do not extend the
-Home shell into a command palette or duplicate command routing ad hoc.
+The lazy Universal Command Palette is host-owned and routes through the shared
+workspace controller, detached-window openers, AddonWindowHost, and Add-ons
+Center. Keep its command specifications GUI-neutral and navigation-only.
+Constructing or searching the palette must never scan, probe, or discover;
+selection may only call an existing explicit destination opener and must never
+attach, spawn, approve, enable, load, or install automatically.

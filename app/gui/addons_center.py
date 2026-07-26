@@ -640,6 +640,16 @@ class AddonsCenter(ctk.CTkToplevel):
             )
         )
 
+    def focus_addon(self, query):
+        """Focus/filter the existing catalog without changing addon lifecycle."""
+        self.deiconify()
+        self.lift()
+        self.search.delete(0,"end")
+        self.search.insert(0,str(query or ""))
+        self.refresh()
+        safe_focus(self.search)
+        return self
+
     def _panel_id(self,plugin_id):
         return next(
             (

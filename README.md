@@ -58,9 +58,15 @@ Sessions Center workflows. Opening an assistant never scans, attaches, spawns,
 loads a script, starts a server, issues an Objection command, or modifies a
 device. Their original foundations lessons remain available under Learn.
 
-A future milestone may add a command palette. This milestone does not implement
-one; menus, Home cards, keyboard navigation, and the existing dedicated tool
-windows remain the supported navigation surfaces.
+Press **Ctrl+K** or choose **View → Command Palette** to search Workspaces,
+Tools, Add-ons, Help, and runtime-only recent destinations. Use Up/Down,
+Page Up/Page Down, Home/End, Enter, and Escape from the keyboard, or use the
+mouse and themed scrollbar. Guided mode favors plain-language descriptions;
+Advanced mode adds compact already-known device, target, package, and
+contribution context. Palette choices only navigate or focus existing screens:
+they never launch a shell, attach or spawn, run a script, change a device, or
+silently install, trust, approve, enable, load, or open an unready addon.
+Unready and uninstalled addons route to their Add-ons Center card.
 
 The established `sus-adb` command and user-local storage directory remain supported; packaged builds prefer `sus-companion` and include a lightweight compatibility launcher. Existing configuration, cases, workspaces, plugin IDs, and trust records remain compatible. Cases and evidence are sensitive local data; back them up securely. SUS Companion has no telemetry or automatic upload.
 
