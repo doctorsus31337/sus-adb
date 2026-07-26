@@ -102,7 +102,8 @@ class PluginProjectGeneratorTests(unittest.TestCase):
             tuple(value.path for value in first.files), tuple(sorted(PROJECT_FILES))
         )
         content = b"".join(value.content for value in first.files)
-        self.assertNotIn(b"/home/", content)
+        developer_home_prefix = b"/" + b"home/"
+        self.assertNotIn(developer_home_prefix, content)
         self.assertNotIn(b"C:\\Users\\", content)
         self.assertNotIn(b"timestamp", content.lower())
         self.assertNotIn(b".success", first.file("plugin.py").content)
