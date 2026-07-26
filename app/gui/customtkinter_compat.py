@@ -40,6 +40,13 @@ def safe_focus(widget):
     try:widget.focus_set();return True
     except tk.TclError:return False
 
+def keyboard_focus_target(widget):
+    """Resolve the Tk widget that owns focus for a composed CTk control."""
+    if not widget_exists(widget):return None
+    candidate=getattr(widget,"_canvas",None)
+    if isinstance(candidate,tk.Misc) and widget_exists(candidate):return candidate
+    return widget if isinstance(widget,tk.Misc) else None
+
 def focused_within(widget):
     if not widget_exists(widget):return False
     try:

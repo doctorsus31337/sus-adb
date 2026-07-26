@@ -245,6 +245,8 @@ class SusADBWindow(ctk.CTk):
         self.sessions_center=None
         self.command_palette=None
         self.command_palette_registry=None
+        self.workflow_recipes_window=None
+        self.workflow_recipe_controller=None
         self._palette_shortcut_id=None
         self._palette_shortcut_previous=""
         self.addon_window_host=AddonWindowHost(
@@ -1087,6 +1089,14 @@ class SusADBWindow(ctk.CTk):
                 context=f"Active sessions: {active_sessions}",
             ),
             command(
+                "tool.workflow-recipes","Workflow Recipes",
+                "Open guided, operator-reviewed procedures; no step runs automatically.",
+                "Tools",
+                ("recipes","workflows","guided workflow","procedure","checklist"),
+                lambda _query:self.open_workflow_recipes(),default_rank=7,
+                context=technical,
+            ),
+            command(
                 "tool.learning","Learning Center",
                 "Browse local lessons, glossary entries, and bookmarks.",
                 "Help",("learning","learn","tutorials"),
@@ -1222,6 +1232,21 @@ class SusADBWindow(ctk.CTk):
                 default_rank=30,status="Available · not installed",
                 context=f"Package: {spec.plugin_id} · State: Available",
             ))
+        for index,recipe in enumerate(self._workflow_recipe_specs()):
+            values.append(command(
+                f"recipe.{recipe.recipe_id}",
+                f"{recipe.title} Recipe",
+                recipe.description,
+                "Recent",
+                (*recipe.aliases,recipe.title,recipe.category,"checklist"),
+                lambda _query,value=recipe.recipe_id:
+                    self.open_workflow_recipes(value),
+                default_rank=40+index,
+                context=(
+                    f"Complexity: {recipe.estimated_complexity} · "
+                    "Focus only; recipe does not start automatically."
+                ),
+            ))
         return tuple(values)
 
     def _command_palette_subscriptions(self):
@@ -1262,6 +1287,97 @@ class SusADBWindow(ctk.CTk):
             on_close=lambda:setattr(self,"command_palette",None),
         )
         return self.command_palette
+
+    def _workflow_recipe_specs(self):
+        """Return the lazy host-owned recipe catalog."""
+        from app.core.workflow_recipe_catalog import (
+            RecipeHostCallbacks,
+            build_recipe_catalog,
+        )
+        return build_recipe_catalog(RecipeHostCallbacks(
+            focus_device_selector=self._focus_recipe_device_selector,
+            open_environment_diagnostics=self.open_environment_diagnostics,
+            open_installed_applications=self._open_recipe_installed_apps,
+            open_readiness_advisor=lambda:self._open_recipe_addon(
+                "Instrumentation & Root Readiness Advisor",
+                ("rootability.panel","readiness-advisor"),
+            ),
+            open_frida_assistant=lambda:self._open_recipe_addon(
+                "Frida Assistant",
+                ("frida-assistant.panel","frida-assistant"),
+            ),
+            open_frida_sessions=self._open_recipe_frida_sessions,
+            open_device_recovery=lambda:self._open_recipe_addon(
+                "Device Rescue & Recovery",
+                ("device-rescue.panel","device-recovery"),
+            ),
+            open_pentest=lambda:self.navigate_workspace("Pentest"),
+            open_assessment_scope=self.new_assessment_case,
+            open_findings=self.open_findings,
+            open_timeline=self._open_recipe_timeline,
+        ))
+
+    def _focus_recipe_device_selector(self):
+        self.device_dock.expand()
+        safe_focus(self.device_dock.select_button)
+        return self.device_dock
+
+    def _open_recipe_installed_apps(self):
+        panel=self.navigate_workspace("Instrumentation")
+        if panel is not None:
+            panel.internal_workspace.set("Targets")
+            panel.target_sources.set("Installed Applications")
+        return panel
+
+    def _open_recipe_addon(self,title,contribution_ids):
+        contribution=next(
+            (
+                item for item in self.plugin_registry.list("pentest-panel")
+                if item.contribution_id in set(contribution_ids)
+            ),
+            None,
+        )
+        if contribution is not None:
+            return self.open_addon_window(contribution.contribution_id)
+        return self.open_addons_center(title)
+
+    def _open_recipe_frida_sessions(self):
+        center=self.open_sessions_center()
+        center.tabs.set("Frida REPL")
+        return center
+
+    def _open_recipe_timeline(self):
+        panel=self.navigate_workspace("Pentest")
+        if panel is not None:
+            panel._select_section("Timeline")
+        return panel
+
+    def _workflow_recipe_controller(self):
+        if self.workflow_recipe_controller is None:
+            from app.core.workflow_recipes import RecipeRunController
+            self.workflow_recipe_controller=RecipeRunController(
+                self._workflow_recipe_specs()
+            )
+        return self.workflow_recipe_controller
+
+    def open_workflow_recipes(self,recipe_id=None):
+        if (
+            self.workflow_recipes_window is not None
+            and self.workflow_recipes_window.winfo_exists()
+        ):
+            if recipe_id is not None:
+                return self.workflow_recipes_window.focus_recipe(recipe_id)
+            return self.workflow_recipes_window.focus_window()
+        from app.gui.workflow_recipes_window import WorkflowRecipesWindow
+        self.workflow_recipes_window=WorkflowRecipesWindow(
+            self,self.theme,self._workflow_recipe_controller(),self.host_state,
+            mode_provider=lambda:self.interface_mode,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(self,"workflow_recipes_window",None),
+        )
+        if recipe_id is not None:
+            self.workflow_recipes_window.focus_recipe(recipe_id)
+        return self.workflow_recipes_window
 
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
@@ -1488,6 +1604,7 @@ class SusADBWindow(ctk.CTk):
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
         self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))

@@ -16,3 +16,13 @@ Center. Keep its command specifications GUI-neutral and navigation-only.
 Constructing or searching the palette must never scan, probe, or discover;
 selection may only call an existing explicit destination opener and must never
 attach, spawn, approve, enable, load, or install automatically.
+
+Workflow Recipes use the GUI-neutral immutable recipe model and a host-owned
+runtime controller. Catalog definitions receive only bounded projected state
+and narrow navigation callbacks; they must not receive Tk roots, managers,
+workers, subprocess access, or filesystem access. Starting a run never invokes
+a step, only one explicitly selected step may run, state-changing steps require
+an additional confirmation, and successful callbacks never auto-advance.
+Device and target bindings are exact: changes pause the run until the operator
+explicitly restarts it. Recipes must reuse existing services and screens rather
+than introduce backend operations or bypass their lifecycle and scope gates.
