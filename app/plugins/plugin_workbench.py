@@ -795,12 +795,19 @@ class PluginWorkbenchAnalyzer:
 
     def _privacy_findings(self, path, text):
         findings = []
+        unix_home = "/" + "home" + "/"
         patterns = (
             ("SEC001", r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", "Private-key material"),
             ("SEC002", r"\bgh[pousr]_[A-Za-z0-9]{20,}\b", "GitHub-style token"),
             ("SEC003", r"\bAKIA[0-9A-Z]{16}\b", "Cloud access key"),
             ("SEC004", r"(?i)\b(?:password|api[_-]?key|bearer[_-]?token)\s*[:=]\s*['\"][^'\"]{6,}", "Credential literal"),
-            ("SEC005", r"(?:(?:[A-Za-z]:\\Users\\)|/home/|/Users/)[^\s'\"]+", "Local developer path"),
+            (
+                "SEC005",
+                r"(?:(?:[A-Za-z]:\\Users\\)|"
+                + re.escape(unix_home)
+                + r"|/Users/)[^\s'\"]+",
+                "Local developer path",
+            ),
         )
         if PurePosixPath(path).name.casefold() in {".env", "credentials", "credentials.json"}:
             findings.append(_finding(

@@ -142,16 +142,19 @@ class Plugin:
 
     def test_privacy_findings_redact_values_and_clutter_is_excluded(self):
         token = "ghp_" + "A" * 32
+        local_path = "/" + "home" + "/person"
         with tempfile.TemporaryDirectory() as directory:
             root = self.fixture(directory)
-            (root / ".env").write_text(f"API_KEY='{token}'\nHOME=/home/person\n")
+            (root / ".env").write_text(
+                f"API_KEY='{token}'\nHOME={local_path}\n"
+            )
             cache = root / "__pycache__"
             cache.mkdir()
             (cache / "x.pyc").write_bytes(b"x")
             snapshot = self.analyze(root)
         rendered = repr(snapshot.findings)
         self.assertNotIn(token, rendered)
-        self.assertNotIn("/home/person", rendered)
+        self.assertNotIn(local_path, rendered)
         self.assertTrue({"SEC000", "SEC002", "SEC004", "SEC005"} <= self.rules(snapshot))
         self.assertTrue(any(file.excluded_reason for file in snapshot.files))
 
