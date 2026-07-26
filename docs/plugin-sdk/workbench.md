@@ -13,3 +13,14 @@ was identified. Static analysis does not prove third-party code is safe.
 
 Selected source paths are runtime-only. Findings, comparisons, and future
 exports use plugin-relative paths and redact suspected secret values.
+
+Markdown and JSON reports provide stable Manifest, Capabilities,
+Contributions, Findings, Update Comparison, Package Plan, and Limitation
+summaries. Empty capability and contribution lists, a missing installed
+package match, and an unavailable package plan are stated explicitly.
+
+Local candidates that retain a bundled official addon ID are blocked from
+Plugin Manager handoff before installation. Exported educational templates
+remain inspectable and reportable, but derivatives must choose a new stable
+plugin ID and keep unique contribution IDs synchronized between the manifest
+and Python registration.

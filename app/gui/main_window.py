@@ -1425,6 +1425,19 @@ class SusADBWindow(ctk.CTk):
             for plugin_id,record in self.plugin_manager.records.items()
         }
 
+    def _plugin_workbench_official_identities(self):
+        catalog = self.plugin_manager.catalog
+        if catalog is None:
+            return {}
+        return {
+            item.manifest.plugin_id: any(
+                action.get("kind") == "export-template"
+                for action in item.manifest.addon_ui.get("catalog_actions", ())
+                if isinstance(action, dict)
+            )
+            for item in catalog.list(self.plugin_manager.records)
+        }
+
     def open_plugin_workbench(self):
         if (
             self.plugin_workbench_window is not None
@@ -1437,6 +1450,7 @@ class SusADBWindow(ctk.CTk):
             self,self.theme,
             lambda cancelled:PluginWorkbenchAnalyzer(
                 installed=self._plugin_workbench_installed(),
+                official_identities=self._plugin_workbench_official_identities(),
                 host_version=METADATA.version,cancelled=cancelled,
             ),
             start_background=self._start_background,

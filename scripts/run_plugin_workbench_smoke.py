@@ -90,6 +90,74 @@ def main():
         assert window.snapshot is not None
         app.set_interface_mode("guided")
         assert window.snapshot is not None
+        catalog = app.plugin_manager.catalog
+        skeleton = next(
+            item for item in catalog.list()
+            if any(
+                action.get("kind") == "export-template"
+                for action in item.manifest.addon_ui.get("catalog_actions", ())
+            )
+        )
+        exported = catalog.export_template(
+            skeleton.manifest.plugin_id, "export-template", root,
+            skeleton.package_digest,
+        )
+        assert exported.ok, exported.error
+        assert window.select_candidate(exported.path)
+        assert wait(
+            app,
+            lambda: (
+                window.snapshot is not None
+                and window.snapshot.manifest is not None
+                and window.snapshot.manifest.plugin_id
+                == skeleton.manifest.plugin_id
+            ),
+        )
+        assert any(
+            finding.rule_id == "COMP002"
+            for finding in window.snapshot.findings
+        )
+        window.tabs.set("Findings")
+        app.update_idletasks()
+        finding_text = window.views["Findings"].get("1.0", "end")
+        package_text = window.views["Package"].get("1.0", "end")
+        assert "Valid educational template structure" in finding_text
+        assert "Choose a new stable plugin ID before installation" in finding_text
+        assert window.markdown_button.cget("state") == "normal"
+        assert window.json_button.cget("state") == "normal"
+        assert window.install_button.cget("state") == "disabled"
+        assert "Plugin Manager review: Unavailable" in package_text
+        exported_root = Path(exported.path)
+        manifest_path = exported_root / "manifest.json"
+        derivative = json.loads(manifest_path.read_text(encoding="utf-8"))
+        derivative["plugin_id"] = "example.workbench-skeleton"
+        derivative["contributed_components"][0][
+            "contribution_id"
+        ] = "example.workbench-skeleton.documentation"
+        manifest_path.write_text(json.dumps(derivative), encoding="utf-8")
+        plugin_path = exported_root / "plugin.py"
+        plugin_path.write_text(
+            plugin_path.read_text(encoding="utf-8").replace(
+                "skeleton.documentation",
+                "example.workbench-skeleton.documentation",
+            ),
+            encoding="utf-8",
+        )
+        assert window.refresh_analysis()
+        assert wait(
+            app,
+            lambda: (
+                window.snapshot is not None
+                and window.snapshot.manifest is not None
+                and window.snapshot.manifest.plugin_id
+                == "example.workbench-skeleton"
+            ),
+        )
+        assert not any(
+            finding.rule_id == "COMP002"
+            for finding in window.snapshot.findings
+        )
+        assert window.install_button.cget("state") == "normal"
         window.close()
         assert app.plugin_workbench_window is None
         reopened = app.open_plugin_workbench()
@@ -100,6 +168,8 @@ def main():
         print(
             "plugin-workbench-smoke=PASS "
             f"sizes={measurements} scaling=100%,125%,150% "
+            "reserved-id-readable-report-enabled-handoff-blocked=PASS "
+            "renamed-derivative-handoff-eligible=PASS "
             "lazy-singleton-static-analysis-filters-package-cleanup=PASS"
         )
     return 0

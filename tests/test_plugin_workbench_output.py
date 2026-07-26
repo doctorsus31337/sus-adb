@@ -38,9 +38,11 @@ class Plugin:
 
 
 class PluginWorkbenchOutputTests(unittest.TestCase):
-    def fixture(self, root):
+    def fixture(self, root, manifest=None):
         root = Path(root)
-        (root / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
+        (root / "manifest.json").write_text(
+            json.dumps(MANIFEST if manifest is None else manifest), encoding="utf-8"
+        )
         (root / "plugin.py").write_text(PLUGIN, encoding="utf-8")
         (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
         clutter = root / "__pycache__"
@@ -61,6 +63,94 @@ class PluginWorkbenchOutputTests(unittest.TestCase):
         self.assertNotIn(str(source.path), first_markdown)
         self.assertIn("does not prove third-party code is safe", first_json)
         self.assertEqual(json.loads(first_json)["candidate"]["status"], "Needs Review")
+
+    def test_reports_have_stable_explicit_summary_sections(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, snapshot = self.fixture(directory)
+            markdown_one = render_markdown_report(snapshot)
+            markdown_two = render_markdown_report(snapshot)
+            json_one = render_json_report(snapshot)
+            json_two = render_json_report(snapshot)
+        sections = (
+            "Manifest", "Capabilities", "Contributions", "Findings",
+            "Update Comparison", "Package Plan", "Limitation",
+        )
+        offsets = [markdown_one.index(f"## {section}") for section in sections]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertEqual(markdown_one, markdown_two)
+        self.assertEqual(json_one, json_two)
+        self.assertIn("## Capabilities\n\n- None", markdown_one)
+        self.assertIn("## Contributions\n\n- None", markdown_one)
+        self.assertIn("No installed package match", markdown_one)
+        data = json.loads(json_one)
+        self.assertTrue({
+            "manifest", "capabilities", "contributions", "findings",
+            "update_comparison", "package_plan", "limitation",
+        } <= set(data))
+        self.assertEqual(data["capabilities"], [])
+        self.assertEqual(data["contributions"], [])
+        self.assertEqual(
+            data["update_comparison"]["status"], "No installed package match"
+        )
+        self.assertNotIn(str(source.path), markdown_one + json_one)
+
+    def test_report_lists_capability_and_contribution_details(self):
+        manifest = {
+            **MANIFEST,
+            "requested_capabilities": ["read-selected-device"],
+            "contributed_components": [{
+                "contribution_id": "example.output.panel",
+                "contribution_type": "pentest-panel",
+                "title": "Output Panel",
+                "factory": "panel_spec",
+            }],
+        }
+        plugin = PLUGIN + "\ndef panel_spec(_context=None):\n    return None\n"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, _snapshot = self.fixture(root, manifest)
+            (source.path / "plugin.py").write_text(plugin, encoding="utf-8")
+            snapshot = PluginWorkbenchAnalyzer().analyze(source)
+            markdown = render_markdown_report(snapshot)
+            data = json.loads(render_json_report(snapshot))
+        self.assertIn("- read-selected-device", markdown)
+        self.assertIn(
+            "- example.output.panel · pentest-panel · Output Panel · factory: panel_spec",
+            markdown,
+        )
+        self.assertEqual(data["capabilities"], ["read-selected-device"])
+        self.assertEqual(data["contributions"][0], {
+            "id": "example.output.panel",
+            "type": "pentest-panel",
+            "title": "Output Panel",
+            "factory": "panel_spec",
+        })
+
+    def test_unavailable_package_plan_and_secret_redaction_are_explicit(self):
+        secret = "ghp_" + "Q" * 32
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "source"
+            root.mkdir()
+            source, snapshot = self.fixture(root)
+            archive = Path(directory) / "candidate.zip"
+            self.assertTrue(
+                PluginWorkbenchPackageBuilder().build(
+                    source, snapshot, archive
+                ).ok
+            )
+            with zipfile.ZipFile(archive, "a") as output:
+                output.writestr("notes.txt", f"api_key='{secret}'")
+            zip_snapshot = PluginWorkbenchAnalyzer().analyze(archive)
+            markdown = render_markdown_report(zip_snapshot)
+            json_report = render_json_report(zip_snapshot)
+        self.assertIn(
+            "Not available for this source or analysis state", markdown
+        )
+        self.assertEqual(
+            json.loads(json_report)["package_plan"]["status"],
+            "Not available for this source or analysis state",
+        )
+        self.assertNotIn(secret, markdown + json_report)
 
     def test_atomic_report_requires_overwrite_and_preserves_existing(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -501,6 +501,7 @@ class PluginWorkbenchWindow(ctk.CTkToplevel):
         plan = self.builder.plan(self.source, self.snapshot)
         return "\n".join((
             f"Build allowed: {'Yes' if plan.allowed else 'No'}",
+            f"Plugin Manager review: {self._handoff_reason()}",
             f"Included files: {len(plan.included)}",
             f"Excluded files: {len(plan.excluded)}",
             f"Total bytes: {plan.total_bytes}",
@@ -512,6 +513,19 @@ class PluginWorkbenchWindow(ctk.CTkToplevel):
             "Excluded:",
             *(f"{path} · {reason}" for path, reason in plan.excluded),
         ))
+
+    def _handoff_reason(self):
+        if self.snapshot is None:
+            return "Unavailable — analyze a candidate first."
+        reserved = next(
+            (item for item in self.snapshot.findings if item.rule_id == "COMP002"),
+            None,
+        )
+        if reserved:
+            return f"Unavailable — {reserved.remediation}"
+        if self.snapshot.status.value == "Blocked":
+            return "Unavailable — resolve blocking findings."
+        return "Available — production validation will run again before disabled storage."
 
     def _update_actions(self):
         ready = self.snapshot is not None

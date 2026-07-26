@@ -259,10 +259,12 @@ class PluginWorkbenchAnalyzer:
 
     def __init__(
         self, *, sdk_index=None, installed: Mapping[str, InstalledPluginSnapshot] = (),
+        official_identities: Mapping[str, bool] = (),
         host_version="1.0.0-rc.2", cancelled: Callable[[], bool] = lambda: False,
     ):
         self.sdk = sdk_index or PublicSDKIndex.current()
         self.installed = dict(installed)
+        self.official_identities = dict(official_identities)
         self.host_version = host_version
         self.cancelled = cancelled
         self.validator = PluginValidator()
@@ -349,6 +351,7 @@ class PluginWorkbenchAnalyzer:
                 if source_text is not None:
                     findings.extend(self._privacy_findings(path, source_text))
         if manifest is not None:
+            findings.extend(self._official_identity_findings(manifest))
             findings.extend(self._factory_findings(manifest, factories))
             findings.extend(self._capability_findings(manifest, observed))
         comparison = self._comparison(manifest, inspection, content)
@@ -764,6 +767,30 @@ class PluginWorkbenchAnalyzer:
                     manifest.entry_point.split(":", 1)[0],
                 ))
         return findings
+
+    def _official_identity_findings(self, manifest):
+        if manifest.plugin_id not in self.official_identities:
+            return ()
+        template = self.official_identities[manifest.plugin_id]
+        explanation = (
+            "Valid educational template structure does not make this candidate "
+            "installable unchanged as a third-party derivative because its "
+            "official plugin ID is reserved."
+            if template else
+            "This local third-party candidate uses a plugin ID reserved by the "
+            "bundled official addon catalog, so production installation will reject it."
+        )
+        remediation = "Choose a new stable plugin ID before installation."
+        if template:
+            remediation += (
+                " Change contribution IDs to unique derivative-owned IDs and keep "
+                "them synchronized between the manifest and Python registration."
+            )
+        return (_finding(
+            "COMP002", "error", "Compatibility",
+            "Official plugin ID is reserved",
+            explanation, remediation, "manifest.json",
+        ),)
 
     def _capability_findings(self, manifest, observed):
         findings = []

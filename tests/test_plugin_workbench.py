@@ -6,6 +6,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.plugins.plugin_package import PluginPackage
+from app.plugins.official_catalog import OfficialPluginCatalog
+from app.plugins.contribution_registry import ContributionRegistry
+from app.plugins.plugin_manager import PluginManager
+from app.plugins.plugin_store import PluginStore
+from app.plugins.plugin_trust import PluginTrustStore
 from app.plugins.plugin_workbench import (
     FindingSeverity,
     InstalledPluginSnapshot,
@@ -40,6 +45,19 @@ class Plugin:
     def deactivate(self):
         self.api = None
 """
+ROOT = Path(__file__).parents[1]
+OFFICIAL = ROOT / "plugins" / "official"
+
+
+def official_identities(catalog):
+    return {
+        item.manifest.plugin_id: any(
+            action.get("kind") == "export-template"
+            for action in item.manifest.addon_ui.get("catalog_actions", ())
+            if isinstance(action, dict)
+        )
+        for item in catalog.list()
+    }
 
 
 class PluginWorkbenchTests(unittest.TestCase):
@@ -217,6 +235,103 @@ class Plugin:
         with tempfile.TemporaryDirectory() as directory:
             snapshot = self.analyze(self.fixture(directory))
             self.assertNotIn(str(Path(directory).resolve()), repr(snapshot))
+
+    def test_exported_official_skeleton_id_is_blocked_without_execution(self):
+        catalog = OfficialPluginCatalog(OFFICIAL)
+        skeleton = next(
+            item for item in catalog.list()
+            if any(
+                action.get("kind") == "export-template"
+                for action in item.manifest.addon_ui.get("catalog_actions", ())
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "builtins.__import__", wraps=__import__
+        ) as importer:
+            exported = catalog.export_template(
+                skeleton.manifest.plugin_id, "export-template", directory,
+                skeleton.package_digest,
+            )
+            self.assertTrue(exported.ok, exported.error)
+            snapshot = self.analyze(
+                exported.path,
+                official_identities=official_identities(catalog),
+            )
+        finding = next(
+            item for item in snapshot.findings if item.rule_id == "COMP002"
+        )
+        self.assertEqual(snapshot.status, WorkbenchStatus.BLOCKED)
+        self.assertIn("Valid educational template structure", finding.explanation)
+        self.assertIn("official plugin ID is reserved", finding.explanation)
+        self.assertIn(
+            "Choose a new stable plugin ID before installation",
+            finding.remediation,
+        )
+        self.assertIn(
+            "unique derivative-owned IDs", finding.remediation
+        )
+        self.assertIn(
+            "synchronized between the manifest and Python registration",
+            finding.remediation,
+        )
+        self.assertFalse(any(
+            call.args and str(call.args[0]).startswith("sus_adb_plugin_")
+            for call in importer.call_args_list
+        ))
+
+    def test_renamed_skeleton_derivative_keeps_production_handoff(self):
+        catalog = OfficialPluginCatalog(OFFICIAL)
+        skeleton = next(
+            item for item in catalog.list()
+            if any(
+                action.get("kind") == "export-template"
+                for action in item.manifest.addon_ui.get("catalog_actions", ())
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "builtins.__import__", wraps=__import__
+        ) as importer:
+            exported = catalog.export_template(
+                skeleton.manifest.plugin_id, "export-template", directory,
+                skeleton.package_digest,
+            )
+            root = Path(exported.path)
+            manifest_path = root / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["plugin_id"] = "example.skeleton-derivative"
+            manifest["contributed_components"][0][
+                "contribution_id"
+            ] = "example.skeleton-derivative.documentation"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            plugin_path = root / "plugin.py"
+            plugin_path.write_text(
+                plugin_path.read_text(encoding="utf-8").replace(
+                    "skeleton.documentation",
+                    "example.skeleton-derivative.documentation",
+                ),
+                encoding="utf-8",
+            )
+            snapshot = self.analyze(
+                root, official_identities=official_identities(catalog)
+            )
+            self.assertNotIn("COMP002", self.rules(snapshot))
+            store = PluginStore(Path(directory) / "store")
+            manager = PluginManager(
+                store, PluginTrustStore(store.root / "state/trust.json"),
+                ContributionRegistry(), official_root=OFFICIAL,
+            )
+            result = manager.install(root)
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(
+            manager.records["example.skeleton-derivative"][2].enabled, False
+        )
+        self.assertFalse(manager.trust.records)
+        self.assertFalse(manager.loader.instances)
+        self.assertFalse(manager.registry.list())
+        self.assertFalse(any(
+            call.args and str(call.args[0]).startswith("sus_adb_plugin_")
+            for call in importer.call_args_list
+        ))
 
 
 if __name__ == "__main__":
