@@ -364,6 +364,7 @@ class PluginWorkbenchAnalyzer:
 
     def _read_directory(self, root: Path):
         content = {}
+        folded = set()
         total = 0
 
         def visit(directory: Path, prefix=PurePosixPath()):
@@ -373,6 +374,10 @@ class PluginWorkbenchAnalyzer:
                 for entry in sorted(entries, key=lambda item: item.name.casefold()):
                     self._check_cancel()
                     rel = _safe_relative((prefix / entry.name).as_posix())
+                    key = rel.casefold()
+                    if key in folded:
+                        raise ValueError(f"Case-colliding directory entry rejected: {rel}")
+                    folded.add(key)
                     if entry.is_symlink():
                         raise ValueError(f"Symlinked package entry rejected: {rel}")
                     if entry.is_dir(follow_symlinks=False):
@@ -385,6 +390,8 @@ class PluginWorkbenchAnalyzer:
                         if len(content) + 1 > self.MAX_FILES or total > self.MAX_TOTAL:
                             raise ValueError("Plugin package exceeds bounded file or byte limits.")
                         content[rel] = Path(entry.path).read_bytes()
+                    else:
+                        raise ValueError(f"Unsupported special package entry: {rel}")
             return content
 
         return visit(root)
@@ -396,9 +403,11 @@ class PluginWorkbenchAnalyzer:
         with zipfile.ZipFile(path) as archive:
             for info in archive.infolist():
                 self._check_cancel()
+                name = _safe_relative(info.filename)
+                if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
+                    raise ValueError(f"Symlink ZIP entry rejected: {name}")
                 if info.is_dir():
                     continue
-                name = _safe_relative(info.filename)
                 key = name.casefold()
                 if name in content:
                     raise ValueError(f"Duplicate ZIP entry rejected: {name}")
@@ -407,8 +416,6 @@ class PluginWorkbenchAnalyzer:
                 folded.add(key)
                 if info.flag_bits & 0x1:
                     raise ValueError(f"Encrypted ZIP entry rejected: {name}")
-                if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
-                    raise ValueError(f"Symlink ZIP entry rejected: {name}")
                 if info.file_size > self.MAX_FILE:
                     raise ValueError(f"ZIP entry exceeds the size limit: {name}")
                 if info.file_size / max(1, info.compress_size) > self.MAX_RATIO:
@@ -456,7 +463,46 @@ class PluginWorkbenchAnalyzer:
                 f"The declared UI mode {mode!r} is not supported.",
                 "Use embedded, window, or hybrid.", "manifest.json",
             ))
+        for key in ("default_width", "minimum_width"):
+            if key in addon and (
+                not isinstance(addon[key], int) or not 400 <= addon[key] <= 2400
+            ):
+                findings.append(_finding(
+                    "CON004", "error", "Contributions", "Invalid window width",
+                    f"{key} must be an integer from 400 through 2400.",
+                    "Use a bounded host-owned window geometry.", "manifest.json",
+                ))
+        for key in ("default_height", "minimum_height"):
+            if key in addon and (
+                not isinstance(addon[key], int) or not 300 <= addon[key] <= 1600
+            ):
+                findings.append(_finding(
+                    "CON005", "error", "Contributions", "Invalid window height",
+                    f"{key} must be an integer from 300 through 1600.",
+                    "Use a bounded host-owned window geometry.", "manifest.json",
+                ))
+        minimum = data.get("minimum_sus_adb_version", "0.1.0")
+        if self._version_tuple(str(minimum)) > self._version_tuple(self.host_version):
+            findings.append(_finding(
+                "COMP001", "error", "Compatibility", "Host version is too old",
+                f"The candidate requires SUS Companion {minimum} or newer.",
+                "Use a compatible host or lower the requirement only when accurate.",
+                "manifest.json",
+            ))
+        if not data.get("contributed_components"):
+            findings.append(_finding(
+                "CON006", "information", "Contributions",
+                "No contributions are declared",
+                "The package declares no host-visible contribution.",
+                "Declare a supported contribution if the addon should appear in the host.",
+                "manifest.json",
+            ))
         return findings
+
+    @staticmethod
+    def _version_tuple(value):
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)", value)
+        return tuple(map(int, match.groups())) if match else (10**9, 0, 0)
 
     def _decode_text(self, path, data, findings, report_error=True):
         if len(data) > self.MAX_TEXT:
@@ -547,6 +593,19 @@ class PluginWorkbenchAnalyzer:
                         "The declared operational function has only placeholder behavior.",
                         "Implement or remove the unfinished declaration.", path, node,
                     ))
+                for handler in (
+                    child for child in ast.walk(node)
+                    if isinstance(child, ast.ExceptHandler)
+                    and child.type is None
+                    and all(isinstance(statement, ast.Pass) for statement in child.body)
+                ):
+                    findings.append(_finding(
+                        "PY002", "warning", "Python Syntax",
+                        "Lifecycle exception is broadly swallowed",
+                        "A bare exception handler silently discards failures.",
+                        "Catch expected exceptions narrowly and report bounded failures.",
+                        path, handler,
+                    ))
         for number, line in enumerate(text.splitlines(), 1):
             if re.search(r"\b(TODO|FIXME)\b", line):
                 findings.append(PluginWorkbenchFinding(
@@ -632,6 +691,13 @@ class PluginWorkbenchAnalyzer:
                 "POL006", "warning", "Files", "Direct filesystem access",
                 "The candidate appears to access files directly.",
                 "Use approved plugin state or declared asset façades.", path, node,
+            ))
+        if name.endswith(("os.getenv", "os.environ.get")):
+            findings.append(_finding(
+                "SEC006", "warning", "Secrets", "Environment access",
+                "Candidate code reads process environment state.",
+                "Use explicit host-approved configuration without credential access.",
+                path, node,
             ))
         if isinstance(node.func, ast.Name) and node.func.id in {"NotImplementedError"}:
             findings.append(_finding(

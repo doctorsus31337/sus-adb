@@ -252,6 +252,7 @@ class SusADBWindow(ctk.CTk):
         self.command_palette_registry=None
         self.workflow_recipes_window=None
         self.workflow_recipe_controller=None
+        self.plugin_workbench_window=None
         self.about_window=None
         self._palette_shortcut_id=None
         self._palette_shortcut_previous=""
@@ -952,6 +953,9 @@ class SusADBWindow(ctk.CTk):
         ):
             if panel is not None and hasattr(panel,"apply_interface_mode"):
                 panel.apply_interface_mode(normalized)
+        workbench=getattr(self,"plugin_workbench_window",None)
+        if workbench is not None and workbench.winfo_exists():
+            workbench.apply_mode()
         self._publish_host_state("interface-mode-changed")
 
     def _home_state(self):
@@ -1118,6 +1122,17 @@ class SusADBWindow(ctk.CTk):
                 ("recipes","workflows","guided workflow","procedure","checklist"),
                 lambda _query:self.open_workflow_recipes(),default_rank=7,
                 context=technical,
+            ),
+            command(
+                "tool.plugin-workbench","Plugin Developer Workbench",
+                "Statically inspect and package a local addon without executing it.",
+                "Tools",
+                (
+                    "plugin developer","addon developer","module checker",
+                    "addon validator","inspect plugin","plugin package",
+                    "package addon","plugin workbench",
+                ),
+                lambda _query:self.open_plugin_workbench(),default_rank=8,
             ),
             command(
                 "tool.learning","Learning Center",
@@ -1402,6 +1417,36 @@ class SusADBWindow(ctk.CTk):
             self.workflow_recipes_window.focus_recipe(recipe_id)
         return self.workflow_recipes_window
 
+    def _plugin_workbench_installed(self):
+        from app.plugins.plugin_workbench import InstalledPluginSnapshot
+        self.plugin_manager.ensure_refreshed()
+        return {
+            plugin_id:InstalledPluginSnapshot.from_inspection(record[1])
+            for plugin_id,record in self.plugin_manager.records.items()
+        }
+
+    def open_plugin_workbench(self):
+        if (
+            self.plugin_workbench_window is not None
+            and self.plugin_workbench_window.winfo_exists()
+        ):
+            return self.plugin_workbench_window.focus_window()
+        from app.gui.plugin_workbench_window import PluginWorkbenchWindow
+        from app.plugins.plugin_workbench import PluginWorkbenchAnalyzer
+        self.plugin_workbench_window=PluginWorkbenchWindow(
+            self,self.theme,
+            lambda cancelled:PluginWorkbenchAnalyzer(
+                installed=self._plugin_workbench_installed(),
+                host_version=METADATA.version,cancelled=cancelled,
+            ),
+            start_background=self._start_background,
+            install_callback=self.plugin_manager.install,
+            mode_provider=lambda:self.interface_mode,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(self,"plugin_workbench_window",None),
+        )
+        return self.plugin_workbench_window
+
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
         if workspace=="Home":return "console"
@@ -1628,6 +1673,7 @@ class SusADBWindow(ctk.CTk):
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
         if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
+        if self.plugin_workbench_window is not None and self.plugin_workbench_window.winfo_exists():self.plugin_workbench_window.close()
         if self.about_window is not None and self.about_window.winfo_exists():self.about_window.close()
         self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):

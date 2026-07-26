@@ -181,6 +181,35 @@ TOPICS = (
         related=("Add-ons Center",),
     ),
     _topic(
+        "plugin-workbench", "Plugin Developer Workbench",
+        "Statically inspect an explicit local plugin folder or ZIP without importing or executing candidate code.",
+        "Select one candidate, review compatibility and privacy findings, then explicitly export a report, build a deterministic ZIP, or forward it to Plugin Manager.",
+        prerequisites=(
+            "Use the Skeleton Module as the documented Plugin API v1 starting point.",
+            "Static analysis cannot prove third-party code is safe.",
+        ),
+        controls=(
+            "Refresh and Cancel control one bounded analysis.",
+            "Build Plugin ZIP excludes development clutter and validates the completed archive.",
+            "Review in Plugin Manager repeats production validation and stores the package disabled.",
+        ),
+        terminology=(
+            "Public SDK imports are app.plugins surfaces.",
+            "Capabilities remain digest-bound and explicitly approved.",
+            "Contribution factories return host-owned immutable presentation data.",
+        ),
+        empty_states=(
+            "Opening the Workbench performs no scan.",
+            "Canceling a file or folder dialog changes nothing.",
+        ),
+        common_errors=(
+            "Candidate tests and lifecycle methods are never executed.",
+            "ZIP traversal, symlinks, collisions, secrets, and oversized content are blocked.",
+        ),
+        example="Analyze an exported Skeleton derivative before explicitly building a ZIP.",
+        related=("Plugin Manager", "Add-ons Center"),
+    ),
+    _topic(
         "addons-center", "Add-ons Center",
         "Discover and manage official add-ons without automatic installation or loading.",
         "Review an add-on card, then perform only the lifecycle transition you intend.",
