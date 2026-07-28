@@ -25,6 +25,7 @@ def main():
         from app.core.script_descriptor import ScriptKind, TrustState
         from app.core.script_event import ScriptEvent, ScriptEventType
         from app.core.script_library import ScriptLibrary
+        from app.core.script_operation import ScriptOperation
         from app.core.script_validator import ScriptValidator
         from app.gui.script_studio_panel import ScriptStudioPanel
         from app.gui.theme import get_theme
@@ -164,6 +165,14 @@ def main():
             )
         )
         runtime.session = object()
+        panel.workspace.set("Editor")
+        root.update_idletasks()
+        assert panel.editor.winfo_ismapped()
+        assert panel.editor.winfo_height() > 1
+        assert not any(
+            button.winfo_manager()
+            for button in panel.operation_action_buttons
+        )
         panel.select_descriptor(created.descriptor)
         readonly_views = (
             panel.library_details,
@@ -217,6 +226,14 @@ def main():
         assert not panel.editor.tag_ranges("sel")
         panel.workspace.set("Editor")
         editor_before = panel.editor.get("1.0", "end-1c")
+        generate(panel.editor._textbox, "<Control-a>")
+        assert panel.editor._textbox.tag_ranges("sel")
+        generate(panel.editor._textbox, "<Control-c>")
+        copied_source = root.clipboard_get()
+        generate(panel.editor._textbox, "<Control-x>")
+        assert panel.editor.get("1.0", "end-1c") == ""
+        generate(panel.editor._textbox, "<Control-v>")
+        assert panel.editor.get("1.0", "end-1c") == copied_source
         panel.editor.insert("end", "\n// editable fixture")
         assert panel.editor.get("1.0", "end-1c") != editor_before
         panel.editor.edit_modified(True)
@@ -292,14 +309,259 @@ def main():
             )
         )
         assert "cannot prove third-party" in panel.validation_message.cget("text")
+        assert panel.suggestions_button.winfo_manager()
+        assert not panel.jump_line_button.winfo_manager()
+
+        panel.operation_model.begin("Fixture failure", stage="Compiling")
+        panel.operation_model.fail(
+            "Compilation failed.",
+            technical_details="Line 3: fixture syntax error\nfixture trace",
+        )
+        panel._render_operation()
+        assert panel.jump_line_button.winfo_manager()
+        assert panel.copy_error_button.winfo_manager()
+        assert panel.technical_button.winfo_manager()
+        panel.toggle_technical_details()
+        root.update_idletasks()
+        assert panel.operation_details.winfo_ismapped()
+        assert panel.operation_details.read_only
+        panel.toggle_technical_details()
+        root.update_idletasks()
+        assert not panel.operation_details.winfo_ismapped()
+        panel.operation_model.current = ScriptOperation(message="Ready.")
+        panel.operation_model.saved(False)
+        panel._validation_result = None
+        panel.dismiss_validation()
+        panel._render_operation()
+        assert not any(
+            button.winfo_manager()
+            for button in panel.operation_action_buttons
+        )
+
+        panel.open_selected()
+        clean_source = panel.editor.get("1.0", "end-1c")
+        panel.editor.mark_set("insert", "2.2")
+        clean_cursor = panel.editor.index("insert")
+        assert not panel.editor_dirty
+
+        second = library.create(
+            "second fixture",
+            "'use strict';\nsend('second');\n",
+            kind=ScriptKind.FRIDA,
+        )
+        assert second.ok
+        panel.refresh_library()
+        panel.select_descriptor(second.descriptor)
+        assert "second" in panel.editor.get("1.0", "end-1c")
+        panel.select_descriptor(created.descriptor)
+        assert panel.editor.get("1.0", "end-1c") == clean_source
+        panel.editor.insert(
+            "end",
+            "\n// save fixture "
+            + "x" * 300
+            + "\n"
+            + "\n".join(f"// scroll line {index}" for index in range(120)),
+        )
+        panel.editor.edit_modified(True)
+        panel._editor_modified(None)
+        assert panel.editor_dirty
+        panel.save_editor()
+        assert not panel.editor_dirty
+        assert panel.unsaved_label.cget("text") in (
+            "Saved", "Reload Required"
+        )
+        clean_source = panel.editor.get("1.0", "end-1c")
+        panel.editor.mark_set("insert", "2.2")
+        clean_cursor = panel.editor.index("insert")
 
         measurements = []
+        target_heights = {
+            (1100, 700): 140,
+            (1200, 760): 180,
+            (1400, 860): 260,
+            (1600, 900): 300,
+        }
         for scale in (1.0, 1.25, 1.5):
             ctk.set_widget_scaling(scale)
+            root.minsize(1, 1)
+            root.maxsize(root.winfo_screenwidth(), root.winfo_screenheight())
+            root.update()
+            time.sleep(0.03)
+            root.update()
+            root.deiconify()
+            root.update_idletasks()
             for width, height in (
                 (1100, 700), (1200, 760), (1400, 860), (1600, 900)
             ):
                 root.geometry(f"{width}x{height}+0+0")
+                root.deiconify()
+                panel.workspace.set("Library")
+                panel.workspace.set("Editor")
+                panel.operation_model.current = ScriptOperation(
+                    message="Ready."
+                )
+                panel.operation_model.saved(False)
+                panel._validation_result = None
+                panel.dismiss_validation()
+                panel._render_operation()
+                panel.absolute_path_label.grid_remove()
+                root.update_idletasks()
+                actual_window = (root.winfo_width(), root.winfo_height())
+                editor_top = panel.editor.winfo_rooty() - root.winfo_rooty()
+                editor_height = panel.editor.winfo_height()
+                editor_bottom = editor_top + editor_height
+                status_height = panel.operation_notice.winfo_height()
+                path_height = panel.path_bar.winfo_height()
+                bottom_height = panel.bottom_actions.winfo_height()
+                final_button = panel.editor_action_buttons[-1]
+                final_bounds = (
+                    final_button.winfo_rootx() - root.winfo_rootx(),
+                    final_button.winfo_rooty() - root.winfo_rooty(),
+                    final_button.winfo_width(),
+                    final_button.winfo_height(),
+                )
+                assert editor_height >= (
+                    target_heights[(width, height)]
+                    if scale == 1.0 else 90
+                ), (
+                    f"editor height {editor_height} at "
+                    f"{width}x{height}@{scale}"
+                )
+                assert all(
+                    button.winfo_ismapped()
+                    for button in panel.path_action_buttons
+                ), (
+                    width,
+                    height,
+                    scale,
+                    [
+                        (
+                            button.cget("text"),
+                            button.winfo_manager(),
+                            button.winfo_ismapped(),
+                        )
+                        for button in panel.path_action_buttons
+                    ],
+                    (
+                        panel.path_bar.winfo_ismapped(),
+                        panel.path_actions.winfo_ismapped(),
+                        panel.editor_frame.winfo_ismapped(),
+                        panel.workspace.get(),
+                        actual_window,
+                    ),
+                )
+                assert all(
+                    button.winfo_ismapped()
+                    for button in panel.editor_action_buttons
+                )
+                assert not any(
+                    button.winfo_manager()
+                    for button in panel.operation_action_buttons
+                )
+                assert not panel.operation_progress.winfo_ismapped()
+                assert (
+                    final_bounds[0] + final_bounds[2]
+                    <= actual_window[0] + 2
+                )
+                assert (
+                    final_bounds[1] + final_bounds[3]
+                    <= actual_window[1] + 2
+                )
+                for button in (
+                    *panel.path_action_buttons,
+                    *panel.editor_action_buttons,
+                ):
+                    left = button.winfo_rootx() - root.winfo_rootx()
+                    top = button.winfo_rooty() - root.winfo_rooty()
+                    assert left >= 0 and top >= 0
+                    assert (
+                        left + button.winfo_width()
+                        <= actual_window[0] + 2
+                    )
+                    assert (
+                        top + button.winfo_height()
+                        <= actual_window[1] + 2
+                    )
+                source_before = panel.editor.get("1.0", "end-1c")
+                cursor_before = panel.editor.index("insert")
+                dirty_before = panel.editor_dirty
+                root.geometry(f"{width + 7}x{height + 3}+0+0")
+                root.deiconify()
+                root.update_idletasks()
+                root.geometry(f"{width}x{height}+0+0")
+                root.deiconify()
+                root.update_idletasks()
+                assert panel.editor.get("1.0", "end-1c") == source_before
+                assert panel.editor.index("insert") == cursor_before
+                assert panel.editor_dirty == dirty_before
+
+                panel.operation_model.begin(
+                    "Fixture failure", stage="Compiling"
+                )
+                panel._render_operation()
+                root.update_idletasks()
+                assert panel.operation_progress.winfo_ismapped(), (
+                    width,
+                    height,
+                    scale,
+                    panel.operation_progress.winfo_manager(),
+                    panel.operation_notice.winfo_ismapped(),
+                    panel.editor_frame.winfo_ismapped(),
+                )
+                panel.operation_model.fail(
+                    "Compilation failed.",
+                    technical_details=(
+                        "Line 3: fixture syntax error\n"
+                        + "\n".join(f"trace {index}" for index in range(30))
+                    ),
+                )
+                panel._render_operation()
+                assert not panel.operation_progress.winfo_ismapped()
+                panel.toggle_technical_details()
+                root.update_idletasks()
+                expanded_status_height = panel.operation_notice.winfo_height()
+                expanded_editor_height = panel.editor.winfo_height()
+                assert expanded_editor_height >= 50, (
+                    width, height, scale, expanded_editor_height
+                )
+                collapse_left = (
+                    panel.collapse_details_button.winfo_rootx()
+                    - root.winfo_rootx()
+                )
+                collapse_top = (
+                    panel.collapse_details_button.winfo_rooty()
+                    - root.winfo_rooty()
+                )
+                assert collapse_left >= 0 and collapse_top >= 0
+                assert (
+                    collapse_left
+                    + panel.collapse_details_button.winfo_width()
+                    <= actual_window[0] + 2
+                )
+                panel.toggle_technical_details()
+                root.update_idletasks()
+                assert panel.editor.get("1.0", "end-1c") == source_before
+                assert panel.editor.index("insert") == cursor_before
+
+                measurements.append(
+                    {
+                        "case": (
+                            f"{width}x{height}@{int(scale * 100)}%"
+                        ),
+                        "window": actual_window,
+                        "tab": panel.tabs["Editor"].winfo_height(),
+                        "editor_top": editor_top,
+                        "editor_bottom": editor_bottom,
+                        "editor": editor_height,
+                        "path": path_height,
+                        "status": status_height,
+                        "expanded_status": expanded_status_height,
+                        "expanded_editor": expanded_editor_height,
+                        "actions": bottom_height,
+                        "final_button": final_bounds,
+                        "footer": root.winfo_height(),
+                    }
+                )
                 for tab in panel.tabs:
                     panel.workspace.set(tab)
                     root.update_idletasks()
@@ -338,26 +600,38 @@ def main():
                         )
                         for widget in buttons
                     )
-                panel.workspace.set("Library")
+                panel.workspace.set("Editor")
                 root.update_idletasks()
-                measurements.append(
-                    (
-                        f"{width}x{height}@{int(scale * 100)}%",
-                        (
-                            panel.library_details.winfo_x(),
-                            panel.library_details.winfo_y(),
-                            panel.library_details.winfo_width(),
-                            panel.library_details.winfo_height(),
-                        ),
-                        panel.library_details._textbox.yview(),
-                    )
+                assert panel.editor.get("1.0", "end-1c") == clean_source
+                assert panel.editor._textbox.cget("wrap") == "none"
+                long_index = panel.editor.search("x" * 50, "1.0")
+                assert long_index
+                panel.editor.see(f"{long_index.split('.')[0]}.end")
+                root.update_idletasks()
+                panel.editor.xview_moveto(0)
+                horizontal_before = panel.editor.xview()
+                panel.editor.xview_scroll(1, "pages")
+                assert panel.editor.xview() != horizontal_before, (
+                    horizontal_before,
+                    panel.editor.xview(),
+                    panel.editor.winfo_width(),
+                    len(max(clean_source.splitlines(), key=len)),
                 )
+                panel.editor.yview_moveto(0)
+                vertical_before = panel.editor.yview()
+                panel.editor.yview_scroll(1, "pages")
+                assert panel.editor.yview() != vertical_before
+        assert panel.editor.index("insert") == clean_cursor
+        assert not panel.editor_dirty
+        layout_bindings = panel._layout_bindings.count
         binding_counts = tuple(view.binding_count for view in readonly_views)
         root.destroy()
         assert all(view.binding_count == 0 for view in readonly_views)
+        assert panel._layout_bindings.count == 0
     print(
         "script-studio-smoke=PASS "
         f"measurements={measurements} bindings={binding_counts}->0 "
+        f"layout-bindings={layout_bindings}->0 "
         "read-only-details-results-messages-profiles=PASS "
         "editor-input-dirty-state=PASS "
         "inline-status-errors-advisories-paths-messages=PASS fake-only=PASS"
