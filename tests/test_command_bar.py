@@ -48,10 +48,32 @@ class CommandBarContractTests(unittest.TestCase):
         for sequence in (
             '"<Return>"', '"<Tab>"', '"<ISO_Left_Tab>"', '"<Up>"', '"<Down>"',
             '"<Prior>"', '"<Next>"', '"<Escape>"', '"<Control-space>"', '"<Right>"',
+            '"<Control-a>"', '"<Control-A>"', '"<Command-a>"', '"<Command-A>"',
         ):
             self.assertIn(sequence, source)
         self.assertIn("self.bindings.close()", source)
         self.assertIn("self._cancel_refresh()", source)
+
+    def test_select_all_is_scoped_text_selection_only(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        selector = source.split("def _select_all_command", 1)[1].split(
+            "def _key_released", 1
+        )[0]
+        self.assertIn('getattr(self.entry, "_entry", self.entry)', selector)
+        self.assertIn('target.selection_range(0, "end")', selector)
+        self.assertIn('target.icursor("end")', selector)
+        self.assertIn('return "break"', selector)
+        self.assertNotIn("execute_callback", selector)
+        self.assertNotIn("history.add", selector)
+        self.assertNotIn("accept_index", selector)
+
+    def test_command_modifier_is_macos_only(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        sequences = source.split("def _select_all_sequences", 1)[1].split(
+            "def _select_all_command", 1
+        )[0]
+        self.assertIn('== "darwin"', sequences)
+        self.assertIn('("<Command-a>", "<Command-A>")', sequences)
 
     def test_main_reuses_terminal_history_router_and_sanitized_snapshot(self):
         source = (ROOT / "app/gui/main_window.py").read_text(encoding="utf-8")
