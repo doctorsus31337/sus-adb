@@ -1739,6 +1739,14 @@ class SusADBWindow(ctk.CTk):
         panel=self.enter_pentest_workspace()
         if panel:panel.open_scope_dialog()
 
+    def _cancel_tk_after_callbacks(self):
+        """Cancel callbacks owned by this closing Tcl interpreter."""
+        try:callback_ids=tuple(self.tk.call("after","info"))
+        except tk.TclError:return
+        for callback_id in callback_ids:
+            try:self.tk.call("after","cancel",callback_id)
+            except tk.TclError:pass
+
     def shutdown(self):
         if getattr(self,"_shutdown_started",False):return
         shutdown_started=time.perf_counter()
@@ -1773,6 +1781,7 @@ class SusADBWindow(ctk.CTk):
         if hasattr(self,"recovery_manager"):self.recovery_manager.mark_clean_shutdown()
         self.startup_profiler.record_interval("shutdown",shutdown_started,time.perf_counter(),classification="on-demand")
         if hasattr(self,"logging_manager"):self.logging_manager.close()
+        self._cancel_tk_after_callbacks()
         self.destroy()
 
     def copy_console_selection(self, _event=None):

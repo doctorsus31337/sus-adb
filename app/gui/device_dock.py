@@ -6,7 +6,11 @@ import customtkinter as ctk
 
 from app.core.device import Device
 from app.core.workspace_navigation import abbreviated_serial
-from app.gui.customtkinter_compat import focused_within, safe_focus
+from app.gui.customtkinter_compat import (
+    ScopedScrollableFrame,
+    focused_within,
+    safe_focus,
+)
 
 
 class DeviceDockRow(ctk.CTkFrame):
@@ -163,7 +167,7 @@ class DeviceDock(ctk.CTkFrame):
             text_color=self.theme["muted"],
             anchor="e",
         ).grid(row=0, column=1, sticky="e")
-        self.device_list = ctk.CTkScrollableFrame(
+        self.device_list = ScopedScrollableFrame(
             self.drawer,
             height=120,
             fg_color=self.theme["terminal_bg"],

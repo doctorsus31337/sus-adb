@@ -6,7 +6,11 @@ import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
 from app.core.branding_assets import ABOUT_ARTWORK
-from app.gui.customtkinter_compat import PendingCallbackOwner, safe_focus
+from app.gui.customtkinter_compat import (
+    PendingCallbackOwner,
+    ScopedScrollableFrame,
+    safe_focus,
+)
 
 
 class AboutWindow(ctk.CTkToplevel):
@@ -40,7 +44,7 @@ class AboutWindow(ctk.CTkToplevel):
         self.bind("<Escape>", lambda _event: self.close())
         branding.apply_window_icon(self)
 
-        self.content = ctk.CTkScrollableFrame(
+        self.content = ScopedScrollableFrame(
             self,
             fg_color=theme["panel"],
             border_width=1,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from app.core.responsive_layout import estimated_button_width
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 
 
 class ResponsiveActionGrid(ctk.CTkFrame):
@@ -90,7 +91,7 @@ class ResponsiveActionGrid(ctk.CTkFrame):
             )
 
 
-class HorizontalNavigationStrip(ctk.CTkScrollableFrame):
+class HorizontalNavigationStrip(ScopedScrollableFrame):
     """Single-row, safely scrollable navigation with untruncated labels."""
 
     def __init__(self, parent, theme, items):

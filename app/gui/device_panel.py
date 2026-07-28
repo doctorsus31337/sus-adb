@@ -3,6 +3,7 @@
 import customtkinter as ctk
 
 from app.core.device import Device
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 from app.widgets.device_card import DeviceCard
 from app.widgets.gothic_button import GothicButton
 from app.widgets.gothic_frame import GothicFrame
@@ -26,7 +27,7 @@ class DevicePanel(GothicFrame):
         )
         title.pack(pady=(10, 5))
 
-        self.device_list = ctk.CTkScrollableFrame(
+        self.device_list = ScopedScrollableFrame(
             self,
             width=230,
             height=220,

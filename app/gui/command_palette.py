@@ -9,8 +9,8 @@ import customtkinter as ctk
 from app.core.app_metadata import METADATA
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
+    ScopedScrollRouter,
     safe_focus,
-    wheel_scroll_units,
     widget_exists,
 )
 
@@ -58,13 +58,11 @@ class PaletteResultScroller(ctk.CTkFrame):
         self.window_id = self.canvas.create_window(
             0, 0, window=self.content, anchor="nw"
         )
-        self._binding_ids = []
+        self.router = ScopedScrollRouter(
+            self, self.canvas, owner=parent, keyboard=False, scroll_units=42,
+        )
         self.canvas.bind("<Configure>", self._canvas_configured, add="+")
         self.content.bind("<Configure>", self._content_configured, add="+")
-        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            binding_id = parent.bind(sequence, self._wheel, add="+")
-            if binding_id:
-                self._binding_ids.append((sequence, binding_id))
 
     def _inside(self, widget):
         if not isinstance(widget, tk.Misc):
@@ -79,13 +77,7 @@ class PaletteResultScroller(ctk.CTkFrame):
         return False
 
     def _wheel(self, event):
-        if not self._inside(getattr(event, "widget", None)):
-            return None
-        units = wheel_scroll_units(event, lines=42)
-        if not units:
-            return None
-        self.canvas.yview_scroll(units, "units")
-        return "break"
+        return self.router._wheel(event)
 
     def _canvas_configured(self, event):
         self.canvas.itemconfigure(self.window_id, width=max(1, event.width - 2))
@@ -121,14 +113,7 @@ class PaletteResultScroller(ctk.CTkFrame):
             return
 
     def close(self):
-        parent = self.master
-        if widget_exists(parent):
-            for sequence, binding_id in self._binding_ids:
-                try:
-                    parent.unbind(sequence, binding_id)
-                except tk.TclError:
-                    pass
-        self._binding_ids.clear()
+        self.router.close()
 
 
 class CommandPaletteWindow(ctk.CTkToplevel):

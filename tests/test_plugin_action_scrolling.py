@@ -1,5 +1,6 @@
 import tkinter as tk
 import unittest
+from pathlib import Path
 from app.gui.customtkinter_compat import (
     ScopedEventBindings,
     widget_within,
@@ -39,5 +40,28 @@ class PluginActionScrollingTests(unittest.TestCase):
             owner.unbound,
             [(value[0],value[3]) for value in owner.bound],
         )
+
+    def test_every_application_scroll_frame_uses_the_scoped_subclass(self):
+        root=Path(__file__).parents[1]
+        direct=[]
+        for folder in ("app/gui","app/widgets"):
+            for path in (root/folder).glob("*.py"):
+                if path.name=="customtkinter_compat.py":continue
+                if "ctk.CTkScrollableFrame(" in path.read_text(encoding="utf-8"):
+                    direct.append(path.relative_to(root).as_posix())
+        self.assertEqual(direct,[])
+
+    def test_canonical_router_owns_required_input_contract(self):
+        source=(Path(__file__).parents[1]/"app/gui/customtkinter_compat.py").read_text(
+            encoding="utf-8"
+        )
+        for sequence in (
+            "<MouseWheel>","<Button-4>","<Button-5>","<Prior>","<Next>",
+            "<Home>","<End>","<Up>","<Down>",
+        ):
+            self.assertIn(sequence,source)
+        self.assertIn("binding_id=owner.bind(sequence,callback,add=\"+\")",source)
+        self.assertIn("owner.unbind(sequence,binding_id)",source)
+        self.assertIn("parent.__class__.__name__==\"CTkTabview\"",source)
 
 if __name__=="__main__":unittest.main()

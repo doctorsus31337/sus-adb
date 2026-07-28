@@ -6,6 +6,7 @@ import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
 from app.core.guide_engine import GuideGoal
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 
 
 class GuidedSetupWindow(ctk.CTkToplevel):
@@ -89,7 +90,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         )
         self.goal.grid(row=0, column=1, sticky="ew", padx=8, pady=8)
         self.goal.set(GuideGoal.SEE_INSTALLED_APPS.value)
-        self.steps = ctk.CTkScrollableFrame(
+        self.steps = ScopedScrollableFrame(
             self,
             width=270,
             fg_color=self.theme["panel"],

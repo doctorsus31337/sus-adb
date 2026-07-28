@@ -5,7 +5,11 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
-from app.gui.customtkinter_compat import PendingCallbackOwner, widget_exists
+from app.gui.customtkinter_compat import (
+    PendingCallbackOwner,
+    ScopedScrollableFrame,
+    widget_exists,
+)
 
 
 class LearningCenterWindow(ctk.CTkToplevel):
@@ -185,7 +189,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
         )
 
     def _list(self, parent, width):
-        frame = ctk.CTkScrollableFrame(
+        frame = ScopedScrollableFrame(
             parent, width=width, fg_color=self.theme["panel_alt"],
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],

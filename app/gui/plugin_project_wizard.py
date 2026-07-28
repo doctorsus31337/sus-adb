@@ -12,9 +12,8 @@ import customtkinter as ctk
 from app.core.app_metadata import METADATA
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
-    ScopedEventBindings,
+    ScopedScrollRouter,
     safe_focus,
-    wheel_scroll_units,
     widget_exists,
     widget_within,
 )
@@ -58,11 +57,10 @@ class WizardViewport(ctk.CTkFrame):
         self.window_id = self.canvas.create_window(
             0, 0, window=self.content, anchor="nw"
         )
-        self.bindings = ScopedEventBindings()
-        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            self.bindings.bind(input_owner, sequence, self._wheel)
-        for sequence in ("<Prior>", "<Next>", "<Home>", "<End>"):
-            self.bindings.bind(input_owner, sequence, self._key)
+        self.router = ScopedScrollRouter(
+            self, self.canvas, owner=input_owner, scroll_units=42,
+        )
+        self.bindings = self.router.bindings
         self.canvas.bind("<Configure>", self._canvas_changed, add="+")
         self.content.bind("<Configure>", self._content_changed, add="+")
 
@@ -73,32 +71,10 @@ class WizardViewport(ctk.CTkFrame):
         )
 
     def _wheel(self, event):
-        if not self.winfo_ismapped() or not self._inside(getattr(event, "widget", None)):
-            return None
-        units = wheel_scroll_units(event, lines=42)
-        if not units:
-            return None
-        try:
-            self.canvas.yview_scroll(units, "units")
-        except tk.TclError:
-            return None
-        return "break"
+        return self.router._wheel(event)
 
     def _key(self, event):
-        if not self._inside(getattr(event, "widget", None)):
-            return None
-        keysym = getattr(event, "keysym", "")
-        if keysym == "Prior":
-            self.canvas.yview_scroll(-1, "pages")
-        elif keysym == "Next":
-            self.canvas.yview_scroll(1, "pages")
-        elif keysym == "Home":
-            self.canvas.yview_moveto(0)
-        elif keysym == "End":
-            self.canvas.yview_moveto(1)
-        else:
-            return None
-        return "break"
+        return self.router._key(event)
 
     def _canvas_changed(self, event):
         self.canvas.itemconfigure(self.window_id, width=max(1, event.width))
@@ -119,7 +95,7 @@ class WizardViewport(ctk.CTkFrame):
         self.canvas.yview_moveto(0)
 
     def close(self):
-        self.bindings.close()
+        self.router.close()
 
 
 class PluginProjectWizardWindow(ctk.CTkToplevel):

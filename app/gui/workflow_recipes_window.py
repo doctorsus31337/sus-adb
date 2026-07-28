@@ -16,6 +16,7 @@ from app.core.workflow_recipes import (
 )
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
+    ScopedScrollableFrame,
     focused_within,
     keyboard_focus_target,
     safe_focus,
@@ -134,7 +135,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         self.body.grid(row=2, column=0, sticky="nsew", padx=12, pady=3)
         self.body.grid_rowconfigure(0, weight=1)
         self.body.grid_columnconfigure(0, weight=1)
-        self.library = ctk.CTkScrollableFrame(
+        self.library = ScopedScrollableFrame(
             self.body,
             fg_color=self.theme["panel"],
             border_width=1,
@@ -144,7 +145,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
         )
         self.library.grid(row=0, column=0, sticky="nsew")
         self.library.grid_columnconfigure(0, weight=1)
-        self.overview = ctk.CTkScrollableFrame(
+        self.overview = ScopedScrollableFrame(
             self.body,
             fg_color=self.theme["panel"],
             border_width=1,
@@ -176,7 +177,7 @@ class WorkflowRecipesWindow(ctk.CTkToplevel):
             )
             label.grid(row=row, column=0, sticky="ew", padx=14, pady=6)
             self.overview_widgets[name] = label
-        self.active = ctk.CTkScrollableFrame(
+        self.active = ScopedScrollableFrame(
             self.body,
             fg_color=self.theme["panel"],
             border_width=1,
