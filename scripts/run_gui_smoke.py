@@ -1,12 +1,34 @@
 """Headless construction and reachability checks; never contacts a device."""
 from __future__ import annotations
 import os,sys,tempfile
+from contextlib import contextmanager
+from datetime import date
 from types import SimpleNamespace
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+
+@contextmanager
+def isolated_smoke_environment(temporary_root):
+ working_directory=Path(temporary_root)/"application working directory"
+ configuration_directory=Path(temporary_root)/"configuration"
+ working_directory.mkdir(parents=True)
+ configuration_directory.mkdir(parents=True)
+ original_working_directory=Path.cwd()
+ had_xdg_config_home="XDG_CONFIG_HOME" in os.environ
+ original_xdg_config_home=os.environ.get("XDG_CONFIG_HOME")
+ try:
+  os.environ["XDG_CONFIG_HOME"]=str(configuration_directory)
+  os.chdir(working_directory)
+  yield working_directory,configuration_directory
+ finally:
+  os.chdir(original_working_directory)
+  if had_xdg_config_home:
+   os.environ["XDG_CONFIG_HOME"]=original_xdg_config_home
+  else:
+   os.environ.pop("XDG_CONFIG_HOME",None)
+
 def main():
- with tempfile.TemporaryDirectory() as d:
-  os.environ["XDG_CONFIG_HOME"]=d
+ with tempfile.TemporaryDirectory() as d,isolated_smoke_environment(d):
   import customtkinter as ctk
   from app.gui.main_window import SusADBWindow
   from app.gui.first_run_dialog import FirstRunDialog
@@ -18,6 +40,8 @@ def main():
   from app.core.environment_diagnostics import DiagnosticRecord
   from app.core.device import Device
   from app.core.frida_target import FridaTarget,TargetType
+  from app.core.assessment_scope import AssessmentScope
+  from app.core.pentest_session import PentestSession
   from app.core.installed_app_discovery import InstalledApplication,InstalledAppResult
   from app.core.instrumentation_readiness import InstrumentationReadinessService
   from app.gui.customtkinter_compat import install_scroll_target_guard
@@ -97,7 +121,16 @@ def main():
    app.geometry(f"{width}x{height}+0+0");app.update_idletasks()
    assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height()
    assert all(name in app.workspace._tab_dict for name in ("Home","Console","Instrumentation","Scripts","Pentest"))
-   app.navigate_workspace("Pentest");assert app.pentest_workspace.device is device and app.pentest_workspace.target is target;app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==6
+   app.navigate_workspace("Pentest");assert app.pentest_workspace.device is device and app.pentest_workspace.target is target
+   assert app.pentest_workspace.session is None
+   assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
+   authorized_scope=AssessmentScope("gui-smoke-authorized","GUI Smoke Authorized Fixture",authorization_confirmed=True,device_serial=device.serial,package_identifier="org.example.fixture",allowed_actions=("recon",),start_date=date.today().isoformat())
+   app.pentest_workspace.session=PentestSession.draft(authorized_scope,Path(d)/"authorized synthetic case")
+   app.pentest_workspace.refresh_all();assert app.pentest_workspace.warning.cget("text")=="Authorized scope loaded. No action executes automatically."
+   app.pentest_workspace.session=None;app.pentest_workspace.refresh_all()
+   assert app.pentest_workspace.session is None
+   assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
+   app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==6
    expected_sections=("Dashboard","Scope","ADB Explorer","Runtime Explorer","Network","Storage","APK Lab","Findings","Reports","Plugins","Timeline","Evidence","Notes","Changes");assert tuple(button.cget("text") for button in app.pentest_workspace.navigation.buttons)==expected_sections;assert all(button_text_fits(button) for button in app.pentest_workspace.navigation.buttons)
    app.pentest_workspace.workspace.set("Dashboard");app.pentest_workspace._section_selected();app.update_idletasks();dashboard_buttons=[widget for widget in descendants(app.pentest_workspace.tabs["Dashboard"]) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped()];pentest_buttons=[*app.pentest_workspace.navigation.buttons,*dashboard_buttons];scroll=app.pentest_workspace.dashboard_scroll;viewport_bottom=min(scroll.winfo_rooty()+scroll.winfo_height(),app.pentest_workspace.winfo_rooty()+app.pentest_workspace.winfo_height(),app.status_bar.winfo_rooty());visible_buttons=[*app.pentest_workspace.navigation.buttons,*[widget for widget in dashboard_buttons if widget.winfo_rooty()>=scroll.winfo_rooty() and widget.winfo_rooty()+widget.winfo_height()<=viewport_bottom]];assert pentest_buttons and all(button_text_fits(button) for button in pentest_buttons);assert all(widget.winfo_rooty()+widget.winfo_height()<=app.status_bar.winfo_rooty() for widget in visible_buttons)
    assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
