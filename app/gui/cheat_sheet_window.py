@@ -39,7 +39,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
             wrap="none",
         )
         console.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        console.insert("1.0", CommandRegistry.render_text())
+        console.insert("1.0", CommandRegistry.render_text(advanced=True))
         console.configure(state="disabled")
 
         self.after_idle(self._place_beside_parent)
