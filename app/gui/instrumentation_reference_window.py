@@ -16,6 +16,7 @@ from app.core.instrumentation_reference import (
     reference_categories,
     reference_commands,
 )
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 
 
 class InstrumentationReferenceWindow(ctk.CTkToplevel):
@@ -111,7 +112,7 @@ class InstrumentationReferenceWindow(ctk.CTkToplevel):
         self.copy_starter_button.grid(row=0, column=1, padx=10, pady=8)
 
     def _build_commands(self):
-        self.command_list = ctk.CTkScrollableFrame(
+        self.command_list = ScopedScrollableFrame(
             self, fg_color=self.theme["terminal_bg"], border_width=1,
             border_color=self.theme["border"], corner_radius=8,
             scrollbar_button_color=self.theme["gold_dark"],

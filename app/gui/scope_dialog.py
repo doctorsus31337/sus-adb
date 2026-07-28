@@ -4,12 +4,13 @@ import uuid
 from datetime import date
 import customtkinter as ctk
 from app.core.assessment_scope import ACTION_CATEGORIES,AssessmentScope,now
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 class ScopeDialog(ctk.CTkToplevel):
     def __init__(self,parent,theme,scope=None,device=None,target=None,on_save=None):
         super().__init__(parent);self.theme=theme;self.scope=scope;self.on_save=on_save;self.title("Authorized Assessment Scope");self.geometry("650x680");self.minsize(580,560);self.configure(fg_color=theme["bg"]);self.transient(parent.winfo_toplevel());self.grab_set()
         self.grid_rowconfigure(1,weight=1);self.grid_columnconfigure(0,weight=1)
         ctk.CTkLabel(self,text="AUTHORIZED ASSESSMENT SCOPE",text_color=theme["gold"],font=("Times New Roman",22,"bold")).grid(row=0,column=0,pady=(12,5))
-        form=ctk.CTkScrollableFrame(self,fg_color=theme["panel"],scrollbar_button_color=theme["gold_dark"],scrollbar_button_hover_color=theme["red_hover"]);form.grid(row=1,column=0,sticky="nsew",padx=12,pady=5);form.grid_columnconfigure(1,weight=1)
+        form=ScopedScrollableFrame(self,fg_color=theme["panel"],scrollbar_button_color=theme["gold_dark"],scrollbar_button_hover_color=theme["red_hover"]);form.grid(row=1,column=0,sticky="nsew",padx=12,pady=5);form.grid_columnconfigure(1,weight=1)
         values={"case_name":scope.case_name if scope else "","description":scope.description if scope else "","tester_name":scope.tester_name if scope else "","client_project":scope.client_project if scope else "","authorization_reference":scope.authorization_reference if scope else "","device_serial":scope.device_serial if scope else getattr(device,"serial", ""),"device_model":scope.device_model if scope else getattr(device,"display_name", ""),"target_name":scope.target_name if scope else getattr(target,"name", ""),"package_identifier":scope.package_identifier if scope else getattr(target,"identifier", "") or "","pid":str(scope.pid or "") if scope else str(getattr(target,"pid", "") or ""),"start_date":scope.start_date if scope else date.today().isoformat(),"end_date":scope.end_date or "" if scope else "","notes":scope.notes if scope else ""}
         self.entries={};row=0
         for key,label in (("case_name","Assessment name"),("description","Description"),("tester_name","Tester"),("client_project","Client / Project"),("authorization_reference","Authorization reference / notes"),("device_serial","Selected device serial"),("device_model","Device model"),("target_name","Selected target"),("package_identifier","Package identifier"),("pid","PID"),("start_date","Start date (YYYY-MM-DD)"),("end_date","End date (optional)"),("notes","Scope notes")):

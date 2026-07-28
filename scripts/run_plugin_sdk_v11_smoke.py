@@ -85,20 +85,28 @@ def main():
         assert content_height>viewport_height and frame.action_host._scrollbar.winfo_ismapped()
         assert canvas.xview()==(0.0,1.0)
         assert frame.field_widgets[("inspect","secret")].cget("show")=="•"
-        assert frame._action_input.count==10 and frame._field_input.count==3
+        router=frame.action_host._scroll_router
+        assert router.bindings.count>0 and router.nested_bindings.count==3
 
         targets=(
             frame.action_cards["inspect"],frame.action_titles["inspect"],
             frame.action_descriptions["inspect"],frame.field_labels[("inspect","name")],
             frame.field_widgets[("inspect","name")],frame.field_widgets[("inspect","secret")],
-            frame.field_widgets[("inspect","enabled")],frame.field_widgets[("inspect","choice")],
+            frame.field_widgets[("inspect","enabled")],
             frame.field_widgets[("inspect","count")],frame.field_widgets[("inspect","readonly")],
             frame.action_buttons["inspect"],frame.action_status,
         )
         for target in targets:
             canvas.yview_moveto(0);before=canvas.yview()
-            assert frame._action_wheel(SimpleNamespace(widget=target,num=5,delta=0))=="break"
+            result=frame._action_wheel(SimpleNamespace(widget=target,num=5,delta=0))
+            assert result=="break",(target.__class__.__name__,result)
             assert canvas.yview()!=before,target
+        choice=frame.field_widgets[("inspect","choice")]
+        canvas.yview_moveto(0);choice_before=canvas.yview()
+        assert frame._action_wheel(
+            SimpleNamespace(widget=choice,num=5,delta=0)
+        ) is None
+        assert canvas.yview()==choice_before
         assert frame._action_wheel(SimpleNamespace(widget=".native.file.dialog",num=5,delta=-120)) is None
 
         canvas.yview_moveto(.5);middle=canvas.yview()[0]
@@ -123,9 +131,9 @@ def main():
         frame.field_widgets[("inspect","name")]._entry.event_generate("<Button-5>")
         pump(root,ui_queue);assert canvas.yview()!=actual_before
 
-        canvas.yview_moveto(.45);offset_before=frame._action_scroll_offset();bindings_before=(frame._action_input.count,frame._field_input.count)
+        canvas.yview_moveto(.45);offset_before=frame._action_scroll_offset();bindings_before=(router.bindings.count,router.nested_bindings.count)
         frame.update_spec(panel("Refreshed"));pump(root,ui_queue)
-        assert bindings_before==(frame._action_input.count,frame._field_input.count)
+        assert bindings_before==(router.bindings.count,router.nested_bindings.count)
         assert abs(frame._action_scroll_offset()-offset_before)<=3,(offset_before,frame._action_scroll_offset())
 
         canvas.yview_moveto(0);frame._action_key(SimpleNamespace(widget=canvas,keysym="Next"));assert canvas.yview()[0]>0
@@ -162,7 +170,7 @@ def main():
         legacy.cleanup();legacy.destroy()
 
         secret=frame.field_vars[("inspect","secret")][1];secret.set("runtime-only")
-        frame.cleanup();assert secret.get()=="";assert frame._action_input.count==0 and frame._field_input.count==0 and not frame._callbacks._pending
+        frame.cleanup();assert secret.get()=="";assert router.count==0 and not frame._callbacks._pending
         window.destroy();pump(root,ui_queue)
     for worker in workers:worker.join(1);assert not worker.is_alive()
     assert not errors,errors

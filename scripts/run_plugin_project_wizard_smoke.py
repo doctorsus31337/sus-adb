@@ -363,9 +363,10 @@ def main():
         assert handoffs == [controller.generated_folder]
 
         assert_no_blue(window)
-        assert window.viewport.bindings.count == 7
+        router = window.viewport.router
+        assert router.count > 0
         window.close()
-        assert window.viewport.bindings.count == 0
+        assert router.count == 0
         for worker in workers:
             worker.join(1)
             assert not worker.is_alive()

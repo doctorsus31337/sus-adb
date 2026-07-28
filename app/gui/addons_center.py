@@ -10,10 +10,10 @@ from app.core.app_metadata import METADATA
 from app.core.responsive_layout import estimated_button_width
 from app.gui.customtkinter_compat import (
     PendingCallbackOwner,
+    ScopedScrollRouter,
     clamp_scroll_offset,
     focused_within,
     safe_focus,
-    wheel_scroll_units,
     widget_exists,
 )
 from app.plugins.addon_presenter import card_actions,card_spec
@@ -71,14 +71,11 @@ class AddonCardScroller(ctk.CTkFrame):
         self._sync_pending=None
         self._restore_offset=None
         self._last_width=0
-        self._input_owner=None
-        self._input_bindings=[]
+        self._scroll_router=None
         self.content.bind("<Configure>",self._content_configured,add="+")
         self._parent_canvas.bind(
             "<Configure>",self._canvas_configured,add="+"
         )
-        for sequence in ("<Up>","<Down>","<Prior>","<Next>","<Home>","<End>"):
-            self._parent_canvas.bind(sequence,self._keyboard_scroll,add="+")
 
     @property
     def viewport_width(self):
@@ -99,19 +96,13 @@ class AddonCardScroller(ctk.CTkFrame):
 
     def attach_input(self,owner):
         self.detach_input()
-        self._input_owner=owner
-        for sequence in ("<MouseWheel>","<Button-4>","<Button-5>"):
-            binding_id=owner.bind(sequence,self._mouse_wheel_all,add="+")
-            if binding_id:self._input_bindings.append((sequence,binding_id))
+        self._scroll_router=ScopedScrollRouter(
+            self,self._parent_canvas,owner=owner,scroll_units=48,
+        )
 
     def detach_input(self):
-        owner=self._input_owner
-        if widget_exists(owner):
-            for sequence,binding_id in self._input_bindings:
-                try:owner.unbind(sequence,binding_id)
-                except tk.TclError:pass
-        self._input_bindings.clear()
-        self._input_owner=None
+        if self._scroll_router is not None:self._scroll_router.close()
+        self._scroll_router=None
 
     def check_if_master_is_canvas(self,widget):
         """Return true only for live widgets inside this bounded viewport."""
@@ -129,23 +120,16 @@ class AddonCardScroller(ctk.CTkFrame):
     _check_if_valid_scroll=check_if_master_is_canvas
 
     def _mouse_wheel_all(self,event):
-        if not self.check_if_master_is_canvas(getattr(event,"widget",None)):
-            return None
-        units=wheel_scroll_units(event,lines=48)
-        if not units:return None
-        self._parent_canvas.yview_scroll(units,"units")
-        return "break"
+        return (
+            self._scroll_router._wheel(event)
+            if self._scroll_router is not None else None
+        )
 
     def _keyboard_scroll(self,event):
-        keysym=getattr(event,"keysym","")
-        if keysym=="Up":self._parent_canvas.yview_scroll(-36,"units")
-        elif keysym=="Down":self._parent_canvas.yview_scroll(36,"units")
-        elif keysym=="Prior":self._parent_canvas.yview_scroll(-1,"pages")
-        elif keysym=="Next":self._parent_canvas.yview_scroll(1,"pages")
-        elif keysym=="Home":self._parent_canvas.yview_moveto(0)
-        elif keysym=="End":self._parent_canvas.yview_moveto(1)
-        else:return None
-        return "break"
+        return (
+            self._scroll_router._key(event)
+            if self._scroll_router is not None else None
+        )
 
     def scroll_offset(self):
         if not widget_exists(self._parent_canvas):return 0.0

@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from app.core.contextual_assistant import ContextualAssistantService
 from app.core.worker import BackgroundWorker
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 from app.widgets.responsive_action_grid import (
     HorizontalNavigationStrip,
     ResponsiveActionGrid,
@@ -130,7 +131,7 @@ class ContextualAssistantPanel(ctk.CTkFrame):
         self.navigation.grid(row=1, column=0, sticky="ew", padx=6, pady=2)
 
     def _build_content(self):
-        self.content = ctk.CTkScrollableFrame(
+        self.content = ScopedScrollableFrame(
             self, fg_color=self.theme["panel"],
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],

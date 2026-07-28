@@ -24,6 +24,7 @@ from app.core.objection_manager import ObjectionManager
 from app.core.target_discovery import TargetDiscovery, TargetDiscoveryResult, filter_targets
 from app.core.tool_diagnostics import ToolDiagnostic, ToolDiagnostics
 from app.core.worker import BackgroundWorker
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 from app.gui.instrumentation_reference_window import InstrumentationReferenceWindow
 
 
@@ -344,7 +345,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.target_count.grid(row=0, column=4, padx=8)
 
-        self.target_list = ctk.CTkScrollableFrame(
+        self.target_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
             border_width=1, border_color=self.theme["border"],
             scrollbar_button_color=self.theme["gold_dark"],
@@ -437,7 +438,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.installed_count.grid(row=0, column=2, sticky="e", padx=8)
         filters.grid_columnconfigure(2, weight=1)
 
-        self.installed_list = ctk.CTkScrollableFrame(
+        self.installed_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
             border_width=1, border_color=self.theme["border"],
             scrollbar_button_color=self.theme["gold_dark"],

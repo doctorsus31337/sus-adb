@@ -25,6 +25,7 @@ from app.core.script_profile import FailurePolicy, ScriptProfile, ScriptStage
 from app.core.script_profile_runner import ScriptProfileRunner
 from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 
 
 class ScriptStudioPanel(ctk.CTkFrame):
@@ -137,7 +138,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.class_filter = self._combo(toolbar, ["All", "read-only", "state-changing"], lambda _v: self._render_library()); self.class_filter.grid(row=0, column=3, padx=3)
         self.tag_filter = self._entry(toolbar, "Tag"); self.tag_filter.grid(row=0, column=4, padx=3); self.tag_filter.bind("<KeyRelease>", lambda _e: self._render_library())
         split = ctk.CTkFrame(frame, fg_color="transparent"); split.grid(row=2, column=0, sticky="nsew", padx=8, pady=5); split.grid_rowconfigure(0, weight=1); split.grid_columnconfigure(0, weight=3); split.grid_columnconfigure(1, weight=2)
-        self.library_list = ctk.CTkScrollableFrame(split, fg_color=self.theme["terminal_bg"], scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.library_list.grid(row=0, column=0, sticky="nsew", padx=(0, 4)); self.library_list.grid_columnconfigure(0, weight=1)
+        self.library_list = ScopedScrollableFrame(split, fg_color=self.theme["terminal_bg"], scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.library_list.grid(row=0, column=0, sticky="nsew", padx=(0, 4)); self.library_list.grid_columnconfigure(0, weight=1)
         self.library_details = ctk.CTkTextbox(split, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"], wrap="word"); self.library_details.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
@@ -227,7 +228,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         frame = self._panel(self.tabs["Runtime"], "Active Runtime"); frame.grid_rowconfigure(2, weight=1)
         self.runtime_details = ctk.CTkLabel(frame, text="No active target session.", text_color=self.theme["text"], justify="left", anchor="w", wraplength=900); self.runtime_details.grid(row=1, column=0, sticky="ew", padx=10, pady=4)
         split = ctk.CTkFrame(frame, fg_color="transparent"); split.grid(row=2, column=0, sticky="nsew", padx=8, pady=5); split.grid_columnconfigure(0, weight=1); split.grid_columnconfigure(1, weight=1); split.grid_rowconfigure(0, weight=1)
-        self.loaded_list = ctk.CTkScrollableFrame(split, fg_color=self.theme["terminal_bg"], scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.loaded_list.grid(row=0, column=0, sticky="nsew", padx=(0, 4)); self.loaded_list.grid_columnconfigure(0, weight=1)
+        self.loaded_list = ScopedScrollableFrame(split, fg_color=self.theme["terminal_bg"], scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.loaded_list.grid(row=0, column=0, sticky="nsew", padx=(0, 4)); self.loaded_list.grid_columnconfigure(0, weight=1)
         rpc = ctk.CTkFrame(split, fg_color=self.theme["panel_alt"]); rpc.grid(row=0, column=1, sticky="nsew", padx=(4, 0)); rpc.grid_columnconfigure(0, weight=1)
         self.post_entry = self._entry(rpc, 'Post JSON message, e.g. {"type":"ping"}'); self.post_entry.grid(row=0, column=0, sticky="ew", padx=8, pady=5); self._button(rpc, "Post Message", self.post_message, 0, 1)
         self.rpc_export = self._entry(rpc, "RPC export name"); self.rpc_export.grid(row=1, column=0, sticky="ew", padx=8, pady=5); self._button(rpc, "List Exports", self.list_exports, 1, 1)

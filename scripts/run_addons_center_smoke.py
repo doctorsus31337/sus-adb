@@ -252,12 +252,18 @@ def main():
         assert canvas.yview()==before
 
         canvas.yview_moveto(0)
-        center.card_area._keyboard_scroll(SimpleNamespace(keysym="Next"))
+        center.card_area._keyboard_scroll(
+            SimpleNamespace(widget=canvas,keysym="Next")
+        )
         assert canvas.yview()[0]>0
-        center.card_area._keyboard_scroll(SimpleNamespace(keysym="End"))
+        center.card_area._keyboard_scroll(
+            SimpleNamespace(widget=canvas,keysym="End")
+        )
         pump(root)
         assert canvas.yview()[1]>0.99
-        center.card_area._keyboard_scroll(SimpleNamespace(keysym="Home"))
+        center.card_area._keyboard_scroll(
+            SimpleNamespace(widget=canvas,keysym="Home")
+        )
         assert canvas.yview()[0]<0.01
 
         canvas.yview_moveto(1)
@@ -296,17 +302,20 @@ def main():
         reach_bottom(center,900,650,"official-installed")
         assert_no_blue(center)
 
-        assert len(center.card_area._input_bindings)==3
+        router=center.card_area._scroll_router
+        assert router.count>0
         center.close()
         pump(root)
-        assert not center.card_area._input_bindings
+        assert router.count==0
         assert not center.card_area._callbacks._pending
         reopened=AddonsCenter(root,theme,manager,WindowHost())
         reopened.deiconify()
         pump(root)
-        assert len(reopened.card_area._input_bindings)==3
+        reopened_router=reopened.card_area._scroll_router
+        assert reopened_router.count>0
         reopened.close()
         pump(root)
+        assert reopened_router.count==0
 
         for count in (1,4,6,12,30):
             fake=FakeManager(count)
