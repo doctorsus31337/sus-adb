@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 from app.core.adb_capture_service import ADBCaptureService
 from app.core.adb_component_service import ADBComponentService
 from app.core.adb_explorer_models import AccessMethod
@@ -35,7 +36,7 @@ class ADBExplorerPanel(ctk.CTkFrame):
         for tab in self.tabs.values():tab.configure(fg_color=self.theme["bg"]);tab.grid_rowconfigure(1,weight=1);tab.grid_columnconfigure(0,weight=1)
         self._packages();self._components();self._files();self._intents();self._logcat();self._capture()
     def _viewer(self,tab):
-        t=ctk.CTkTextbox(tab,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],font=("Consolas",10),wrap="word",scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);t.grid(row=1,column=0,sticky="nsew",padx=5,pady=5);return t
+        t=ReadOnlyTextView(tab,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],font=("Consolas",10),wrap="word",scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);t.grid(row=1,column=0,sticky="nsew",padx=5,pady=5);return t
     def _packages(self):
         t=self.tabs["Packages"];bar=ctk.CTkFrame(t,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");bar.grid_columnconfigure(0,weight=1);self.package_search=self._entry(bar,"Search packages");self.package_search.grid(row=0,column=0,sticky="ew",padx=3);self.package_kind=self._combo(bar,["all","user","system"]);self.package_kind.grid(row=0,column=1,padx=3);self._button(bar,"Refresh",self.refresh_packages,0,2)
         for i,(n,c,d) in enumerate((("Install APK",self.install_apk,False),("Uninstall",lambda:self.package_action("uninstall",True),True),("Force Stop",lambda:self.package_action("force-stop"),False),("Clear Data",lambda:self.package_action("clear-data",True),True),("Enable",lambda:self.package_action("enable"),False),("Disable",lambda:self.package_action("disable"),False),("Grant",lambda:self.permission_action("grant"),False),("Revoke",lambda:self.permission_action("revoke"),False))):self._button(bar,n,c,1+i//4,i%4,d)

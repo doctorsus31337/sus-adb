@@ -10,6 +10,7 @@ import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
 from app.gui.customtkinter_compat import PendingCallbackOwner, safe_focus
+from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.plugin_workbench import (
     FindingSeverity,
     PluginWorkbenchAnalyzer,
@@ -178,13 +179,12 @@ class PluginWorkbenchWindow(ctk.CTkToplevel):
         self.render()
 
     def _textbox(self, parent):
-        widget = ctk.CTkTextbox(
+        widget = ReadOnlyTextView(
             parent, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
         widget.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-        widget.configure(state="disabled")
         return widget
 
     def _build_findings(self, page):
@@ -332,10 +332,7 @@ class PluginWorkbenchWindow(ctk.CTkToplevel):
 
     def _set_text(self, name, text):
         widget = self.views[name]
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", text)
-        widget.configure(state="disabled")
+        widget.replace(text)
 
     def apply_mode(self):
         self.render()

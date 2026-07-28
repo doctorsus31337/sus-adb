@@ -6,6 +6,7 @@ import queue
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 
 from app.core.instrumentation_readiness import (
     InstrumentationReadinessService,
@@ -169,7 +170,7 @@ class InstrumentationReadinessPanel(ctk.CTkFrame):
                 self.views[name] = self._text(page)
 
     def _text(self, parent):
-        text = ctk.CTkTextbox(
+        text = ReadOnlyTextView(
             parent, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
@@ -177,7 +178,6 @@ class InstrumentationReadinessPanel(ctk.CTkFrame):
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
         text.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
-        text.configure(state="disabled")
         return text
 
     def _build_server_setup(self, page):
@@ -285,10 +285,7 @@ class InstrumentationReadinessPanel(ctk.CTkFrame):
 
     @staticmethod
     def _set_text(widget, value):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", value)
-        widget.configure(state="disabled")
+        widget.replace(value)
 
     def apply_context(self, context):
         previous = self.serial

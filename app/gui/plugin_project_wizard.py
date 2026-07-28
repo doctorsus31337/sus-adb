@@ -17,6 +17,7 @@ from app.gui.customtkinter_compat import (
     widget_exists,
     widget_within,
 )
+from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.plugin_capabilities import CAPABILITIES, HIGH_IMPACT
 from app.plugins.plugin_interactive import PLUGIN_NAVIGATION_DESTINATIONS
 from app.plugins.plugin_project import (
@@ -671,15 +672,14 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
 
     def _text_preview(self, label, value, height):
         row = self._label(label)
-        widget = ctk.CTkTextbox(
+        widget = ReadOnlyTextView(
             self.viewport.content, height=height,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
             border_width=1, border_color=self.theme["gold_dark"], wrap="word",
         )
         widget.grid(row=row + 1, column=0, sticky="ew", padx=16, pady=(0, 6))
-        widget.insert("1.0", value)
-        widget.configure(state="disabled")
+        widget.replace(value)
         self._next_row = row + 2
         return widget
 
