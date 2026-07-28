@@ -88,6 +88,10 @@ def suggest_plugin_id(author, project_name):
     if publisher in {"susadb", "sus-adb", "sus-companion"}:
         publisher = "developer"
     project = _slug(project_name, "plugin")
+    publisher_tokens = tuple(publisher.split("-"))
+    project_tokens = tuple(project.split("-"))
+    if project_tokens[:len(publisher_tokens)] == publisher_tokens:
+        project = "-".join(project_tokens[len(publisher_tokens):]) or "plugin"
     return f"{publisher}.{project}"
 
 
@@ -303,6 +307,7 @@ class PluginProjectValidation:
     errors: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     inspection: object = field(default=None, repr=False, compare=False)
+    production: object = field(default=None, repr=False, compare=False)
     workbench: object = field(default=None, repr=False, compare=False)
 
 
@@ -392,7 +397,12 @@ class PluginProjectGenerator:
             ))
         ))
         return PluginProjectValidation(
-            not errors, tuple(dict.fromkeys(errors)), warnings, inspection, workbench
+            ok=not errors,
+            errors=tuple(dict.fromkeys(errors)),
+            warnings=warnings,
+            inspection=inspection,
+            production=production,
+            workbench=workbench,
         )
 
     @staticmethod

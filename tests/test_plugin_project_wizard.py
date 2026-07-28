@@ -4,13 +4,23 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.plugins.plugin_package import PluginPackage
-from app.plugins.plugin_project import PluginProjectGenerator
+from app.plugins.plugin_project import (
+    PluginProjectGenerator,
+    PluginProjectValidation,
+)
+from app.plugins.plugin_validator import PluginValidation
+from app.plugins.plugin_workbench import (
+    FindingSeverity,
+    PluginWorkbenchFinding,
+)
 from app.plugins.plugin_project_wizard import (
     PluginProjectWizardController,
     capability_rows,
+    validation_advisories,
 )
 from app.plugins.plugin_workbench_output import WorkbenchWriteResult
 
@@ -63,6 +73,68 @@ class PluginProjectWizardControllerTests(unittest.TestCase):
             controller.draft.contribution_id, "publisher.edited.window"
         )
 
+    def test_plugin_id_suggestion_ownership_requires_explicit_replacement(self):
+        controller = PluginProjectWizardController()
+        draft = controller.draft
+        draft.author = "DoctorSUS"
+        draft.project_name = "DoctorSUS wiz"
+        self.assertEqual(
+            controller.apply_plugin_id_suggestion(), "doctorsus.wiz"
+        )
+        self.assertFalse(draft.plugin_id_locked)
+        self.assertEqual(draft.last_suggested_plugin_id, "doctorsus.wiz")
+        draft.project_name = "DoctorSUS Wizard Live Test"
+        self.assertEqual(
+            controller.apply_plugin_id_suggestion(),
+            "doctorsus.wizard-live-test",
+        )
+        controller.set_plugin_id("doctorsus.intentional")
+        preview = controller.preview_plugin_id_suggestion()
+        self.assertTrue(preview.requires_confirmation)
+        self.assertEqual(preview.current, "doctorsus.intentional")
+        self.assertEqual(preview.suggested, "doctorsus.wizard-live-test")
+        self.assertIsNone(controller.apply_plugin_id_suggestion())
+        self.assertEqual(draft.plugin_id, "doctorsus.intentional")
+        self.assertEqual(
+            controller.apply_plugin_id_suggestion(confirmed=True),
+            "doctorsus.wizard-live-test",
+        )
+        self.assertEqual(
+            draft.contribution_id, "doctorsus.wizard-live-test.main"
+        )
+        controller.set_contribution_id("doctorsus.wizard-live-test.window")
+        controller.set_plugin_id("doctorsus.other")
+        self.assertEqual(
+            draft.contribution_id, "doctorsus.wizard-live-test.window"
+        )
+
+    def test_folder_suggestion_follows_until_operator_locks_it(self):
+        controller = PluginProjectWizardController()
+        controller.set_plugin_id("doctorsus.wiz")
+        self.assertEqual(
+            controller.apply_folder_suggestion(), "doctorsus-wiz"
+        )
+        controller.set_plugin_id("doctorsus.wizard-live-test")
+        self.assertEqual(
+            controller.draft.folder_name,
+            "doctorsus-wizard-live-test",
+        )
+        controller.set_folder_name("custom project folder")
+        controller.set_plugin_id("doctorsus.changed")
+        self.assertEqual(controller.draft.folder_name, "custom project folder")
+        self.assertTrue(controller.custom_folder_retained)
+        preview = controller.preview_folder_suggestion()
+        self.assertTrue(preview.requires_confirmation)
+        self.assertIsNone(controller.apply_folder_suggestion())
+        self.assertEqual(controller.draft.folder_name, "custom project folder")
+        self.assertEqual(
+            controller.apply_folder_suggestion(confirmed=True),
+            "doctorsus-changed",
+        )
+        self.assertFalse(controller.draft.folder_name_locked)
+        controller.set_plugin_id("doctorsus.final")
+        self.assertEqual(controller.draft.folder_name, "doctorsus-final")
+
     def test_capabilities_are_canonical_deduplicated_and_acknowledged(self):
         rows = capability_rows()
         names = tuple(row["name"] for row in rows)
@@ -98,6 +170,94 @@ class PluginProjectWizardControllerTests(unittest.TestCase):
         self.assertTrue(controller.validated)
         self.assertEqual(controller.plan(), first)
         self.assertTrue(controller.validated)
+        controller.set_folder_name("reviewed custom folder")
+        self.assertFalse(controller.validated)
+        self.assertIsNone(controller.review_plan)
+        self.assertFalse(
+            controller.create_folder(".").ok
+        )
+
+    def test_blank_developer_details_and_zero_capability_advisory_projection(self):
+        controller = ready_controller()
+        controller.draft.intended_purpose = ""
+        controller.draft.operator_workflow = ""
+        controller.draft.planned_inputs = ""
+        controller.draft.expected_output = ""
+        validation = controller.validate()
+        self.assertTrue(validation.ok, validation.errors)
+        advisories = controller.advisories()
+        expected = [
+            item for item in advisories
+            if item.title == "Expected generated test file"
+        ]
+        self.assertEqual(len(expected), 1)
+        self.assertIn("tests/test_lifecycle.py", expected[0].detail)
+        self.assertNotIn(
+            "VAL002: Production validation warning",
+            "\n".join(item.detail for item in advisories),
+        )
+        self.assertFalse(any(
+            item.title.startswith("Capability caution") for item in advisories
+        ))
+        self.assertIsNotNone(validation.production)
+        self.assertTrue(any(
+            finding.rule_id == "VAL002"
+            for finding in validation.workbench.findings
+        ))
+        high_impact = ready_controller()
+        high_impact.set_capabilities(("access-network",))
+        high_impact.draft.high_impact_acknowledged = True
+        high_validation = high_impact.validate()
+        self.assertTrue(high_validation.ok, high_validation.errors)
+        caution = next(
+            item for item in high_impact.advisories()
+            if item.title == "Capability caution · access-network"
+        )
+        self.assertIn("does not implement", caution.detail)
+
+    def test_warning_projection_preserves_unexpected_files_and_deduplicates(self):
+        warning = (
+            "Undeclared executable/native files: "
+            "tests/test_lifecycle.py, extra.py, native.so"
+        )
+        finding = PluginWorkbenchFinding(
+            "VAL002",
+            FindingSeverity.WARNING,
+            "Package",
+            "Production validation warning",
+            warning,
+            "Review before packaging.",
+        )
+        validation = PluginProjectValidation(
+            True,
+            warnings=(warning, "VAL002: Production validation warning"),
+            production=PluginValidation(
+                warnings=(warning,),
+                capability_cautions=(
+                    "access-network requires explicit high-impact approval.",
+                ),
+            ),
+            workbench=SimpleNamespace(findings=(finding,)),
+        )
+        advisories = validation_advisories(validation)
+        self.assertEqual(
+            sum(
+                item.title == "Expected generated test file"
+                for item in advisories
+            ),
+            1,
+        )
+        details = "\n".join(item.detail for item in advisories)
+        self.assertIn("extra.py", details)
+        self.assertIn("native.so", details)
+        self.assertIn("access-network", details)
+        expected = next(
+            item for item in advisories
+            if item.title == "Expected generated test file"
+        )
+        self.assertEqual(
+            expected.rule_ids, ("PluginValidator", "VAL002")
+        )
 
     def test_folder_zip_and_brief_are_deterministic_and_production_valid(self):
         controller = ready_controller()
@@ -191,6 +351,10 @@ class PluginProjectWizardControllerTests(unittest.TestCase):
         ):
             self.assertIn(alias, main_source)
         self.assertIn("select_candidate(candidate)", main_source)
+        self.assertIn("Project folder:", gui_source)
+        self.assertIn("Starter ZIP:", gui_source)
+        self.assertIn("Custom folder name retained by operator.", gui_source)
+        self.assertNotIn('"; ".join(validation.warnings)', gui_source)
         self.assertNotIn(".install(", gui_source)
         self.assertNotIn(".load(", gui_source)
         self.assertNotIn("os.walk", gui_source)

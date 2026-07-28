@@ -35,6 +35,13 @@ editable and do not claim global uniqueness. A contribution suggestion follows
 the project ID until it is manually edited; after that, the Wizard does not
 silently rewrite it.
 
+Plugin-ID suggestions remove an exact repeated publisher-token prefix from the
+project slug. Automatically suggested plugin IDs and folder names continue to
+follow their inputs; manually edited values are operator-owned. Pressing a
+Suggest button previews and confirms any replacement of an operator-owned
+value. Review always shows the exact project folder and starter ZIP name, and
+marks an intentionally retained custom folder.
+
 Keep the recommended zero-capability profile unless the planned implementation
 needs an existing documented host façade. Fake capabilities and unrestricted
 filesystem, network, shell, subprocess, ADB, Frida, or Objection access are not
@@ -47,6 +54,11 @@ nothing. Existing output requires confirmation. Folder writes use a temporary
 sibling and atomic replacement with rollback. ZIP creation reuses the
 Workbench deterministic package builder and production validation. The
 Workbench handoff performs static analysis only.
+
+The generated `tests/test_lifecycle.py` file produces one expected,
+non-blocking Wizard advisory. Guided mode presents concise advisories, while
+Advanced mode adds canonical rule provenance without duplicating the same
+production and Workbench warning.
 
 Generated projects remain disabled, untrusted, and operationally inert.
 Installation, digest trust, capability approval, enable, load, and open remain

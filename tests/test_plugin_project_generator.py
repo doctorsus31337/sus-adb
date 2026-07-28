@@ -56,6 +56,26 @@ class PluginProjectGeneratorTests(unittest.TestCase):
             suggest_contribution_id("example.fixture"), "example.fixture.main"
         )
 
+    def test_plugin_id_suggestion_removes_only_exact_publisher_token_prefix(self):
+        fixtures = (
+            ("DoctorSUS", "DoctorSUS wiz", "doctorsus.wiz"),
+            (
+                "DoctorSUS",
+                "DoctorSUS Wizard Live Test",
+                "doctorsus.wizard-live-test",
+            ),
+            ("doctor", "doctors helper", "doctor.doctors-helper"),
+            ("DoctorSUS", "DoctorSUS", "doctorsus.plugin"),
+        )
+        for author, project, expected in fixtures:
+            with self.subTest(author=author, project=project):
+                self.assertEqual(
+                    suggest_plugin_id(author, project), expected
+                )
+                self.assertEqual(
+                    suggest_plugin_id(author, project), expected
+                )
+
     def test_identity_semver_reserved_and_portable_names(self):
         with self.assertRaisesRegex(ValueError, "reserved"):
             project_spec(plugin_id="susadb.skeleton-module")

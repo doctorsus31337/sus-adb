@@ -332,8 +332,12 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
         )
         widget.insert(0, str(value))
         widget.grid(row=row + 1, column=0, sticky="ew", padx=16, pady=(0, 4))
+        previous_value = [str(value)]
         def changed(_event=None):
             current = widget.get()
+            if current == previous_value[0]:
+                return
+            previous_value[0] = current
             if setter:
                 setter(current)
             else:
@@ -427,7 +431,10 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
         platform.grid(row=row + 1, column=0, sticky="ew", padx=16, pady=(0, 4))
         self.page_widgets["platforms"] = platform
         self._next_row = row + 2
-        self._entry("Portable project folder name", "folder_name")
+        self._entry(
+            "Portable project folder name", "folder_name",
+            setter=self.controller.set_folder_name,
+        )
         row = self._next_row
         self._button(
             self.viewport.content, "Suggest Folder Name",
@@ -451,19 +458,49 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
             widget = self.page_widgets.get(attribute)
             if widget:
                 setattr(self.controller.draft, attribute, widget.get())
-        value = self.controller.apply_plugin_id_suggestion()
+        preview = self.controller.preview_plugin_id_suggestion()
+        if preview.requires_confirmation and not self.confirm(
+            "Replace Plugin ID Suggestion",
+            "Current Plugin ID:\n"
+            f"{preview.current}\n\nSuggested Plugin ID:\n"
+            f"{preview.suggested}\n\nApply the suggested ID?",
+        ):
+            self.status.configure(
+                text="Current Plugin ID retained.",
+                text_color=self.theme["muted"],
+            )
+            return False
+        value = self.controller.apply_plugin_id_suggestion(confirmed=True)
         widget = self.page_widgets["plugin_id"]
         widget.delete(0, "end")
         widget.insert(0, value)
         self.status.configure(
             text="Editable suggestion applied; global uniqueness is not claimed."
         )
+        return True
 
     def _suggest_folder(self):
-        value = self.controller.apply_folder_suggestion()
+        preview = self.controller.preview_folder_suggestion()
+        if preview.requires_confirmation and not self.confirm(
+            "Replace Project Folder Suggestion",
+            "Current project folder:\n"
+            f"{preview.current}\n\nSuggested project folder:\n"
+            f"{preview.suggested}\n\nApply the suggested folder name?",
+        ):
+            self.status.configure(
+                text="Custom project folder retained.",
+                text_color=self.theme["muted"],
+            )
+            return False
+        value = self.controller.apply_folder_suggestion(confirmed=True)
         widget = self.page_widgets["folder_name"]
         widget.delete(0, "end")
         widget.insert(0, value)
+        self.status.configure(
+            text="Editable folder suggestion applied.",
+            text_color=self.theme["muted"],
+        )
+        return True
 
     def _contribution(self):
         self._heading(
@@ -613,10 +650,17 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
             self.continue_button.configure(state="disabled")
             return
         spec = plan.spec
+        custom_folder_note = (
+            "Custom folder name retained by operator.\n"
+            if self.controller.custom_folder_retained else ""
+        )
         summary = (
             f"Project: {spec.identity.display_name}\n"
             f"Plugin ID: {spec.identity.plugin_id}\n"
             f"Contribution ID: {spec.contribution.contribution_id}\n"
+            f"Project folder: {spec.identity.folder_name}\n"
+            f"Starter ZIP: {spec.identity.plugin_id}-{spec.identity.version}.zip\n"
+            f"{custom_folder_note}"
             "Plugin API: 1.1\n"
             f"Capabilities: {', '.join(spec.capabilities.requested) or 'None'}\n"
             f"Public imports: app.plugins and documented contribution declaration\n"
@@ -624,7 +668,9 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
             "Static analysis cannot prove future edited code is safe.\n\n"
             "Files:\n" + "\n".join(f"  {value.path}" for value in plan.files)
         )
-        self._text_preview("Review summary and file tree", summary, 250)
+        self.review_summary_widget = self._text_preview(
+            "Review summary and file tree", summary, 280
+        )
         manifest = json.dumps(
             json.loads(plan.file("manifest.json").text), indent=2, sort_keys=True
         )
@@ -637,18 +683,15 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
             row=self._next_row, column=0, sticky="w", padx=16, pady=10
         )
         self._next_row += 1
-        self.validation_label = ctk.CTkLabel(
+        self.validation_area = ctk.CTkFrame(
             self.viewport.content,
-            text=self._validation_text(),
-            text_color=(
-                self.theme["success"]
-                if self.controller.validated else self.theme["muted"]
-            ),
-            anchor="w", justify="left", wraplength=800,
+            fg_color="transparent",
         )
-        self.validation_label.grid(
+        self.validation_area.grid(
             row=self._next_row, column=0, sticky="ew", padx=16, pady=(0, 16)
         )
+        self.validation_area.grid_columnconfigure(0, weight=1)
+        self._render_validation_projection()
 
     def _text_preview(self, label, value, height):
         row = self._label(label)
@@ -669,16 +712,58 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
         if validation is None:
             return "Not validated. No Workbench analysis has run."
         if validation.ok:
-            warning = (
-                "\nWarnings: " + "; ".join(validation.warnings)
-                if validation.warnings and self.mode_provider() == "advanced" else ""
-            )
             return (
                 "Compatible starter project\n"
                 "Static validation does not prove future edited code is safe."
-                + warning
             )
         return "Validation blocked:\n" + "\n".join(validation.errors)
+
+    def _render_validation_projection(self):
+        if not hasattr(self, "validation_area") or not widget_exists(
+            self.validation_area
+        ):
+            return
+        for child in self.validation_area.winfo_children():
+            child.destroy()
+        validation = self.controller.validation
+        self.validation_label = ctk.CTkLabel(
+            self.validation_area,
+            text=self._validation_text(),
+            text_color=(
+                self.theme["success"]
+                if self.controller.validated else (
+                    self.theme["error"] if validation else self.theme["muted"]
+                )
+            ),
+            anchor="w", justify="left", wraplength=780,
+        )
+        self.validation_label.grid(
+            row=0, column=0, sticky="ew", pady=(0, 6)
+        )
+        self.advisory_widgets = []
+        for row, advisory in enumerate(self.controller.advisories(), 1):
+            card = ctk.CTkFrame(
+                self.validation_area,
+                fg_color=self.theme["panel_alt"],
+                border_width=1,
+                border_color=self.theme["gold_dark"],
+            )
+            card.grid(row=row, column=0, sticky="ew", pady=4)
+            card.grid_columnconfigure(0, weight=1)
+            title = advisory.title
+            if self.mode_provider() == "advanced" and advisory.rule_ids:
+                title += " · " + ", ".join(advisory.rule_ids)
+            ctk.CTkLabel(
+                card, text=title, text_color=self.theme["gold"],
+                font=self.theme["header_font"], anchor="w",
+            ).grid(row=0, column=0, sticky="ew", padx=10, pady=(8, 2))
+            detail = ctk.CTkLabel(
+                card, text=advisory.detail, text_color=self.theme["text"],
+                anchor="w", justify="left", wraplength=750,
+            )
+            detail.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 8))
+            self.advisory_widgets.append((card, detail))
+        self.viewport._sync()
 
     def validate_project(self):
         if self.worker is not None:
@@ -816,17 +901,15 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
         if label == "validate":
             if isinstance(result, Exception):
                 self.controller.validation = None
-                text = f"Validation failed: {type(result).__name__}"
+                if hasattr(self, "validation_label") and widget_exists(
+                    self.validation_label
+                ):
+                    self.validation_label.configure(
+                        text=f"Validation failed: {type(result).__name__}",
+                        text_color=self.theme["error"],
+                    )
             else:
-                text = self._validation_text()
-            if hasattr(self, "validation_label"):
-                self.validation_label.configure(
-                    text=text,
-                    text_color=(
-                        self.theme["success"]
-                        if self.controller.validated else self.theme["error"]
-                    ),
-                )
+                self._render_validation_projection()
             self.continue_button.configure(
                 state="normal" if self.controller.validated else "disabled"
             )
