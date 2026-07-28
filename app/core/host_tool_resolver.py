@@ -58,6 +58,12 @@ class HostToolResolver:
         """Retain a successfully diagnosed path for all later execution."""
         self._resolved[name] = str(Path(path).resolve())
 
+    def cached(self, name: str) -> bool | None:
+        """Return cached availability without performing discovery."""
+        if name not in self._resolved:
+            return None
+        return self._resolved[name] is not None
+
     def missing_message(self, name: str, display_name: str | None = None) -> str:
         configured = self.configured.get(name)
         label = display_name or name
