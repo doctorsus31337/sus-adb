@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import time
+import threading
 from types import SimpleNamespace
+from unittest import mock
 
 import customtkinter as ctk
 
@@ -61,6 +63,108 @@ def main():
     bar = app.command_bar
     executed = []
     bar.execute_callback = executed.append
+    output = app.console
+    output_inner = output._textbox
+
+    assert output.read_only
+    assert "sus-companion > Ready." in output.read()
+    transcript_before = output.read()
+    bar._set_entry("")
+    output.focus_for_reading()
+    output_inner.event_generate("<KeyPress-a>")
+    app.update()
+    assert output.read() == transcript_before
+    assert bar.entry.get() == "a"
+    assert executed == []
+    bar._refresh()
+    app.update_idletasks()
+    assert bar.suggestions_open
+    bar.hide_suggestions()
+
+    bar._set_entry("db")
+    bar.entry.icursor(0)
+    output.focus_for_reading()
+    output_inner.event_generate("<KeyPress-a>")
+    app.update()
+    assert bar.entry.get() == "adb"
+    assert output.read() == transcript_before
+    assert executed == []
+
+    output.focus_for_reading()
+    for sequence in (
+        "<BackSpace>", "<Delete>", "<Control-x>", "<Control-v>",
+        "<<Cut>>", "<<Paste>>", "<Button-2>", "<Return>",
+    ):
+        output_inner.event_generate(sequence)
+        app.update_idletasks()
+        assert output.read() == transcript_before, sequence
+    assert executed == []
+    assert output._key_pressed(
+        SimpleNamespace(char="\t", state=0)
+    ) is None
+    assert output._key_pressed(
+        SimpleNamespace(char="c", state=0x0004)
+    ) is None
+
+    output_inner.tag_add("sel", "1.0", "1.8")
+    assert output.copy_selection() == "break"
+    assert output.clipboard_get() == "sus-comp"
+    output_inner.tag_remove("sel", "1.0", "end")
+    output.select_all()
+    assert output_inner.tag_ranges("sel")
+
+    output.append("programmatic line\nmultiline one\nmultiline two\n")
+    assert output.read_only
+    assert output.read().count("programmatic line") == 1
+    with mock.patch.object(
+        ctk.CTkTextbox, "insert", side_effect=RuntimeError("fixture")
+    ):
+        try:
+            output.append("must fail")
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("failed transcript mutation did not raise")
+    assert output.read_only
+
+    for index in range(180):
+        output.append(f"stream fixture {index}\n")
+    app.update_idletasks()
+    output_inner.yview_moveto(.35)
+    initial_yview = output_inner.yview()
+    output.scroll_router._wheel(
+        SimpleNamespace(widget=output_inner, delta=-1, num=None)
+    )
+    touchpad_yview = output_inner.yview()
+    assert touchpad_yview != initial_yview
+    output_inner.focus_set()
+    output_inner.event_generate("<Next>")
+    app.update()
+    page_yview = output_inner.yview()
+    assert page_yview != touchpad_yview
+    output_inner.event_generate("<Up>")
+    app.update()
+
+    saved = []
+    with mock.patch(
+        "app.gui.main_window.FileManager.save_console",
+        side_effect=saved.append,
+    ):
+        app.save_console()
+    assert saved == [output.read()]
+    app.clear_console()
+    assert output.read().startswith("sus-companion > Console cleared.")
+    assert output.read_only
+    app.log("[DEFERRED] synthetic diagnostics")
+    worker = threading.Thread(
+        target=app.terminal._write_line, args=("[STREAM] synthetic line",)
+    )
+    worker.start()
+    worker.join()
+    time.sleep(.03)
+    app.update()
+    assert output.read().count("[DEFERRED] synthetic diagnostics") == 1
+    assert output.read().count("[STREAM] synthetic line") == 1
 
     contexts = (
         CommandCompletionContext(),
@@ -170,6 +274,7 @@ def main():
             bar._refresh()
             app.update_idletasks()
             entry_bounds = bounds(bar.entry)
+            output_bounds = bounds(output)
             dropdown_bounds = bounds(bar.suggestion_panel)
             viewport_before_after = (before, app.console.winfo_height())
             bar.select_index(len(bar.result.suggestions) - 1)
@@ -195,7 +300,8 @@ def main():
             measurements.append(
                 (
                     f"{width}x{height}@{int(scale * 100)}%",
-                    root_bounds, entry_bounds, dropdown_bounds, len(bar.result.suggestions),
+                    root_bounds, entry_bounds, output_bounds, dropdown_bounds,
+                    len(bar.result.suggestions),
                     final_bounds, viewport_before_after, session_bounds,
                 )
             )
@@ -219,11 +325,18 @@ def main():
     bar._set_entry("adb")
     bar._refresh()
     app.update_idletasks()
+    output_yview_before_suggestions = output_inner.yview()
     before = bar.suggestion_scroller.canvas.yview()
     bar.suggestion_scroller.router._wheel(
         SimpleNamespace(widget=bar.suggestion_buttons[-1], delta=-120, num=None)
     )
     assert bar.suggestion_scroller.canvas.yview() != before
+    assert output_inner.yview() == output_yview_before_suggestions
+    suggestion_yview = bar.suggestion_scroller.canvas.yview()
+    output.scroll_router._wheel(
+        SimpleNamespace(widget=output_inner, delta=120, num=None)
+    )
+    assert bar.suggestion_scroller.canvas.yview() == suggestion_yview
     assert bar.suggestion_scroller.router._wheel(
         SimpleNamespace(widget=".native.dialog", delta=-120, num=None)
     ) is None
@@ -244,17 +357,23 @@ def main():
 
     latencies = {count: latency(count) for count in (10, 50, 100, 500)}
     binding_count = bar.binding_count
-    assert binding_count > 0
+    output_binding_count = output.binding_count
+    assert binding_count > 0 and output_binding_count > 0
     bar.close()
     assert bar.callback_count == 0
     assert bar.binding_count == 0
+    output.close()
+    assert output.binding_count == 0
     assert not any(worker.is_alive() for worker in app._background_workers)
     app.shutdown()
     print(
         "command-assistant-smoke=PASS "
         f"measurements={measurements} contexts={context_results} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
-        "callbacks_after_close=0 bindings_after_close=0 "
+        f"output_bindings_before_close={output_binding_count} "
+        f"output_yview={initial_yview}->{touchpad_yview}->{page_yview} "
+        "callbacks_after_close=0 bindings_after_close=0 output_bindings_after_close=0 "
+        "readonly-copy-handoff-output-scroll-isolation-streaming-save-clear=PASS "
         "keyboard-history-related-routing-wheel-compact-scaling-shutdown=PASS"
     )
     return 0

@@ -367,6 +367,27 @@ class CommandBar(GothicFrame):
         self.entry.insert(0, value)
         self.entry.icursor(len(value) if cursor is None else cursor)
 
+    def handoff_character(self, character):
+        """Insert one transcript-misclick character without executing anything."""
+        if self._closed or len(character) != 1 or not character.isprintable():
+            return False
+        inner = getattr(self.entry, "_entry", self.entry)
+        safe_focus(inner)
+        try:
+            if inner.selection_present():
+                start = inner.index("sel.first")
+                end = inner.index("sel.last")
+                self.entry.delete(start, end)
+        except tk.TclError:
+            pass
+        cursor = self.entry.index("insert")
+        self.entry.insert(cursor, character)
+        self.entry.icursor(cursor + 1)
+        if self.history is not None:
+            self.history.reset_navigation()
+        self._schedule_refresh()
+        return True
+
     def _tab(self, _event=None):
         if not self.suggestions_open:
             self._refresh(manual=True)

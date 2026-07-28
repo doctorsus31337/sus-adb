@@ -44,6 +44,7 @@ from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
+from app.gui.console_output import ConsoleOutput
 from app.gui.device_dock import DeviceDock
 from app.gui.gothic_header import GothicHeader
 from app.gui.menu_bar import MenuBar
@@ -52,7 +53,6 @@ from app.gui.splash_screen import SplashScreen
 from app.gui.branding_images import BrandingImages
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
-from app.utils.clipboard import ClipboardManager
 from app.utils.system_info import SystemInfo
 from app.widgets.status_bar import StatusBar
 from app.plugins.contribution_registry import ContributionRegistry
@@ -514,8 +514,10 @@ class SusADBWindow(ctk.CTk):
         )
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
 
-        self.console = ctk.CTkTextbox(
+        self.console = ConsoleOutput(
             console_tab,
+            handoff=self.command_bar.handoff_character,
+            initial_text="sus-companion > Ready.\n\n",
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
             font=self.theme["terminal_font"],
@@ -523,8 +525,6 @@ class SusADBWindow(ctk.CTk):
             border_color=self.theme["border"],
         )
         self.console.grid(row=1, column=0, sticky="nsew")
-        self.console.insert("end", "sus-companion > Ready.\n\n")
-        self.console.bind("<Control-c>", self.copy_console_selection)
         self.startup_profiler.record_interval("console-workspace",started,time.perf_counter())
 
         started=time.perf_counter()
@@ -782,7 +782,7 @@ class SusADBWindow(ctk.CTk):
             return
         if hasattr(self,"logging_manager"):self.logging_manager.log("INFO",text)
         if hasattr(self,"console"):
-            self.console.insert("end", f"{text}\n");self.console.see("end")
+            self.console.append(f"{text}\n")
 
     def execute_command(self, command: str):
         self.terminal.execute(command)
@@ -1804,6 +1804,7 @@ class SusADBWindow(ctk.CTk):
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        if hasattr(self, "console"):self.console.close()
         if hasattr(self, "command_bar"):self.command_bar.close()
         if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
         if self.plugin_project_wizard_window is not None and self.plugin_project_wizard_window.winfo_exists():self.plugin_project_wizard_window.close()
@@ -1824,14 +1825,13 @@ class SusADBWindow(ctk.CTk):
         self.destroy()
 
     def copy_console_selection(self, _event=None):
-        return "break" if ClipboardManager.copy(self.console) else None
+        return self.console.copy_selection()
 
     def clear_console(self):
         if threading.current_thread() is not threading.main_thread():
             self.after(0, self.clear_console)
             return
-        self.console.delete("1.0", "end")
-        self.console.insert("end", "sus-companion > Console cleared.\n\n")
+        self.console.replace("sus-companion > Console cleared.\n\n")
 
     def save_console(self):
-        FileManager.save_console(self.console.get("1.0", "end"))
+        FileManager.save_console(self.console.read())

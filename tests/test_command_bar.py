@@ -66,6 +66,16 @@ class CommandBarContractTests(unittest.TestCase):
         for forbidden in ("resolve(", "refresh_devices(", "subprocess", "manager"):
             self.assertNotIn(forbidden, context)
 
+    def test_transcript_handoff_is_text_only_and_non_executing(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        handoff = source.split("def handoff_character", 1)[1].split(
+            "def _tab", 1
+        )[0]
+        self.assertIn("self.entry.insert(cursor, character)", handoff)
+        self.assertIn("self._schedule_refresh()", handoff)
+        self.assertNotIn("execute_callback", handoff)
+        self.assertNotIn(".run(", handoff)
+
     def test_cheat_sheet_uses_advanced_canonical_registry(self):
         source = (ROOT / "app/gui/cheat_sheet_window.py").read_text(
             encoding="utf-8"
