@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 from app.core.worker import BackgroundWorker
 
 class StorageWorkspacePanel(ctk.CTkFrame):
@@ -12,7 +13,7 @@ class StorageWorkspacePanel(ctk.CTkFrame):
   self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self._tabs();self.refresh()
  def _button(self,p,text,cmd,r,c,warning=False):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"] if warning else self.theme["gold_dark"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold"],height=28);b.grid(row=r,column=c,sticky="ew",padx=3,pady=3);return b
  def _entry(self,p,placeholder):return ctk.CTkEntry(p,placeholder_text=placeholder,fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"],placeholder_text_color=self.theme["muted"])
- def _text(self,p,row):t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word",scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);t.grid(row=row,column=0,sticky="nsew",padx=7,pady=5);return t
+ def _text(self,p,row):t=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word",scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);t.grid(row=row,column=0,sticky="nsew",padx=7,pady=5);return t
  def _header(self):
   h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=5,pady=4);h.grid_columnconfigure(0,weight=1);self.status=ctk.CTkLabel(h,text="Device: none · Target: none · Access: explicit · Preferences: 0 · Databases: closed · Snapshots: 0",text_color=self.theme["gold"],anchor="w",wraplength=760);self.status.grid(row=0,column=0,sticky="ew",padx=8);self._button(h,"Refresh",self.refresh_locations,0,1);self._button(h,"Open ADB Files",self.open_adb,0,2);self._button(h,"Open Script Studio",self.open_scripts,0,3);self.warning=ctk.CTkLabel(h,text="No automatic extraction, reveal, decryption, modification, or upload.",text_color=self.theme["error"],anchor="w",wraplength=900);self.warning.grid(row=1,column=0,columnspan=4,sticky="ew",padx=8,pady=(0,4))
  def _tabs(self):

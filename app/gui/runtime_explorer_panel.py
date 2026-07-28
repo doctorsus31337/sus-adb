@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 
 from app.core.runtime_explorer_models import HookTarget, RuntimeHookSpec
 from app.core.worker import BackgroundWorker
@@ -20,7 +21,7 @@ class RuntimeExplorerPanel(ctk.CTkFrame):
     def _combo(self,p,values):
         x=ctk.CTkComboBox(p,values=values,state="readonly",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],button_color=self.theme["red"],button_hover_color=self.theme["red_hover"],dropdown_fg_color=self.theme["panel_alt"],dropdown_hover_color=self.theme["red"],text_color=self.theme["text"],dropdown_text_color=self.theme["text"]);x.set(values[0]);return x
     def _text(self,p,row=0,col=0,wrap="word"):
-        x=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],font=("Consolas",10),wrap=wrap,scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);x.grid(row=row,column=col,sticky="nsew",padx=4,pady=4);return x
+        x=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],font=("Consolas",10),wrap=wrap,scrollbar_button_color=self.theme["gold_dark"],scrollbar_button_hover_color=self.theme["red_hover"]);x.grid(row=row,column=col,sticky="nsew",padx=4,pady=4);return x
     def _header(self):
         h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=4,pady=3);self.status={}
         fields=(("device","Device"),("target","Target"),("python","Python"),("java","Java"),("server","Server"),("host","Host"),("match","Versions"),("runtime","Runtime"),("hooks","Hooks"),("scope","Scope"))
@@ -51,7 +52,7 @@ class RuntimeExplorerPanel(ctk.CTkFrame):
         observation=ctk.CTkFrame(root,fg_color="transparent");observation.grid(row=2,column=0,columnspan=3,sticky="ew");self.log_args=self._check(observation,"Log arguments",0,0);self.log_return=self._check(observation,"Log return",0,1);self.log_exceptions=self._check(observation,"Log exceptions",0,2);self.java_stack=self._check(observation,"Java stack",0,3,False);self.native_stack=self._check(observation,"Native backtrace",0,4,False)
         settings=ctk.CTkFrame(root,fg_color="transparent");settings.grid(row=3,column=0,columnspan=3,sticky="ew");settings.grid_columnconfigure(4,weight=1);self.rate=self._entry(settings,"Rate limit");self.rate.grid(row=0,column=0);self.rate.insert(0,"0");self.preview_length=self._entry(settings,"Preview length");self.preview_length.grid(row=0,column=1);self.preview_length.insert(0,"512");self.mode=self._combo(settings,["observation-only","replace-argument","replace-return","throw-exception"]);self.mode.grid(row=0,column=2);self.argument_index=self._entry(settings,"Argument index / exception class");self.argument_index.grid(row=0,column=3);self.replacement=self._entry(settings,"Replacement JSON / message");self.replacement.grid(row=0,column=4,sticky="ew")
         self.classification=ctk.CTkLabel(root,text="Classification: Read-only · Scope: runtime-inspection",text_color=self.theme["gold"],anchor="w",wraplength=800);self.classification.grid(row=4,column=0,columnspan=3,sticky="ew",padx=5)
-        self.preview=self._text(root,5,0,"none");self.preview.grid(columnspan=3);self.preview.configure(state="disabled")
+        self.preview=self._text(root,5,0,"none");self.preview.grid(columnspan=3)
         actions=ctk.CTkFrame(root,fg_color="transparent");actions.grid(row=6,column=0,columnspan=3,sticky="ew");
         for i,(name,cmd) in enumerate((("Generate Preview",self.generate_preview),("Copy Generated Script",self.copy_preview),("Save to Script Library",self.save_preview),("Open in Script Studio",self.open_preview),("Load Hook",self.load_hook),("Clear Builder",self.clear_builder))):actions.grid_columnconfigure(i,weight=1);self._button(actions,name,cmd,0,i,name=="Load Hook").configure(width=105)
     def _active(self):
@@ -65,7 +66,7 @@ class RuntimeExplorerPanel(ctk.CTkFrame):
     def _sync(self):
         available=self.service.runtime.adapter.availability();diagnosis=self.service.runtime.last_diagnosis;session=self.service.session_provider();values={"device":getattr(self.device,"serial","None"),"target":getattr(self.target,"identifier",None) or getattr(self.target,"name","None"),"python":(available.value or {}).get("version","Missing") if available.ok else "Missing","java":"Yes" if self.service.discovery.java_available else "No" if self.service.discovery.java_available is False else "Unknown","server":getattr(diagnosis,"server_version","Unknown") or "Unknown","host":(available.value or {}).get("version","Unknown") if available.ok else "Missing","match":"Mismatch" if self.service.runtime.version_warning else "Match" if diagnosis and diagnosis.versions_match else "Unknown","runtime":self.service.runtime.state.value,"hooks":str(len(self.service.active)),"scope":session.state.value if session else "None"}
         for key,value in values.items():self.status[key].configure(text=value)
-    def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",str(text));
+    def _set(self,w,text):w.replace(str(text))
     def _run(self,title,fn,done):
         self.warning.configure(text=f"{title}…",text_color=self.theme["gold"]);BackgroundWorker(fn,callback=lambda result:self.after(0,self._done,title,result,done)).start()
     def _done(self,title,result,done):
@@ -113,7 +114,7 @@ class RuntimeExplorerPanel(ctk.CTkFrame):
     def generate_preview(self):
         try:result=self.service.generate(self._spec())
         except (ValueError,TypeError,json.JSONDecodeError) as exc:self.warning.configure(text=f"Invalid builder value: {exc}",text_color=self.theme["error"]);return
-        if result.ok:self.preview.configure(state="normal");self._set(self.preview,result.value.source);self.preview.configure(state="disabled");spec=self.service.preview_spec;self.classification.configure(text=f"Classification: {spec.classification.title()} · Scope: {spec.required_scope_category}\n{spec.caution}",text_color=self.theme["error"] if spec.changes_runtime else self.theme["gold"])
+        if result.ok:self._set(self.preview,result.value.source);spec=self.service.preview_spec;self.classification.configure(text=f"Classification: {spec.classification.title()} · Scope: {spec.required_scope_category}\n{spec.caution}",text_color=self.theme["error"] if spec.changes_runtime else self.theme["gold"])
         else:self.warning.configure(text=result.error,text_color=self.theme["error"])
     def copy_preview(self):self.copy(self.preview.get("1.0","end-1c"))
     def save_preview(self):self._done("Save generated hook",self.service.save_preview(),lambda _:None)
@@ -125,7 +126,7 @@ class RuntimeExplorerPanel(ctk.CTkFrame):
         self._run("Load runtime hook",lambda:self.service.load_preview(True),lambda _:self.render_active())
     def clear_builder(self):
         for item in (self.hook_owner,self.hook_member,self.hook_overload,self.replacement,self.argument_index):self._replace(item,"")
-        self.service.preview=self.service.preview_spec=self.service.saved_descriptor=None;self.preview.configure(state="normal");self._set(self.preview,"");self.preview.configure(state="disabled")
+        self.service.preview=self.service.preview_spec=self.service.saved_descriptor=None;self._set(self.preview,"")
     def render_active(self):self._set(self.active_view,"\n\n".join(f"{item.spec.display_label}\nLoaded: {item.loaded_at} · Events: {item.event_count}\nLast error: {item.last_error or 'None'}\n{item.spec.caution}" for item in self.service.list_active()));self._sync()
     def unload_selected(self):
         hook_id=next(iter(self.service.active),None)

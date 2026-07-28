@@ -165,6 +165,63 @@ def main():
         )
         runtime.session = object()
         panel.select_descriptor(created.descriptor)
+        readonly_views = (
+            panel.library_details,
+            panel.operation_details,
+            panel.rpc_result,
+            panel.message_view,
+            panel.profile_view,
+        )
+        assert all(view.read_only for view in readonly_views)
+
+        def generate(widget, sequence, **kwargs):
+            widget.focus_force()
+            root.update()
+            widget.event_generate(sequence, **kwargs)
+            root.update()
+
+        details = panel.library_details
+        details_inner = details._textbox
+        details_before = details.get("1.0", "end-1c")
+        for sequence, kwargs in (
+            ("<KeyPress>", {"keysym": "x"}),
+            ("<BackSpace>", {}),
+            ("<Delete>", {}),
+            ("<<Cut>>", {}),
+            ("<<Paste>>", {}),
+            ("<Button-2>", {"x": 5, "y": 5}),
+        ):
+            generate(details_inner, sequence, **kwargs)
+            assert details.get("1.0", "end-1c") == details_before
+        generate(details_inner, "<KeyPress>", keysym="a", state=0x0004)
+        assert details_inner.tag_ranges("sel")
+        generate(details_inner, "<KeyPress>", keysym="c", state=0x0004)
+        assert root.clipboard_get() == details_before
+        details.replace("programmatic replacement")
+        assert details.get("1.0", "end-1c") == "programmatic replacement"
+        assert details.read_only
+        try:
+            details._mutate(
+                lambda: (_ for _ in ()).throw(RuntimeError("fixture"))
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("failed mutation fixture did not raise")
+        assert details.read_only
+        panel._render_details()
+        assert details.get("1.0", "end-1c") == details_before
+        panel.editor.tag_remove("sel", "1.0", "end")
+        generate(details_inner, "<KeyPress>", keysym="a", state=0x0004)
+        assert details_inner.tag_ranges("sel")
+        assert not panel.editor.tag_ranges("sel")
+        panel.workspace.set("Editor")
+        editor_before = panel.editor.get("1.0", "end-1c")
+        panel.editor.insert("end", "\n// editable fixture")
+        assert panel.editor.get("1.0", "end-1c") != editor_before
+        panel.editor.edit_modified(True)
+        panel._editor_modified(None)
+        assert panel.editor_dirty
 
         def descendants(widget):
             for child in widget.winfo_children():
@@ -236,29 +293,73 @@ def main():
         )
         assert "cannot prove third-party" in panel.validation_message.cget("text")
 
-        for width, height in ((1200, 760), (1400, 860)):
-            root.geometry(f"{width}x{height}+0+0")
-            for tab in panel.tabs:
-                panel.workspace.set(tab)
+        measurements = []
+        for scale in (1.0, 1.25, 1.5):
+            ctk.set_widget_scaling(scale)
+            for width, height in (
+                (1100, 700), (1200, 760), (1400, 860), (1600, 900)
+            ):
+                root.geometry(f"{width}x{height}+0+0")
+                for tab in panel.tabs:
+                    panel.workspace.set(tab)
+                    root.update_idletasks()
+                    buttons = [
+                        widget for widget in descendants(panel)
+                        if isinstance(widget, ctk.CTkButton)
+                        and widget.winfo_ismapped()
+                    ]
+                    visible_audited_views = [
+                        view for view in (*readonly_views, panel.editor)
+                        if view.winfo_ismapped()
+                    ]
+                    clipped = [
+                        (
+                            widget.__class__.__name__,
+                            widget.winfo_rootx(),
+                            widget.winfo_rooty(),
+                            widget.winfo_width(),
+                            widget.winfo_height(),
+                        )
+                        for widget in visible_audited_views
+                        if (
+                            widget.winfo_rootx() + widget.winfo_width()
+                            > root.winfo_rootx() + root.winfo_width() + 2
+                            or widget.winfo_rooty() + widget.winfo_height()
+                            > root.winfo_rooty() + root.winfo_height() + 2
+                        )
+                    ]
+                    assert not clipped, (
+                        f"clipped text surfaces at "
+                        f"{width}x{height}@{scale}: {clipped}"
+                    )
+                    assert all(
+                        not str(widget.cget("fg_color")).casefold().startswith(
+                            "blue"
+                        )
+                        for widget in buttons
+                    )
+                panel.workspace.set("Library")
                 root.update_idletasks()
-                buttons = [
-                    widget for widget in descendants(panel)
-                    if isinstance(widget, ctk.CTkButton) and widget.winfo_ismapped()
-                ]
-                assert all(
-                    widget.winfo_rootx() + widget.winfo_width()
-                    <= root.winfo_rootx() + root.winfo_width() + 2
-                    and widget.winfo_rooty() + widget.winfo_height()
-                    <= root.winfo_rooty() + root.winfo_height() + 2
-                    for widget in buttons
+                measurements.append(
+                    (
+                        f"{width}x{height}@{int(scale * 100)}%",
+                        (
+                            panel.library_details.winfo_x(),
+                            panel.library_details.winfo_y(),
+                            panel.library_details.winfo_width(),
+                            panel.library_details.winfo_height(),
+                        ),
+                        panel.library_details._textbox.yview(),
+                    )
                 )
-                assert all(
-                    not str(widget.cget("fg_color")).casefold().startswith("blue")
-                    for widget in buttons
-                )
+        binding_counts = tuple(view.binding_count for view in readonly_views)
         root.destroy()
+        assert all(view.binding_count == 0 for view in readonly_views)
     print(
-        "script-studio-smoke=PASS sizes=1200x760,1400x860 "
+        "script-studio-smoke=PASS "
+        f"measurements={measurements} bindings={binding_counts}->0 "
+        "read-only-details-results-messages-profiles=PASS "
+        "editor-input-dirty-state=PASS "
         "inline-status-errors-advisories-paths-messages=PASS fake-only=PASS"
     )
     return 0

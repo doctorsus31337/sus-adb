@@ -4,6 +4,7 @@ import customtkinter as ctk
 
 from app.core.command_registry import CommandRegistry
 from app.core.app_metadata import METADATA
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class CheatSheetWindow(ctk.CTkToplevel):
@@ -29,7 +30,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
         )
         title.pack(fill="x", padx=12, pady=(12, 8))
 
-        console = ctk.CTkTextbox(
+        console = ReadOnlyTextView(
             self,
             fg_color=theme["terminal_bg"],
             text_color=theme["terminal_text"],
@@ -39,8 +40,7 @@ class CheatSheetWindow(ctk.CTkToplevel):
             wrap="none",
         )
         console.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        console.insert("1.0", CommandRegistry.render_text(advanced=True))
-        console.configure(state="disabled")
+        console.replace(CommandRegistry.render_text(advanced=True))
 
         self.after_idle(self._place_beside_parent)
         self.lift()

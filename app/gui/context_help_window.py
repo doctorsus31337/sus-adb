@@ -6,6 +6,7 @@ import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
 from app.gui.customtkinter_compat import ScopedScrollableFrame
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class ContextHelpWindow(ctk.CTkToplevel):
@@ -125,7 +126,7 @@ class ContextHelpWindow(ctk.CTkToplevel):
         )
 
     def _text(self, parent):
-        widget = ctk.CTkTextbox(
+        widget = ReadOnlyTextView(
             parent,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
@@ -134,15 +135,11 @@ class ContextHelpWindow(ctk.CTkToplevel):
             wrap="word",
             font=("Segoe UI", 12),
         )
-        widget.configure(state="disabled")
         return widget
 
     @staticmethod
     def _set_text(widget, text):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", text)
-        widget.configure(state="disabled")
+        widget.replace(text)
 
     def _search_changed(self):
         self._render_topic_list()

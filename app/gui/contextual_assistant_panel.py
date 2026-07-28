@@ -10,6 +10,7 @@ import customtkinter as ctk
 from app.core.contextual_assistant import ContextualAssistantService
 from app.core.worker import BackgroundWorker
 from app.gui.customtkinter_compat import ScopedScrollableFrame
+from app.gui.read_only_text import ReadOnlyTextView
 from app.widgets.responsive_action_grid import (
     HorizontalNavigationStrip,
     ResponsiveActionGrid,
@@ -152,13 +153,12 @@ class ContextualAssistantPanel(ctk.CTkFrame):
             self.content, self.theme, (), minimum_width=145
         )
         self.actions.grid(row=2, column=0, sticky="ew", padx=8, pady=4)
-        self.output = ctk.CTkTextbox(
+        self.output = ReadOnlyTextView(
             self.content, height=260, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
         self.output.grid(row=3, column=0, sticky="nsew", padx=10, pady=7)
-        self.output.configure(state="disabled")
 
     def _replace_actions(self, items):
         self.actions.destroy()
@@ -377,10 +377,7 @@ class ContextualAssistantPanel(ctk.CTkFrame):
         self.status.configure(text="Copied.", text_color=self.theme["success"])
 
     def _set_output(self, value):
-        self.output.configure(state="normal")
-        self.output.delete("1.0", "end")
-        self.output.insert("1.0", value or "")
-        self.output.configure(state="disabled")
+        self.output.replace(value or "")
 
     def _poll(self):
         if self._closed or self._queue is None:

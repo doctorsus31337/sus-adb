@@ -26,6 +26,7 @@ from app.core.script_profile_runner import ScriptProfileRunner
 from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.customtkinter_compat import ScopedScrollableFrame
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class ScriptStudioPanel(ctk.CTkFrame):
@@ -139,7 +140,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.tag_filter = self._entry(toolbar, "Tag"); self.tag_filter.grid(row=0, column=4, padx=3); self.tag_filter.bind("<KeyRelease>", lambda _e: self._render_library())
         split = ctk.CTkFrame(frame, fg_color="transparent"); split.grid(row=2, column=0, sticky="nsew", padx=8, pady=5); split.grid_rowconfigure(0, weight=1); split.grid_columnconfigure(0, weight=3); split.grid_columnconfigure(1, weight=2)
         self.library_list = ScopedScrollableFrame(split, fg_color=self.theme["terminal_bg"], scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.library_list.grid(row=0, column=0, sticky="nsew", padx=(0, 4)); self.library_list.grid_columnconfigure(0, weight=1)
-        self.library_details = ctk.CTkTextbox(split, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"], wrap="word"); self.library_details.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        self.library_details = ReadOnlyTextView(split, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"], wrap="word"); self.library_details.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
         for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Untrust", self.toggle_trust), ("Open Editor", lambda: self.workspace.set("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
@@ -194,7 +195,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.copy_error_button = self._button(operation_actions, "Copy Error", self.copy_operation_error, 1, 0)
         self.technical_button = self._button(operation_actions, "Technical Details", self.toggle_technical_details, 2, 0)
         self.suggestions_button = self._button(operation_actions, "Compatibility Suggestions", self.show_compatibility_suggestions, 3, 0)
-        self.operation_details = ctk.CTkTextbox(
+        self.operation_details = ReadOnlyTextView(
             self.operation_notice, height=100, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
@@ -233,7 +234,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.post_entry = self._entry(rpc, 'Post JSON message, e.g. {"type":"ping"}'); self.post_entry.grid(row=0, column=0, sticky="ew", padx=8, pady=5); self._button(rpc, "Post Message", self.post_message, 0, 1)
         self.rpc_export = self._entry(rpc, "RPC export name"); self.rpc_export.grid(row=1, column=0, sticky="ew", padx=8, pady=5); self._button(rpc, "List Exports", self.list_exports, 1, 1)
         self.rpc_args = self._entry(rpc, "RPC arguments JSON array"); self.rpc_args.grid(row=2, column=0, sticky="ew", padx=8, pady=5); self._button(rpc, "Call RPC", self.call_rpc, 2, 1)
-        self.rpc_result = ctk.CTkTextbox(rpc, height=120, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_color=self.theme["border"], border_width=1); self.rpc_result.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=8, pady=5); rpc.grid_rowconfigure(3, weight=1)
+        self.rpc_result = ReadOnlyTextView(rpc, height=120, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_color=self.theme["border"], border_width=1); self.rpc_result.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=8, pady=5); rpc.grid_rowconfigure(3, weight=1)
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=7, pady=5)
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
         for i, (text, callback) in enumerate((("Load Selected", self.load_selected), ("Load Multiple", self.load_multiple), ("Unload Selected", self.unload_selected), ("Unload All", self.unload_all), ("Reload Selected", self.reload_selected), ("Reload All", self.reload_all), ("Resume Spawn", lambda: self._run("Resume", self.runtime.resume, self._show_result)))): self._button(actions, text, callback, i // 4, i % 4)
@@ -244,7 +245,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.event_filter = self._combo(bar, ["All", "session", "script-loaded", "script-unloaded", "send", "error", "binary", "rpc-result", "rpc-error", "warning", "lifecycle"], lambda _v: self.render_events()); self.event_filter.grid(row=0, column=0, padx=3)
         self.script_filter = self._entry(bar, "Filter by script"); self.script_filter.grid(row=0, column=1, sticky="ew", padx=3); self.script_filter.bind("<KeyRelease>", lambda _e: self.render_events())
         self.event_status = ctk.CTkLabel(bar, text="0 events", text_color=self.theme["gold"]); self.event_status.grid(row=0, column=2, sticky="e", padx=5)
-        self.message_view = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 12), border_width=1, border_color=self.theme["border"], wrap="word"); self.message_view.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
+        self.message_view = ReadOnlyTextView(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 12), border_width=1, border_color=self.theme["border"], wrap="word"); self.message_view.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=8, pady=5); actions.grid_columnconfigure(0, weight=1)
         self.pause_button = self._button(actions, "Pause Display", self.toggle_pause, 0, 1); self._button(actions, "Clear Display", self.clear_events, 0, 2); self._button(actions, "Copy Selected", self.copy_event, 0, 3); self._button(actions, "Export JSONL", self.export_events, 0, 4); self._button(actions, "Save Binary", self.save_binary, 0, 5)
 
@@ -254,7 +255,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         ctk.CTkLabel(profile_bar, text="Profile:", text_color=self.theme["muted"]).grid(row=0, column=0, padx=3)
         self.profile_selector = self._combo(profile_bar, ["None"], self._profile_selected); self.profile_selector.grid(row=0, column=1, sticky="ew", padx=3)
         self.profile_notice = ctk.CTkLabel(profile_bar, text="Profiles never run automatically when imported.", text_color=self.theme["text"], anchor="e"); self.profile_notice.grid(row=0, column=2, sticky="e", padx=8)
-        self.profile_view = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"]); self.profile_view.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
+        self.profile_view = ReadOnlyTextView(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"]); self.profile_view.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=8, pady=5)
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
         for i, (text, callback) in enumerate((("Create", self.create_profile), ("Save", self.save_profile), ("Duplicate", self.duplicate_profile), ("Delete", self.delete_profile), ("Add Selected Stage", self.add_profile_stage), ("Move Up", lambda: self.move_stage(-1)), ("Move Down", lambda: self.move_stage(1)), ("Enable / Disable", self.toggle_stage), ("Policy", self.toggle_policy), ("Validate", self.validate_profile), ("Run", self.run_profile), ("Cancel", self.profile_runner.cancel), ("Unload", self.unload_profile))): self._button(actions, text, callback, i // 4, i % 4)

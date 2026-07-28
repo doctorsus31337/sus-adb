@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 
 from app.core.device_recovery_service import (
     PUBLIC_PRESETS,
@@ -185,7 +186,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
         self._build_guidance()
 
     def _textbox(self, page, row=1):
-        text = ctk.CTkTextbox(
+        text = ReadOnlyTextView(
             page,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
@@ -362,10 +363,7 @@ class DeviceRecoveryPanel(ctk.CTkFrame):
 
     @staticmethod
     def _set_text(widget, value):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", value)
-        widget.configure(state="disabled")
+        widget.replace(value)
 
     def _set_guidance(self):
         self._set_text(

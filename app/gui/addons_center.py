@@ -16,6 +16,7 @@ from app.gui.customtkinter_compat import (
     safe_focus,
     widget_exists,
 )
+from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.addon_presenter import card_actions,card_spec
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 
@@ -403,14 +404,13 @@ class UpdateReviewDialog(ctk.CTkToplevel):
             self,text="REVIEW OFFICIAL ADDON UPDATE",
             font=("Times New Roman",22,"bold"),text_color=theme["gold"],
         ).grid(row=0,column=0,sticky="ew",padx=18,pady=(16,8))
-        details=ctk.CTkTextbox(
+        details=ReadOnlyTextView(
             self,fg_color=theme["terminal_bg"],
             text_color=theme["terminal_text"],border_width=1,
             border_color=theme["gold_dark"],wrap="word",
         )
         details.grid(row=1,column=0,sticky="nsew",padx=18,pady=6)
-        details.insert("1.0",self._summary())
-        details.configure(state="disabled")
+        details.replace(self._summary())
         bar=ctk.CTkFrame(self,fg_color="transparent")
         bar.grid(row=2,column=0,sticky="ew",padx=18,pady=(8,16))
         bar.grid_columnconfigure(0,weight=1)

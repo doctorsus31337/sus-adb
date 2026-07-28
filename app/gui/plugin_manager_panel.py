@@ -12,6 +12,7 @@ from app.gui.customtkinter_compat import (
     PendingCallbackOwner,ScopedScrollableFrame,clamp_scroll_offset,
     wheel_scroll_units,widget_exists,widget_within,
 )
+from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.plugin_interactive import (
     PluginActionRequest,PluginActionResult,PluginContextBinding,PluginFieldType,
@@ -39,8 +40,8 @@ class PluginSpecFrame(ctk.CTkFrame):
         for view in spec.views:
             body=self.pages.get(view.name)
             if body is None:
-                page=self.tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ctk.CTkTextbox(page,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_color=self.theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);self.pages[view.name]=body
-            text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.configure(state="normal");body.delete("1.0","end");body.insert("1.0",text);body.configure(state="disabled")
+                page=self.tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ReadOnlyTextView(page,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_color=self.theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);self.pages[view.name]=body
+            text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.replace(text)
         if selected in self.pages:self.tabs.set(selected)
         self._render_actions()
     def _render_actions(self):
@@ -200,8 +201,8 @@ class PluginManagerPanel(ctk.CTkFrame):
         for v in self.views.values():v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1);v.grid_rowconfigure(1,weight=1)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
     def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
-    def _text(self,p):t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);t.configure(state="disabled");return t
-    def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",text);w.configure(state="disabled")
+    def _text(self,p):t=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);return t
+    def _set(self,w,text):w.replace(text)
     def _header(self):
         h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=6,pady=4);h.grid_columnconfigure(0,weight=1);self.summary=ctk.CTkLabel(h,text="Plugins",text_color=self.theme["gold"],anchor="w",wraplength=760);self.summary.grid(row=0,column=0,sticky="ew",padx=7);self._button(h,"Refresh",self.refresh,0,1);self._button(h,"Install Local Plugin",self.install,0,2);self._button(h,"Verify All",self.verify_all,0,3);self._button(h,"Disable All Third-Party",self.disable_all,0,4);self.warning=ctk.CTkLabel(h,text="Third-party plugins remain disabled and untrusted by default.",text_color=self.theme["gold"],anchor="w",wraplength=900);self.warning.grid(row=1,column=0,columnspan=5,sticky="ew",padx=7)
     def _build(self):

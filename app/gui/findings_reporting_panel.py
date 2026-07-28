@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 from app.core.security_finding import SecurityFinding,Severity,Confidence,FindingStatus
 from app.core.finding_validator import FindingValidator
 from app.core.report_models import ReportProfile
@@ -24,10 +25,10 @@ class FindingsReportingPanel:
     def _button(self,p,text,cmd,row,col):
         b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30);b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
     def _text(self,p,row=1,readonly=False):
-        t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=row,column=0,sticky="nsew",padx=7,pady=5)
-        if readonly:t.configure(state="disabled")
+        widget_type=ReadOnlyTextView if readonly else ctk.CTkTextbox
+        t=widget_type(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=row,column=0,sticky="nsew",padx=7,pady=5)
         return t
-    def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",text);w.configure(state="disabled")
+    def _set(self,w,text):w.replace(text)
     def _build_findings(self):
         p=self.finding_views["Finding List"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");bar.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(bar,placeholder_text="Search findings",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=3);self._button(bar,"Apply",self.render_findings,0,1);self._button(bar,"Create Finding",self.new_finding,0,2);self.finding_list=self._text(p,1,True)
         p=self.finding_views["Editor"];form=ctk.CTkFrame(p,fg_color="transparent");form.grid(row=0,column=0,sticky="ew");form.grid_columnconfigure(0,weight=1);self.title=ctk.CTkEntry(form,placeholder_text="Finding title",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"]);self.title.grid(row=0,column=0,sticky="ew",padx=3);self.severity=ctk.CTkComboBox(form,values=[v.value for v in Severity],state="readonly",button_color=self.theme["red"],button_hover_color=self.theme["red_hover"],fg_color=self.theme["terminal_bg"],text_color=self.theme["text"]);self.severity.grid(row=0,column=1,padx=3);self.editor=self._text(p,1);actions=ctk.CTkFrame(p,fg_color="transparent");actions.grid(row=2,column=0,sticky="ew");self._button(actions,"Save Draft",self.save_draft,0,0);self._button(actions,"Validate",self.validate,0,1);self._button(actions,"Mark Ready for Review",self.ready,0,2);self.validation=ctk.CTkLabel(p,text="",text_color=self.theme["gold"],anchor="w",wraplength=850);self.validation.grid(row=3,column=0,sticky="ew",padx=7)
