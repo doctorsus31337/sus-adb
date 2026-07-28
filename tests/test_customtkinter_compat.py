@@ -1,5 +1,6 @@
 import contextlib,io,tkinter as tk,unittest
-from app.gui.customtkinter_compat import PendingCallbackOwner,install_scroll_target_guard,safe_focus
+from types import SimpleNamespace
+from app.gui.customtkinter_compat import PendingCallbackOwner,clamp_scroll_offset,install_scroll_target_guard,keyboard_focus_target,safe_focus,wheel_scroll_units
 
 def widget(master=None):
     value=object.__new__(tk.Misc);value.master=master;return value
@@ -49,3 +50,25 @@ class T(unittest.TestCase):
    def winfo_exists(self):return True
    def focus_set(self):raise tk.TclError("bad window path name")
   self.assertFalse(safe_focus(Stale()))
+ def test_keyboard_focus_target_uses_guarded_composed_surface_or_fallback(self):
+  outer=widget();canvas=widget(outer);outer._canvas=canvas
+  outer.winfo_exists=lambda:1;canvas.winfo_exists=lambda:1
+  self.assertIs(keyboard_focus_target(outer),canvas)
+  plain=widget();plain.winfo_exists=lambda:1
+  self.assertIs(keyboard_focus_target(plain),plain)
+  outer._canvas=object()
+  self.assertIs(keyboard_focus_target(outer),outer)
+ def test_windows_and_touchpad_wheel_deltas_are_normalized(self):
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=120)),-3)
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=-240)),6)
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=1)),-3)
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=-1)),3)
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(delta=0)),0)
+ def test_linux_x11_wheel_buttons_are_normalized(self):
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(num=4,delta=0)),-3)
+  self.assertEqual(wheel_scroll_units(SimpleNamespace(num=5,delta=0)),3)
+ def test_scroll_offset_clamps_after_filter_and_resize(self):
+  self.assertEqual(clamp_scroll_offset(900,1800,500),900)
+  self.assertEqual(clamp_scroll_offset(1600,1800,500),1300)
+  self.assertEqual(clamp_scroll_offset(900,400,500),0)
+  self.assertEqual(clamp_scroll_offset(-10,1800,500),0)

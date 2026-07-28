@@ -1,6 +1,6 @@
 # Skeleton Module
 
-This disabled, zero-capability package is a copyable Plugin API v1 learning template. It validates, installs, accepts digest-bound trust, enables, loads, unloads, and uninstalls while doing nothing externally. Read `TUTORIAL.md`, `ARCHITECTURE.md`, `EXERCISES.md`, `TROUBLESHOOTING.md`, and `CHECKLIST.md` before enabling commented examples.
+This disabled, zero-capability package is a Plugin API 1.1 template. Version 0.2.0 demonstrates a host-rendered inert form, explicit no-op validation/refresh, and safe Contextual Help navigation. Opening, discovery, review, installation, enablement, load, and window construction execute no action.
 
 An exported template is an editable developer copy, not the bundled official package. Before installation, change `plugin_id`, the display name, and version; review every requested capability and never reuse `susadb.skeleton-module`. Editing the copy does not change the bundled source, and export does not install, trust, enable, load, or execute it. Install a completed derivative through Plugin Manager when ready.
 

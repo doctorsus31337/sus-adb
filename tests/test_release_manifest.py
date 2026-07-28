@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,18 +22,28 @@ ASSETS = load("release_assets", "packaging/common/release_assets.py")
 
 
 class ReleaseManifestTests(unittest.TestCase):
+    def verify(self, package, archive_contents=None):
+        return VERIFY.verify(
+            package,
+            archive_contents=(
+                VERIFY.PILLOW_RUNTIME_MODULES
+                if archive_contents is None
+                else archive_contents
+            ),
+        )
+
     def make_package(self, directory, selected=None):
-        package = Path(directory) / "sus-companion-1.0.0-rc.2-linux-x86_64"
+        package = Path(directory) / "sus-companion-1.0.0-rc.3-linux-x86_64"
         resources = package / "_internal"
         for relative in ("app/themes", "app/resources", "docs", "plugins/examples/hello_plugin/assets", "packaging"):
             (resources / relative).mkdir(parents=True, exist_ok=True)
         (package / "sus-companion").write_text("executable", encoding="utf-8")
         (package / "sus-adb").write_text("compatibility launcher", encoding="utf-8")
-        (resources / "VERSION").write_text("1.0.0-rc.2\n", encoding="utf-8")
+        (resources / "VERSION").write_text("1.0.0-rc.3\n", encoding="utf-8")
         (resources / "build-info.json").write_text(json.dumps({
             "format": 1,
             "product": "SUS Companion",
-            "version": "1.0.0-rc.2",
+            "version": "1.0.0-rc.3",
             "commit": "1234567890abcdef",
             "short_commit": "1234567890ab",
             "ref": "feature/testing",
@@ -43,12 +54,27 @@ class ReleaseManifestTests(unittest.TestCase):
         (resources / "frida/_frida.abi3.so").write_bytes(b"\x7fELF fixture")
         (resources / "frida-17.15.5.dist-info").mkdir()
         (resources / "frida-17.15.5.dist-info/METADATA").write_text("Name: frida\nVersion: 17.15.5\n", encoding="utf-8")
+        (resources / "pillow-12.1.1.dist-info").mkdir()
+        (resources / "pillow-12.1.1.dist-info/METADATA").write_text("Name: pillow\nVersion: 12.1.1\n", encoding="utf-8")
         official_names=("device_rescue_recovery","rootability_advisor","webview_security_inspector","skeleton_module","frida_tutorial","objection_tutorial")
         for folder,plugin_id in zip(official_names,VERIFY.OFFICIAL_IDS):
             target=resources/"plugins/official"/folder;target.mkdir(parents=True,exist_ok=True);(target/"manifest.json").write_text(json.dumps({"plugin_id":plugin_id,"enabled":False,"requested_capabilities":VERIFY.OFFICIAL_CAPABILITIES[plugin_id]}),encoding="utf-8");(target/"plugin.py").write_text("class Plugin: pass",encoding="utf-8")
         (resources / "app/themes/gothic.json").write_text("{}", encoding="utf-8")
         (resources / "app/resources/startup_tips.json").write_text('{"format":1,"tips":["A local packaged startup tip long enough for validation."]}', encoding="utf-8")
         (resources / "docs/README.md").write_text("docs", encoding="utf-8")
+        shutil.copytree(
+            ROOT / "assets/branding/runtime",
+            resources / "assets/branding/runtime",
+        )
+        (resources / "packaging/linux").mkdir(parents=True)
+        shutil.copy2(
+            ROOT / "packaging/linux/sus-adb.desktop",
+            resources / "packaging/linux/sus-adb.desktop",
+        )
+        shutil.copy2(
+            ROOT / "assets/branding/runtime/sus-companion-icon-256.png",
+            package / "sus-companion.png",
+        )
         manifest = {"enabled": False, "contributed_components": [{"contribution_type": "script-asset"}]}
         (resources / "plugins/examples/hello_plugin/manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         for relative in VERIFY.EXAMPLE_ASSETS:
@@ -68,7 +94,7 @@ class ReleaseManifestTests(unittest.TestCase):
         required = (
             "VERSION", "packaging/pyinstaller/sus_adb.spec",
             "packaging/common/release_assets.py", "packaging/linux/build_linux.sh",
-            "packaging/windows/build_windows.ps1", "release/RC2_CHECKLIST.md",
+            "packaging/windows/build_windows.ps1", "release/RC3_CHECKLIST.md",
         )
         self.assertTrue(all((ROOT / item).exists() for item in required))
         text = (ROOT / "packaging/pyinstaller/sus_adb.spec").read_text()
@@ -86,22 +112,54 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(manifest["build"]["short_commit"], "1234567890ab")
             self.assertIn("_internal/frida/_frida.abi3.so", listed)
             self.assertIn("_internal/frida-17.15.5.dist-info/METADATA", listed)
-            self.assertTrue(VERIFY.verify(package)["ok"])
+            self.assertTrue(self.verify(package)["ok"])
             (package / "_internal/frida/_frida.abi3.so").unlink()
             CHECKSUMS.generate(package)
-            self.assertIn("frida native runtime (*.so)", VERIFY.verify(package)["missing"])
+            self.assertIn("frida native runtime (*.so)", self.verify(package)["missing"])
 
     def test_windows_frida_native_component_is_platform_appropriate(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
-            windows = package.with_name("sus-companion-1.0.0-rc.2-windows-amd64")
+            windows = package.with_name("sus-companion-1.0.0-rc.3-windows-amd64")
             package.rename(windows)
             (windows / "sus-companion").rename(windows / "sus-companion.exe")
             (windows / "sus-adb").rename(windows / "sus-adb.cmd")
             native = windows / "_internal/frida/_frida.abi3.so"
             native.rename(native.with_suffix(".pyd"))
             CHECKSUMS.generate(windows)
-            self.assertTrue(VERIFY.verify(windows)["ok"], VERIFY.verify(windows))
+            self.assertTrue(self.verify(windows)["ok"], self.verify(windows))
+
+    def test_pillow_distribution_metadata_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            (package / "_internal/pillow-12.1.1.dist-info/METADATA").unlink()
+            CHECKSUMS.generate(package)
+            self.assertIn(
+                "Pillow distribution metadata",
+                self.verify(package)["missing"],
+            )
+
+    def test_frozen_pillow_tk_helper_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            modules = tuple(
+                name for name in VERIFY.PILLOW_RUNTIME_MODULES
+                if name != "PIL._tkinter_finder"
+            )
+            result = self.verify(package, modules)
+            self.assertFalse(result["ok"])
+            self.assertIn(
+                "frozen module: PIL._tkinter_finder",
+                result["missing"],
+            )
+            self.assertEqual(
+                result["runtime_modules"]["pillow"],
+                {
+                    "PIL.Image": True,
+                    "PIL.ImageTk": True,
+                    "PIL._tkinter_finder": False,
+                },
+            )
 
     def test_checksum_helper(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -115,7 +173,7 @@ class ReleaseManifestTests(unittest.TestCase):
 
     def test_zero_curated_assets_passes_and_reports_categories(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = VERIFY.verify(self.make_package(directory))
+            result = self.verify(self.make_package(directory))
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["assets"]["core_curated_script_studio_assets"]["count"], 0)
             self.assertEqual(result["assets"]["example_plugin_assets"]["count"], 2)
@@ -130,12 +188,12 @@ class ReleaseManifestTests(unittest.TestCase):
         selected["profiles"] = ("scripts/profiles/reviewed.json",)
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory, selected)
-            result = VERIFY.verify(package)
+            result = self.verify(package)
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["assets"]["core_curated_script_studio_assets"]["count"], 2)
             (package / "_internal/scripts/frida/reviewed.js").unlink()
             CHECKSUMS.generate(package)
-            self.assertFalse(VERIFY.verify(package)["ok"])
+            self.assertFalse(self.verify(package)["ok"])
 
     def test_selection_uses_only_tracked_safe_assets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -164,7 +222,7 @@ class ReleaseManifestTests(unittest.TestCase):
             resources = package / "_internal"
             (resources / VERIFY.EXAMPLE_ASSETS[0]).unlink()
             CHECKSUMS.generate(package)
-            self.assertIn(VERIFY.EXAMPLE_ASSETS[0], VERIFY.verify(package)["missing"])
+            self.assertIn(VERIFY.EXAMPLE_ASSETS[0], self.verify(package)["missing"])
         for relative in ("scripts/frida/custom/flutter_popup_bypass.js", "cache/__pycache__/item.pyc"):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
                 package = self.make_package(directory)
@@ -172,12 +230,12 @@ class ReleaseManifestTests(unittest.TestCase):
                 suspect.parent.mkdir(parents=True, exist_ok=True)
                 suspect.write_text("fixture", encoding="utf-8")
                 CHECKSUMS.generate(package)
-                self.assertFalse(VERIFY.verify(package)["ok"])
+                self.assertFalse(self.verify(package)["ok"])
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
             (package / "_internal/VERSION").unlink()
             CHECKSUMS.generate(package)
-            self.assertIn("VERSION", VERIFY.verify(package)["missing"])
+            self.assertIn("VERSION", self.verify(package)["missing"])
 
 
 if __name__ == "__main__":

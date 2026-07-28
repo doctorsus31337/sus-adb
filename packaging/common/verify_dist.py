@@ -1,7 +1,18 @@
 from __future__ import annotations
 import argparse,hashlib,json
 from pathlib import Path
+from PIL import Image,UnidentifiedImageError
 REQUIRED=("VERSION","build-info.json","app/themes","app/resources/startup_tips.json","docs","plugins/examples","packaging/curated-script-assets.json")
+PILLOW_RUNTIME_MODULES=("PIL.Image","PIL.ImageTk","PIL._tkinter_finder")
+BRANDING_REQUIRED=(
+ "assets/branding/runtime/manifest.json",
+ "assets/branding/runtime/sus-companion-icon-1024.png",
+ "assets/branding/runtime/sus-companion-icon-256.png",
+ "assets/branding/runtime/sus-companion-icon-16.png",
+ "assets/branding/runtime/sus-companion.ico",
+ "assets/branding/runtime/sus-companion-header.png",
+ "assets/branding/runtime/sus-companion-about.png",
+)
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
@@ -22,7 +33,20 @@ def frida_runtime_errors(resource_root,platform_name):
  if not metadata:errors.append("frida distribution metadata")
  if not native:errors.append(f"frida native runtime (*{suffix})")
  return tuple(errors)
-def verify(root):
+def pyinstaller_archive_modules(executable):
+ from PyInstaller.archive.readers import pkg_archive_contents
+ return frozenset(pkg_archive_contents(executable))
+def pillow_runtime_errors(resource_root,executable,archive_contents=None):
+ metadata=tuple(resource_root.glob("pillow-*.dist-info/METADATA"))
+ errors=[] if metadata else ["Pillow distribution metadata"]
+ try:
+  modules=frozenset(archive_contents) if archive_contents is not None else pyinstaller_archive_modules(executable)
+ except (ImportError,OSError,RuntimeError,TypeError,ValueError) as error:
+  errors.append(f"PyInstaller archive inventory ({type(error).__name__})")
+  modules=frozenset()
+ errors.extend(f"frozen module: {name}" for name in PILLOW_RUNTIME_MODULES if name not in modules)
+ return tuple(errors),{name:name in modules for name in PILLOW_RUNTIME_MODULES}
+def verify(root,archive_contents=None):
  root=Path(root);resource_root=root/"_internal" if (root/"_internal").is_dir() else root
  missing=tuple(v for v in REQUIRED if not (resource_root/v).exists())
  preferred=next((p for p in (root/"sus-companion",root/"sus-companion.exe") if p.exists()),None)
@@ -32,11 +56,37 @@ def verify(root):
  if not any(part in root.name for part in ("linux","windows")):missing+=("platform-qualified package name",)
  platform_name="windows" if "windows" in root.name.casefold() or (root/"sus-companion.exe").exists() else "linux"
  missing+=frida_runtime_errors(resource_root,platform_name)
+ pillow_errors,pillow_modules=pillow_runtime_errors(resource_root,preferred,archive_contents)
+ missing+=pillow_errors
+ missing+=tuple(path for path in BRANDING_REQUIRED if not (resource_root/path).is_file())
+ if platform_name=="linux":
+  if not (root/"sus-companion.png").is_file():missing+=("sus-companion.png",)
+  if not (resource_root/"packaging/linux/sus-adb.desktop").is_file():missing+=("packaging/linux/sus-adb.desktop",)
  unexpected=list(name for name in EXCLUDED if any(p.name==name for p in root.rglob("*")))
  unexpected.extend(p.relative_to(root).as_posix() for p in root.rglob("*") if any(part in BLOCKED_PARTS for part in p.relative_to(root).parts) or (p.is_file() and p.suffix.casefold() in {".pyc",".pyo"}))
  example_missing=tuple(path for path in EXAMPLE_ASSETS if not (resource_root/path).is_file())
  missing+=example_missing
  asset_errors=[];core_counts={};core_total=0;build_info={}
+ try:
+  expected_png_sizes={
+   "sus-companion-icon-1024.png":(1024,1024),
+   "sus-companion-icon-256.png":(256,256),
+   "sus-companion-icon-16.png":(16,16),
+   "sus-companion-header.png":(256,256),
+   "sus-companion-about.png":(392,584),
+  }
+  branding_root=resource_root/"assets/branding/runtime"
+  for filename,size in expected_png_sizes.items():
+   with Image.open(branding_root/filename) as image:
+    if image.format!="PNG" or image.size!=size or image.getexif():asset_errors.append(f"branding:{filename}")
+  with Image.open(branding_root/"sus-companion.ico") as image:
+   expected={(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)}
+   if image.format!="ICO" or set(image.info.get("sizes",()))!=expected:asset_errors.append("branding:sus-companion.ico")
+  if platform_name=="linux":
+   with Image.open(root/"sus-companion.png") as image:
+    if image.format!="PNG" or image.size!=(256,256):asset_errors.append("branding:linux-launcher")
+   if "Icon=sus-companion" not in (resource_root/"packaging/linux/sus-adb.desktop").read_text(encoding="utf-8"):asset_errors.append("branding:linux-desktop")
+ except (OSError,ValueError,KeyError,TypeError,UnidentifiedImageError):asset_errors.append("branding-runtime")
  try:
   build_info=json.loads((resource_root/"build-info.json").read_text(encoding="utf-8"))
   build_keys=("product","version","commit","short_commit","ref","timestamp","channel")
@@ -90,8 +140,8 @@ def verify(root):
   if sums!={entry["path"]:entry["sha256"] for entry in manifest["files"]}:integrity.append("SHA256SUMS")
  except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError):integrity.append("release-manifest.json")
  assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"official_bundled_plugins":{"count":len(official),"plugins":official},"installed_third_party_plugins":{"count":0,"packaged":False},"user_created_local_plugins":{"count":0,"packaged":False},"user_local_script_studio_assets":{"count":0,"packaged":False}}
- return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"build":build_info,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
+ return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"build":build_info,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"runtime_modules":{"pillow":pillow_modules},"assets":assets}
 if __name__=="__main__":
- parser=argparse.ArgumentParser();parser.add_argument("root",nargs="?",default="dist/sus-companion-1.0.0-rc.2-linux-x86_64");parser.add_argument("--output");args=parser.parse_args();result=verify(args.root);report=json.dumps(result,indent=2,sort_keys=True)+"\n"
+ parser=argparse.ArgumentParser();parser.add_argument("root",nargs="?",default="dist/sus-companion-1.0.0-rc.3-linux-x86_64");parser.add_argument("--output");args=parser.parse_args();result=verify(args.root);report=json.dumps(result,indent=2,sort_keys=True)+"\n"
  if args.output:Path(args.output).write_text(report,encoding="utf-8")
  print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)

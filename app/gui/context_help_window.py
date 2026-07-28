@@ -226,6 +226,23 @@ class ContextHelpWindow(ctk.CTkToplevel):
         self.deiconify()
         self.lift()
 
+    def show_search(self, query):
+        """Prefill a local topic/glossary search without executing any tool."""
+        self.search.delete(0, "end")
+        self.search.insert(0, str(query or ""))
+        self._search_changed()
+        topics = self.registry.search_topics(self.search.get())
+        if topics:
+            self.show_topic(topics[0].topic_id)
+            self.search.delete(0, "end")
+            self.search.insert(0, str(query or ""))
+            self._render_topic_list()
+            self._render_glossary()
+        self.deiconify()
+        self.lift()
+        self.search.focus_set()
+        return self
+
     def show_glossary(self, entry):
         self._set_text(
             self.glossary_text,

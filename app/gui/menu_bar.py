@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import messagebox
 from app.core.app_metadata import METADATA
 
 MENU_FONT = ("Segoe UI", 13)
@@ -30,11 +29,40 @@ class MenuBar:
         )
         menu.add_cascade(label="Settings", menu=settings_menu)
 
+        view_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
+        view_menu.add_command(label="Home", command=window.go_home)
+        view_menu.add_command(
+            label="Console",
+            command=lambda: window.navigate_workspace("Console"),
+        )
+        view_menu.add_command(
+            label="Instrumentation",
+            command=lambda: window.navigate_workspace("Instrumentation"),
+        )
+        view_menu.add_command(
+            label="Script Studio",
+            command=lambda: window.navigate_workspace("Scripts"),
+        )
+        view_menu.add_command(
+            label="Pentest",
+            command=lambda: window.navigate_workspace("Pentest"),
+        )
+        view_menu.add_separator()
+        view_menu.add_command(
+            label="Command Palette",
+            accelerator="Ctrl+K",
+            command=window.open_command_palette,
+        )
+        menu.add_cascade(label="View", menu=view_menu)
+
         tools_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
         tools_menu.add_command(label="Refresh Devices", command=window.refresh_devices)
         tools_menu.add_command(label="Clear Console", command=window.clear_console)
         tools_menu.add_command(label="Environment Diagnostics", command=window.open_environment_diagnostics)
         tools_menu.add_command(label="Sessions Center", command=window.open_sessions_center)
+        tools_menu.add_command(label="Workflow Recipes", command=window.open_workflow_recipes)
+        tools_menu.add_command(label="Plugin Project Wizard", command=window.open_plugin_project_wizard)
+        tools_menu.add_command(label="Plugin Developer Workbench", command=window.open_plugin_workbench)
         tools_menu.add_command(label="Advanced Command Reference", command=window.open_cheat_sheet)
         tools_menu.add_separator()
         tools_menu.add_command(label="Enter Pentest Workspace", command=window.enter_pentest_workspace)
@@ -82,7 +110,10 @@ class MenuBar:
         menu.add_cascade(label="Help", menu=help_menu)
 
         about_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
-        about_menu.add_command(label=f"About {METADATA.application_name}", command=self.about_box)
+        about_menu.add_command(
+            label=f"About {METADATA.application_name}",
+            command=window.open_about,
+        )
         menu.add_cascade(label="About", menu=about_menu)
 
         window.config(menu=menu)
@@ -99,14 +130,3 @@ class MenuBar:
         self.loaded_menu.delete(0,"end");items=getattr(getattr(self.window,"plugin_registry",None),"list",lambda _type:())("pentest-panel")
         if not items:self.loaded_menu.add_command(label="No loaded addons",state="disabled");return
         for item in items:self.loaded_menu.add_command(label=item.title,command=lambda cid=item.contribution_id:self.window.open_addon_window(cid))
-
-    def about_box(self):
-
-        messagebox.showinfo(
-            f"About {METADATA.application_name}",
-            f"{METADATA.display_version}\n\n"
-            f"{METADATA.descriptor}\n\n"
-            f"{METADATA.build_details}\n\n"
-            "Legacy sus-adb CLI and local storage remain compatible.\n\n"
-            "Created by DoctorSUS & ChatGPT"
-        )

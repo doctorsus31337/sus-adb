@@ -11,7 +11,7 @@ class ContextHelpTests(unittest.TestCase):
         "findings-reports", "plugin-manager", "addons-center",
         "device-rescue", "readiness-advisor", "webview-inspector",
         "sessions-center", "learning-center", "frida-assistant",
-        "objection-assistant",
+        "objection-assistant", "workflow-recipes",
     }
     REQUIRED_TERMS = {
         "ADB", "package", "process", "PID", "attach", "spawn",

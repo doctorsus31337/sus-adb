@@ -8,12 +8,16 @@ from app.core.app_metadata import METADATA
 
 
 class SplashScreen(ctk.CTkToplevel):
-    def __init__(self, parent, theme, tip_catalog, *, width=720, height=430):
+    def __init__(
+        self, parent, theme, tip_catalog, *, branding=None, width=720, height=430
+    ):
         super().__init__(parent)
         self.theme = theme
         self.tip_catalog = tip_catalog
         self._tip_index = 0
         self.overrideredirect(True)
+        if branding is not None:
+            branding.apply_window_icon(self)
         self.configure(fg_color=theme["bg"])
         self.geometry(self._clamped_geometry(width, height))
         self.grid_columnconfigure(0, weight=1)

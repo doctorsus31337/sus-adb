@@ -1,5 +1,6 @@
-# SUS Companion supports CPython 3.11 through 3.13 for RC2.
+# SUS Companion supports CPython 3.11 through 3.13 for RC3.
 customtkinter<6
+pillow<13
 psutil<8
 frida<17.16
 pyinstaller<7

@@ -10,10 +10,11 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
-from app.gui.customtkinter_compat import install_scroll_target_guard
+from app.gui.customtkinter_compat import install_scroll_target_guard, safe_focus
 install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
@@ -39,11 +40,12 @@ from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
-from app.gui.device_panel import DevicePanel
+from app.gui.device_dock import DeviceDock
 from app.gui.gothic_header import GothicHeader
 from app.gui.menu_bar import MenuBar
 from app.gui.lazy_panel_host import LazyPanelHost
 from app.gui.splash_screen import SplashScreen
+from app.gui.branding_images import BrandingImages
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
 from app.utils.clipboard import ClipboardManager
@@ -68,16 +70,23 @@ from app.core.learning_center import LearningCenterService,LearningProgressStore
 from app.core.objection_session_recovery import ObjectionSessionRecovery
 from app.core.startup_profiler import StartupProfiler
 from app.core.startup_tips import load_startup_tips
+from app.core.workspace_navigation import (
+    PrincipalWorkspaceController,
+    WorkspaceHomeState,
+)
 from app.gui.environment_diagnostics_window import EnvironmentDiagnosticsWindow
 from app.gui.first_run_dialog import FirstRunDialog
 from app.gui.crash_dialog import CrashDialog
 from app.gui.addons_center import AddonsCenter
 from app.gui.addon_window_host import AddonWindowHost
+from app.gui.workspace_home import WorkspaceHome
 from app.plugins.host_workspace import HostWorkspaceBinding
 
 
 class SusADBWindow(ctk.CTk):
-    BOOTSTRAP_STAGES = ("Tk root", "Splash", "Configuration", "Core services", "Console shell")
+    BOOTSTRAP_STAGES = (
+        "Tk root", "Splash", "Configuration", "Core services", "Workspace Home"
+    )
 
     def __init__(self, *, startup_origin=None, startup_intervals=()):
         self.startup_profiler = StartupProfiler(origin=startup_origin)
@@ -88,10 +97,14 @@ class SusADBWindow(ctk.CTk):
         self.startup_profiler.record_interval("tk-root", root_started, time.perf_counter())
         self.withdraw()
         self.theme = get_theme()
+        self.branding = BrandingImages()
+        self.branding.apply_window_icon(self, default=True)
         tip_catalog = load_startup_tips()
         splash_started=time.perf_counter()
         with self.startup_profiler.stage("splash-construction"):
-            self.splash = SplashScreen(self, self.theme, tip_catalog)
+            self.splash = SplashScreen(
+                self, self.theme, tip_catalog, branding=self.branding
+            )
             self.splash.paint_now()
         self.startup_profiler.record_interval("first-splash-paint",splash_started,time.perf_counter(),note="Local typographic splash")
         self.splash.update_stage(2, len(self.BOOTSTRAP_STAGES), "Loading local configuration…")
@@ -101,10 +114,15 @@ class SusADBWindow(ctk.CTk):
             self.splash.update_stage(3, len(self.BOOTSTRAP_STAGES), "Preparing core services…", rotate_tip=True)
             with self.startup_profiler.stage("core-services"):
                 self._initialize_core_services()
-            self.splash.update_stage(4, len(self.BOOTSTRAP_STAGES), "Constructing responsive Console shell…")
+            self.splash.update_stage(
+                4, len(self.BOOTSTRAP_STAGES),
+                "Constructing responsive Workspace Home…",
+            )
             with self.startup_profiler.stage("console-shell"):
                 self._initialize_shell()
-            self.splash.update_stage(5, len(self.BOOTSTRAP_STAGES), "Console Home is ready.")
+            self.splash.update_stage(
+                5, len(self.BOOTSTRAP_STAGES), "Workspace Home is ready."
+            )
             responsive_started = time.perf_counter()
             responsive = []
             self.after_idle(lambda: responsive.append(time.perf_counter()))
@@ -113,7 +131,8 @@ class SusADBWindow(ctk.CTk):
             self.update()
             if responsive:
                 self.startup_profiler.record_interval(
-                    "first-responsive-idle", responsive_started, responsive[0], note="Console shell visible"
+                    "first-responsive-idle", responsive_started, responsive[0],
+                    note="Workspace Home shell visible",
                 )
             self.splash.close()
             self.logging_manager.log("INFO", self.startup_profiler.summary())
@@ -229,6 +248,16 @@ class SusADBWindow(ctk.CTk):
         self.learning_center_window=None
         self.addons_center=None
         self.sessions_center=None
+        self.command_palette=None
+        self.command_palette_registry=None
+        self.workflow_recipes_window=None
+        self.workflow_recipe_controller=None
+        self.plugin_workbench_window=None
+        self.plugin_project_wizard_window=None
+        self.plugin_project_wizard_controller=None
+        self.about_window=None
+        self._palette_shortcut_id=None
+        self._palette_shortcut_previous=""
         self.addon_window_host=AddonWindowHost(
             self,self.theme,self.plugin_manager,
             self.app_config.setdefault("addon_windows",{}),
@@ -267,6 +296,9 @@ class SusADBWindow(ctk.CTk):
                     "read-selected-device",
                 ),
             },
+            start_background=self._start_background,
+            ui_dispatch=self.call_on_ui,
+            navigate=self._plugin_navigation,
         )
         self.first_run_dialog = None
         self.crash_dialog = None
@@ -335,7 +367,7 @@ class SusADBWindow(ctk.CTk):
         self.title(METADATA.display_version)
         self.minsize(1100, 700)
         self.configure(fg_color=self.theme["bg"])
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         with self.startup_profiler.stage("menu-bar"):
@@ -375,6 +407,7 @@ class SusADBWindow(ctk.CTk):
         self.gothic_header=GothicHeader(
             self,self.theme,self.go_home,self.open_current_help,
             self.set_interface_mode,self.interface_mode,
+            branding=self.branding,
         )
         self.gothic_header.grid(
             row=0,
@@ -386,33 +419,27 @@ class SusADBWindow(ctk.CTk):
         self.startup_profiler.record_interval("gothic-header",started,time.perf_counter())
 
         started=time.perf_counter()
-        body = ctk.CTkFrame(self, fg_color="transparent")
-        body.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
-        body.grid_columnconfigure(1, weight=1)
-        body.grid_rowconfigure(0, weight=1)
-
-        left = ctk.CTkFrame(
-            body,
-            width=270,
-            fg_color=self.theme["panel"],
-            border_width=1,
-            border_color=self.theme["border"],
-            corner_radius=12,
-        )
-        left.grid(row=0, column=0, sticky="ns", padx=(0, 12))
-        left.grid_propagate(False)
-
-        self.device_panel = DevicePanel(
-            left,
+        self.device_dock = DeviceDock(
+            self,
             self.theme,
             self.refresh_devices,
             self.connect_device,
             self.select_device,
+            expanded=False,
         )
-        self.device_panel.pack(fill="both", expand=True, padx=8, pady=8)
-        self.startup_profiler.record_interval("device-sidebar-shell",started,time.perf_counter())
+        self.device_dock.grid(
+            row=1, column=0, sticky="ew", padx=20, pady=(0, 5)
+        )
+        self.device_panel = self.device_dock
+        self.startup_profiler.record_interval(
+            "device-dock-shell", started, time.perf_counter()
+        )
 
         started=time.perf_counter()
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.grid(row=2, column=0, sticky="nsew", padx=20, pady=(4, 7))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=1)
         self.workspace = ctk.CTkTabview(
             body,
             fg_color=self.theme["panel"],
@@ -426,12 +453,16 @@ class SusADBWindow(ctk.CTk):
             border_color=self.theme["border"],
             command=self._workspace_selected,
         )
-        self.workspace.grid(row=0, column=1, sticky="nsew")
+        self.workspace.grid(row=0, column=0, sticky="nsew")
+        home_tab = self.workspace.add("Home")
         console_tab = self.workspace.add("Console")
         instrumentation_tab = self.workspace.add("Instrumentation")
         scripts_tab = self.workspace.add("Scripts")
         pentest_tab = self.workspace.add("Pentest")
 
+        home_tab.configure(fg_color=self.theme["bg"])
+        home_tab.grid_rowconfigure(0, weight=1)
+        home_tab.grid_columnconfigure(0, weight=1)
         console_tab.configure(fg_color=self.theme["bg"])
         console_tab.grid_rowconfigure(1, weight=1)
         console_tab.grid_columnconfigure(0, weight=1)
@@ -444,6 +475,29 @@ class SusADBWindow(ctk.CTk):
         pentest_tab.configure(fg_color=self.theme["bg"])
         pentest_tab.grid_rowconfigure(0, weight=1)
         pentest_tab.grid_columnconfigure(0, weight=1)
+
+        self.home_panel = WorkspaceHome(
+            home_tab,
+            self.theme,
+            {
+                "Console": lambda: self.navigate_workspace("Console"),
+                "Instrumentation": lambda: self.navigate_workspace(
+                    "Instrumentation"
+                ),
+                "Device Recovery": self.open_device_recovery,
+                "Script Studio": lambda: self.navigate_workspace("Scripts"),
+                "Pentest": lambda: self.navigate_workspace("Pentest"),
+                "Sessions": self.open_sessions_center,
+            },
+            (
+                ("Add-ons Center", self.open_addons_center),
+                ("Learning Center", self.open_learning_center),
+                ("Environment Diagnostics", self.open_environment_diagnostics),
+                ("Contextual Help", self.open_current_help),
+                ("Advanced Command Reference", self.open_cheat_sheet),
+            ),
+        )
+        self.home_panel.grid(row=0, column=0, sticky="nsew")
 
         self.command_bar = CommandBar(console_tab, self.execute_command)
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
@@ -480,9 +534,25 @@ class SusADBWindow(ctk.CTk):
             host.grid(row=0, column=0, sticky="nsew")
         self.startup_profiler.record_interval("lazy-workspace-placeholders",started,time.perf_counter())
 
+        self.workspace_controller = PrincipalWorkspaceController(
+            self._show_principal_workspace,
+            initial=self.app_config.get("navigation", {}).get(
+                "last_principal_workspace", "Home"
+            ),
+        )
+        self.workspace.set(self.workspace_controller.current)
+        self._home_session_unsubscribe = self.interactive_sessions.subscribe(
+            lambda _record: self.call_on_ui(self._refresh_home_state)
+        )
+        self._refresh_home_state()
+        self.bind("<Alt-Home>", self._alt_home, add="+")
+        self.bind("<Escape>", self._escape_shell, add="+")
+        self._install_command_palette_shortcut()
+
         started=time.perf_counter()
         self.status_bar = StatusBar(self, self.theme)
-        self.status_bar.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
+        self.status_bar.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
+        self.status_bar.apply_interface_mode(self.interface_mode)
         self.startup_profiler.record_interval("status-bar",started,time.perf_counter())
 
     def center_window(self):
@@ -583,7 +653,34 @@ class SusADBWindow(ctk.CTk):
         panel.set_selected_target(self.selected_target)
 
     def _workspace_selected(self):
-        self._ensure_workspace(self.workspace.get())
+        name = self.workspace.get()
+        if hasattr(self, "workspace_controller"):
+            self.workspace_controller.adopt(name)
+        self._ensure_workspace(name)
+        if name == "Home":
+            self._refresh_home_state()
+        self._focus_workspace(name)
+
+    def _show_principal_workspace(self, name):
+        if name not in self.workspace._tab_dict:
+            return None
+        if self.workspace.get() != name:
+            self.workspace.set(name)
+        panel = self._ensure_workspace(name)
+        if name == "Home":
+            self._refresh_home_state()
+        self._focus_workspace(name)
+        return panel
+
+    def _focus_workspace(self, name):
+        if name == "Home":
+            self.home_panel.focus_first_card()
+            return
+        if name == "Console":
+            safe_focus(self.command_bar.entry)
+            return
+        panel = self.workspace_hosts.get(name)
+        safe_focus(panel.panel if panel and panel.panel is not None else panel)
 
     def _ensure_workspace(self, name):
         host = self.workspace_hosts.get(name)
@@ -617,8 +714,25 @@ class SusADBWindow(ctk.CTk):
     def open_cheat_sheet(self):
         if self.cheat_sheet is not None and self.cheat_sheet.winfo_exists():
             self.cheat_sheet.lift()
-            return
+            return self.cheat_sheet
         self.cheat_sheet = CheatSheetWindow(self, self.theme)
+        return self.cheat_sheet
+
+    def open_about(self):
+        if self.about_window is not None and self.about_window.winfo_exists():
+            self.about_window.deiconify()
+            self.about_window.lift()
+            safe_focus(self.about_window.close_button)
+            return self.about_window
+        from app.gui.about_window import AboutWindow
+        self.about_window = AboutWindow(
+            self,
+            self.theme,
+            self.branding,
+            help_callback=lambda: self.open_context_help("learning-center"),
+            on_close=lambda: setattr(self, "about_window", None),
+        )
+        return self.about_window
 
     def open_environment_diagnostics(self):
         if self.diagnostics_window is not None and self.diagnostics_window.winfo_exists():
@@ -684,6 +798,8 @@ class SusADBWindow(ctk.CTk):
     def refresh_devices(self):
         if self._device_refresh_active or getattr(self,"_shutdown_started",False):return False
         self._device_refresh_active=True
+        if hasattr(self, "device_dock"):
+            self.device_dock.set_refreshing(True)
         self.status_bar.set_status(adb="Scanning")
         self._publish_host_state("device-refreshing")
         self.log("[ADB] Scanning for devices...")
@@ -700,6 +816,8 @@ class SusADBWindow(ctk.CTk):
 
     def _finish_device_refresh(self,result):
         self._device_refresh_active=False
+        if hasattr(self, "device_dock"):
+            self.device_dock.set_refreshing(False)
         if getattr(self,"_shutdown_started",False):return
         ok,value=result
         if not ok:self.status_bar.set_status(adb="Scan failed");self._publish_host_state("device-refresh-failed");self.log(f"[ADB] Discovery failed: {type(value).__name__}");return
@@ -815,6 +933,8 @@ class SusADBWindow(ctk.CTk):
             interface_mode=self.interface_mode,
             lifecycle=lifecycle,
         ))
+        if hasattr(self, "home_panel"):
+            self._refresh_home_state()
 
     @property
     def interface_mode(self):
@@ -827,6 +947,10 @@ class SusADBWindow(ctk.CTk):
         if not result.ok:self.log(f"[CONFIG] Could not save interface mode: {result.error}")
         if hasattr(self,"gothic_header"):
             self.gothic_header.mode.set(normalized.title())
+        if hasattr(self, "device_dock"):
+            self.device_dock.apply_interface_mode(normalized)
+        if hasattr(self, "status_bar"):
+            self.status_bar.apply_interface_mode(normalized)
         for panel in (
             getattr(self,"instrumentation_panel",None),
             getattr(self,"script_studio_panel",None),
@@ -834,10 +958,566 @@ class SusADBWindow(ctk.CTk):
         ):
             if panel is not None and hasattr(panel,"apply_interface_mode"):
                 panel.apply_interface_mode(normalized)
+        workbench=getattr(self,"plugin_workbench_window",None)
+        if workbench is not None and workbench.winfo_exists():
+            workbench.apply_mode()
+        wizard=getattr(self,"plugin_project_wizard_window",None)
+        if wizard is not None and wizard.winfo_exists():
+            wizard.apply_mode()
         self._publish_host_state("interface-mode-changed")
+
+    def _home_state(self):
+        selected = self.devices.selected
+        target = self.selected_target
+        pentest = getattr(self, "pentest_workspace", None)
+        session = getattr(pentest, "session", None)
+        scope = getattr(session, "scope", None)
+        scripts = getattr(self, "script_studio_panel", None)
+        descriptor = getattr(scripts, "selected", None)
+        active = sum(
+            record.state in self.interactive_sessions.ACTIVE
+            for record in self.interactive_sessions.list()
+        )
+        return WorkspaceHomeState(
+            selected_device=selected.display_name if selected else "",
+            selected_serial=selected.serial if selected else "",
+            selected_target=(
+                getattr(target, "identifier", None)
+                or getattr(target, "name", "")
+                if target else ""
+            ),
+            active_assessment=getattr(scope, "case_name", "") if scope else "",
+            selected_script=getattr(descriptor, "name", "") if descriptor else "",
+            active_sessions=active,
+            interface_mode=self.interface_mode,
+        )
+
+    def _refresh_home_state(self):
+        if (
+            getattr(self, "_shutdown_started", False)
+            or not hasattr(self, "home_panel")
+        ):
+            return
+        self.home_panel.apply_state(self._home_state())
+
+    def _alt_home(self, _event=None):
+        self.go_home()
+        return "break"
+
+    def _escape_shell(self, _event=None):
+        if hasattr(self, "device_dock") and self.device_dock.collapse():
+            return "break"
+        return None
+
+    def _install_command_palette_shortcut(self):
+        sequence="<Control-k>"
+        self._palette_shortcut_previous=self.tk.call("bind","all",sequence)
+        self._palette_shortcut_id=self.bind_all(
+            sequence,self._command_palette_shortcut,add="+"
+        )
+
+    def _remove_command_palette_shortcut(self):
+        if self._palette_shortcut_id is None:return
+        sequence="<Control-k>"
+        self.tk.call(
+            "bind","all",sequence,self._palette_shortcut_previous
+        )
+        try:self.deletecommand(self._palette_shortcut_id)
+        except tk.TclError:pass
+        self._palette_shortcut_id=None
+
+    def _command_palette_shortcut(self,event=None):
+        widget=getattr(event,"widget",None)
+        if event is not None and not isinstance(widget,tk.Misc):
+            return None
+        self.open_command_palette()
+        return "break"
+
+    def _command_palette_commands(self):
+        """Project callbacks and current in-memory state into immutable commands."""
+        from app.core.command_palette import PaletteCommand
+        from app.plugins.addon_presenter import lifecycle_for
+
+        mode=self.interface_mode
+        snapshot=self.host_state.snapshot()
+        selected_target=(
+            snapshot.selected_target.identifier
+            or snapshot.selected_target.name
+            if snapshot.selected_target else "No target selected"
+        )
+        assessment=(
+            snapshot.assessment_scope.case_name
+            if snapshot.assessment_scope else "No active assessment"
+        )
+        active_sessions=sum(
+            record.state in self.interactive_sessions.ACTIVE
+            for record in self.interactive_sessions.list()
+        )
+        selected_script=getattr(
+            getattr(getattr(self,"script_studio_panel",None),"selected",None),
+            "name","",
+        )
+        technical=(
+            f"Device: {snapshot.selected_serial or 'none'} · "
+            f"Target: {selected_target}"
+        )
+
+        def command(
+            command_id,title,description,category,aliases,callback,
+            *,default_rank=100,context="",status="",hint=""
+        ):
+            return PaletteCommand(
+                command_id,title,description,category,tuple(aliases),hint,
+                True,status,command_id,"navigation",context,default_rank,
+                callback,
+            )
+
+        values=[
+            command(
+                "workspace.home","Workspace Home",
+                "Choose a principal workspace without scanning or executing.",
+                "Workspaces",("home","start","workspace home"),
+                lambda _query:self.navigate_workspace("Home"),default_rank=0,
+                context=technical,
+            ),
+            command(
+                "workspace.console","Console",
+                "Open the local one-shot command workspace.",
+                "Workspaces",("terminal","console","command line"),
+                lambda _query:self.navigate_workspace("Console"),default_rank=1,
+                context=technical,
+            ),
+            command(
+                "workspace.instrumentation","Instrumentation",
+                "Open target discovery and explicit observation workflows.",
+                "Workspaces",("instrumentation","frida","targets"),
+                lambda _query:self.navigate_workspace("Instrumentation"),
+                default_rank=2,context=technical,
+            ),
+            command(
+                "workspace.scripts","Script Studio",
+                "Open the local script library and editor.",
+                "Workspaces",("scripts","script studio","frida scripts"),
+                lambda _query:self.navigate_workspace("Scripts"),
+                default_rank=3,
+                context=f"Selected script: {selected_script or 'none'}",
+            ),
+            command(
+                "workspace.pentest","Pentest",
+                "Open the authorized assessment workspace.",
+                "Workspaces",("pentest","assessment","case"),
+                lambda _query:self.navigate_workspace("Pentest"),
+                default_rank=4,context=f"Assessment: {assessment}",
+            ),
+            command(
+                "tool.addons","Add-ons Center",
+                "Browse and manage explicit addon lifecycle steps.",
+                "Tools",("addons","add-ons","plugins","plugin manager"),
+                lambda _query:self.open_addons_center(),default_rank=5,
+            ),
+            command(
+                "tool.sessions","Sessions Center",
+                "Open or focus the session planner; no shell is launched.",
+                "Tools",
+                ("sessions","adb","adb shell","shell","objection sessions"),
+                lambda _query:self.open_sessions_center(),default_rank=6,
+                context=f"Active sessions: {active_sessions}",
+            ),
+            command(
+                "tool.workflow-recipes","Workflow Recipes",
+                "Open guided, operator-reviewed procedures; no step runs automatically.",
+                "Tools",
+                ("recipes","workflows","guided workflow","procedure","checklist"),
+                lambda _query:self.open_workflow_recipes(),default_rank=7,
+                context=technical,
+            ),
+            command(
+                "tool.plugin-project-wizard","Plugin Project Wizard",
+                "Create a documented, statically validated Plugin API 1.1 starter.",
+                "Tools",
+                (
+                    "create plugin","create addon","new module","new addon",
+                    "plugin wizard","addon wizard","module template",
+                    "plugin scaffold","SDK project",
+                ),
+                lambda _query:self.open_plugin_project_wizard(),default_rank=8,
+                context=technical,
+            ),
+            command(
+                "tool.plugin-workbench","Plugin Developer Workbench",
+                "Statically inspect and package a local addon without executing it.",
+                "Tools",
+                (
+                    "plugin developer","addon developer","module checker",
+                    "addon validator","inspect plugin","plugin package",
+                    "package addon","plugin workbench",
+                ),
+                lambda _query:self.open_plugin_workbench(),default_rank=9,
+            ),
+            command(
+                "tool.learning","Learning Center",
+                "Browse local lessons, glossary entries, and bookmarks.",
+                "Help",("learning","learn","tutorials"),
+                lambda _query:self.open_learning_center(),default_rank=7,
+            ),
+            command(
+                "tool.context-help","Contextual Help",
+                "Search local help and glossary content.",
+                "Help",
+                (
+                    "help","context help","glossary","adb","frida","objection",
+                    *(topic.title for topic in self.help_registry.topics()),
+                    *(entry.term for entry in self.help_registry.glossary()),
+                ),
+                lambda query:self.open_context_help_search(query),
+                default_rank=8,context=f"Interface mode: {mode}",
+            ),
+            command(
+                "tool.diagnostics","Environment Diagnostics",
+                "Open local build, environment, and startup diagnostics.",
+                "Tools",("diagnostics","environment","readiness"),
+                lambda _query:self.open_environment_diagnostics(),
+                default_rank=9,
+            ),
+            command(
+                "tool.command-reference","Advanced Command Reference",
+                "Open the read-only local command grimoire.",
+                "Help",
+                ("command reference","reference","grimoire","commands"),
+                lambda _query:self.open_cheat_sheet(),default_rank=10,
+            ),
+        ]
+        installed_names={
+            record[2].name.casefold() for record in self.plugin_manager.records.values()
+        }
+        known_specs=tuple(
+            card.spec for card in getattr(
+                getattr(self,"addons_center",None),"cards",{}
+            ).values()
+            if getattr(card,"spec",None) is not None
+        )
+        known_names={spec.name.casefold() for spec in known_specs}
+        initial_addons=(
+            (
+                "addon.device-rescue","Device Rescue & Recovery",
+                ("rescue","recovery","broken screen","device recovery"),
+            ),
+            (
+                "addon.frida-assistant","Frida Assistant",
+                ("frida","assistant","frida help"),
+            ),
+            (
+                "addon.objection-assistant","Objection Assistant",
+                ("objection","assistant","objection help"),
+            ),
+        )
+        for command_id,title,aliases in initial_addons:
+            if title.casefold() in installed_names|known_names:continue
+            values.append(command(
+                command_id,title,
+                "Open Add-ons Center focused on this available addon.",
+                "Add-ons",aliases,
+                lambda _query,value=title:self.open_addons_center(value),
+                default_rank=20,
+                status="Available through Add-ons Center",
+            ))
+        for plugin_id,record in sorted(self.plugin_manager.records.items()):
+            manifest=record[2]
+            panels=tuple(
+                contribution for contribution
+                in self.plugin_registry.by_plugin(plugin_id)
+                if contribution.contribution_type=="pentest-panel"
+            )
+            lifecycle=lifecycle_for(
+                self.plugin_manager,plugin_id,self.addon_window_host
+            )
+            panel=panels[0] if panels else None
+            openable=panel is not None and lifecycle in {"Loaded","Window Open"}
+            if openable:
+                callback=(
+                    lambda _query,value=panel.contribution_id:
+                    self.open_addon_window(value)
+                )
+                description="Open or focus the existing loaded addon window."
+                status=""
+            else:
+                callback=(
+                    lambda _query,value=manifest.name:
+                    self.open_addons_center(value)
+                )
+                description="Open Add-ons Center at this addon; no lifecycle step runs."
+                status={
+                    "Permissions Required":"Requires permission approval",
+                    "Trust Required":"Requires package trust",
+                    "Installed":"Requires Enable",
+                    "Enabled":"Requires Load",
+                }.get(lifecycle,f"Current state: {lifecycle}")
+            presented=next(
+                (spec for spec in known_specs if spec.plugin_id==plugin_id),
+                None,
+            )
+            if presented is not None and presented.update_available:
+                status=(
+                    "Update review required"
+                    if not presented.update_reviewed else
+                    "Update ready after explicit unload"
+                    if not presented.update_installable else
+                    "Reviewed update ready in Add-ons Center"
+                )
+            values.append(command(
+                f"addon.installed.{plugin_id}",manifest.name,description,
+                "Add-ons",
+                (
+                    manifest.name,plugin_id,
+                    *(component.title for component in panels),
+                ),
+                callback,default_rank=25,status=status,
+                context=(
+                    f"Package: {plugin_id} · State: {lifecycle}"
+                    + (
+                        f" · Contribution: {panel.contribution_id}"
+                        if panel is not None else ""
+                    )
+                ),
+            ))
+        for spec in known_specs:
+            if spec.plugin_id in self.plugin_manager.records:continue
+            values.append(command(
+                f"addon.available.{spec.plugin_id}",spec.name,
+                "Open Add-ons Center focused on this available addon.",
+                "Add-ons",(spec.name,spec.plugin_id),
+                lambda _query,value=spec.name:self.open_addons_center(value),
+                default_rank=30,status="Available · not installed",
+                context=f"Package: {spec.plugin_id} · State: Available",
+            ))
+        for index,recipe in enumerate(self._workflow_recipe_specs()):
+            values.append(command(
+                f"recipe.{recipe.recipe_id}",
+                f"{recipe.title} Recipe",
+                recipe.description,
+                "Recent",
+                (*recipe.aliases,recipe.title,recipe.category,"checklist"),
+                lambda _query,value=recipe.recipe_id:
+                    self.open_workflow_recipes(value),
+                default_rank=40+index,
+                context=(
+                    f"Complexity: {recipe.estimated_complexity} · "
+                    "Focus only; recipe does not start automatically."
+                ),
+            ))
+        return tuple(values)
+
+    def _command_palette_subscriptions(self):
+        def host_subscribe(refresh):
+            return self.host_state.subscribe(
+                "command-palette",
+                lambda _snapshot:self.call_on_ui(refresh),
+                replay=False,
+            )
+        return (
+            host_subscribe,
+            lambda refresh:self.plugin_manager.subscribe(
+                lambda _event,_plugin:self.call_on_ui(refresh)
+            ),
+            lambda refresh:self.plugin_registry.subscribe(
+                lambda _items:self.call_on_ui(refresh)
+            ),
+            lambda refresh:self.interactive_sessions.subscribe(
+                lambda _record:self.call_on_ui(refresh)
+            ),
+        )
+
+    def open_command_palette(self):
+        if (
+            self.command_palette is not None
+            and self.command_palette.winfo_exists()
+        ):
+            return self.command_palette.focus_search()
+        if self.command_palette_registry is None:
+            from app.core.command_palette import CommandPaletteRegistry
+            self.command_palette_registry=CommandPaletteRegistry()
+        from app.gui.command_palette import CommandPaletteWindow
+        self.command_palette=CommandPaletteWindow(
+            self,self.theme,self.command_palette_registry,
+            self._command_palette_commands,
+            subscriptions=self._command_palette_subscriptions(),
+            mode_provider=lambda:self.interface_mode,
+            on_close=lambda:setattr(self,"command_palette",None),
+        )
+        return self.command_palette
+
+    def _workflow_recipe_specs(self):
+        """Return the lazy host-owned recipe catalog."""
+        from app.core.workflow_recipe_catalog import (
+            RecipeHostCallbacks,
+            build_recipe_catalog,
+        )
+        return build_recipe_catalog(RecipeHostCallbacks(
+            focus_device_selector=self._focus_recipe_device_selector,
+            open_environment_diagnostics=self.open_environment_diagnostics,
+            open_installed_applications=self._open_recipe_installed_apps,
+            open_readiness_advisor=lambda:self._open_recipe_addon(
+                "Instrumentation & Root Readiness Advisor",
+                ("rootability.panel","readiness-advisor"),
+            ),
+            open_frida_assistant=lambda:self._open_recipe_addon(
+                "Frida Assistant",
+                ("frida-assistant.panel","frida-assistant"),
+            ),
+            open_frida_sessions=self._open_recipe_frida_sessions,
+            open_device_recovery=lambda:self._open_recipe_addon(
+                "Device Rescue & Recovery",
+                ("device-rescue.panel","device-recovery"),
+            ),
+            open_pentest=lambda:self.navigate_workspace("Pentest"),
+            open_assessment_scope=self.new_assessment_case,
+            open_findings=self.open_findings,
+            open_timeline=self._open_recipe_timeline,
+        ))
+
+    def _focus_recipe_device_selector(self):
+        self.device_dock.expand()
+        safe_focus(self.device_dock.select_button)
+        return self.device_dock
+
+    def _open_recipe_installed_apps(self):
+        panel=self.navigate_workspace("Instrumentation")
+        if panel is not None:
+            panel.internal_workspace.set("Targets")
+            panel.target_sources.set("Installed Applications")
+        return panel
+
+    def _open_recipe_addon(self,title,contribution_ids):
+        contribution=next(
+            (
+                item for item in self.plugin_registry.list("pentest-panel")
+                if item.contribution_id in set(contribution_ids)
+            ),
+            None,
+        )
+        if contribution is not None:
+            return self.open_addon_window(contribution.contribution_id)
+        return self.open_addons_center(title)
+
+    def _open_recipe_frida_sessions(self):
+        center=self.open_sessions_center()
+        center.tabs.set("Frida REPL")
+        return center
+
+    def _open_recipe_timeline(self):
+        panel=self.navigate_workspace("Pentest")
+        if panel is not None:
+            panel._select_section("Timeline")
+        return panel
+
+    def _workflow_recipe_controller(self):
+        if self.workflow_recipe_controller is None:
+            from app.core.workflow_recipes import RecipeRunController
+            self.workflow_recipe_controller=RecipeRunController(
+                self._workflow_recipe_specs()
+            )
+        return self.workflow_recipe_controller
+
+    def open_workflow_recipes(self,recipe_id=None):
+        if (
+            self.workflow_recipes_window is not None
+            and self.workflow_recipes_window.winfo_exists()
+        ):
+            if recipe_id is not None:
+                return self.workflow_recipes_window.focus_recipe(recipe_id)
+            return self.workflow_recipes_window.focus_window()
+        from app.gui.workflow_recipes_window import WorkflowRecipesWindow
+        self.workflow_recipes_window=WorkflowRecipesWindow(
+            self,self.theme,self._workflow_recipe_controller(),self.host_state,
+            mode_provider=lambda:self.interface_mode,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(self,"workflow_recipes_window",None),
+        )
+        if recipe_id is not None:
+            self.workflow_recipes_window.focus_recipe(recipe_id)
+        return self.workflow_recipes_window
+
+    def _plugin_workbench_installed(self):
+        from app.plugins.plugin_workbench import InstalledPluginSnapshot
+        self.plugin_manager.ensure_refreshed()
+        return {
+            plugin_id:InstalledPluginSnapshot.from_inspection(record[1])
+            for plugin_id,record in self.plugin_manager.records.items()
+        }
+
+    def _plugin_workbench_official_identities(self):
+        catalog = self.plugin_manager.catalog
+        if catalog is None:
+            return {}
+        return {
+            item.manifest.plugin_id: any(
+                action.get("kind") == "export-template"
+                for action in item.manifest.addon_ui.get("catalog_actions", ())
+                if isinstance(action, dict)
+            )
+            for item in catalog.list(self.plugin_manager.records)
+        }
+
+    def open_plugin_workbench(self, candidate=None):
+        if (
+            self.plugin_workbench_window is not None
+            and self.plugin_workbench_window.winfo_exists()
+        ):
+            window=self.plugin_workbench_window.focus_window()
+            if candidate is not None:window.select_candidate(candidate)
+            return window
+        from app.gui.plugin_workbench_window import PluginWorkbenchWindow
+        from app.plugins.plugin_workbench import PluginWorkbenchAnalyzer
+        self.plugin_workbench_window=PluginWorkbenchWindow(
+            self,self.theme,
+            lambda cancelled:PluginWorkbenchAnalyzer(
+                installed=self._plugin_workbench_installed(),
+                official_identities=self._plugin_workbench_official_identities(),
+                host_version=METADATA.version,cancelled=cancelled,
+            ),
+            start_background=self._start_background,
+            install_callback=self.plugin_manager.install,
+            mode_provider=lambda:self.interface_mode,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(self,"plugin_workbench_window",None),
+        )
+        if candidate is not None:
+            self.plugin_workbench_window.select_candidate(candidate)
+        return self.plugin_workbench_window
+
+    def open_plugin_project_wizard(self):
+        if (
+            self.plugin_project_wizard_window is not None
+            and self.plugin_project_wizard_window.winfo_exists()
+        ):
+            return self.plugin_project_wizard_window.focus_window()
+        if self.plugin_project_wizard_controller is None:
+            from app.plugins.plugin_project import PluginProjectGenerator
+            from app.plugins.plugin_project_wizard import (
+                PluginProjectWizardController,
+            )
+            self.plugin_project_wizard_controller=PluginProjectWizardController(
+                generator_factory=lambda:PluginProjectGenerator(
+                    self._plugin_workbench_official_identities()
+                )
+            )
+        from app.gui.plugin_project_wizard import PluginProjectWizardWindow
+        self.plugin_project_wizard_window=PluginProjectWizardWindow(
+            self,self.theme,self.plugin_project_wizard_controller,
+            start_background=self._start_background,
+            ui_dispatch=self.call_on_ui,
+            mode_provider=lambda:self.interface_mode,
+            workbench_callback=self.open_plugin_workbench,
+            help_callback=self.open_context_help,
+            on_close=lambda:setattr(
+                self,"plugin_project_wizard_window",None
+            ),
+        )
+        return self.plugin_project_wizard_window
 
     def current_help_topic(self):
         workspace=self.workspace.get() if hasattr(self,"workspace") else "Console"
+        if workspace=="Home":return "console"
         if workspace=="Console":return "console"
         if workspace=="Instrumentation":
             panel=getattr(self,"instrumentation_panel",None)
@@ -871,6 +1551,10 @@ class SusADBWindow(ctk.CTk):
             )
         self.context_help_window.show_topic(topic_id)
         return self.context_help_window
+
+    def open_context_help_search(self,query):
+        window=self.open_context_help(self.current_help_topic())
+        return window.show_search(query)
 
     def _guide_state(self):
         selected=self.devices.selected
@@ -952,19 +1636,52 @@ class SusADBWindow(ctk.CTk):
         return self.open_context_help(destination)
 
     def navigate_workspace(self, name: str):
-        if name in self.workspace._tab_dict:
-            self.workspace.set(name)
-            return self._ensure_workspace(name)
+        return self.workspace_controller.navigate(name)
 
-    def go_home(self):self.navigate_workspace("Console")
+    def _plugin_navigation(self,spec):
+        destinations={
+            "workspace-home":lambda:self.navigate_workspace("Home"),
+            "console":lambda:self.navigate_workspace("Console"),
+            "instrumentation":lambda:self.navigate_workspace("Instrumentation"),
+            "script-studio":lambda:self.navigate_workspace("Scripts"),
+            "pentest":lambda:self.navigate_workspace("Pentest"),
+            "addons-center":self.open_addons_center,
+            "sessions-center":self.open_sessions_center,
+            "workflow-recipes":self.open_workflow_recipes,
+            "environment-diagnostics":self.open_environment_diagnostics,
+            "contextual-help":self.open_context_help,
+            "plugin-workbench":self.open_plugin_workbench,
+        }
+        callback=destinations.get(getattr(spec,"destination",""))
+        if callback is None:return False
+        callback();return True
 
-    def open_addons_center(self):
-        if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.deiconify();self.addons_center.lift();self.addons_center.focus_force();return self.addons_center
+    def go_home(self):return self.navigate_workspace("Home")
+
+    def open_device_recovery(self):
+        contribution = next(
+            (
+                item for item in self.plugin_registry.list("pentest-panel")
+                if item.contribution_id == "device-rescue.panel"
+            ),
+            None,
+        )
+        if contribution is not None:
+            return self.open_addon_window(contribution.contribution_id)
+        return self.open_addons_center()
+
+    def open_addons_center(self,focus_query=None):
+        if self.addons_center is not None and self.addons_center.winfo_exists():
+            self.addons_center.deiconify();self.addons_center.lift()
+            if focus_query is not None:return self.addons_center.focus_addon(focus_query)
+            self.addons_center.focus_force();return self.addons_center
         self.addons_center=AddonsCenter(
             self,self.theme,self.plugin_manager,self.addon_window_host,
             on_close=lambda:setattr(self,"addons_center",None),
             help_callback=self.open_context_help,
-        );return self.addons_center
+        )
+        if focus_query is not None:self.addons_center.focus_addon(focus_query)
+        return self.addons_center
 
     def open_addon_window(self,contribution_id):return self.addon_window_host.open(contribution_id)
 
@@ -1031,12 +1748,21 @@ class SusADBWindow(ctk.CTk):
             except Exception:pass
             self._ui_poll_id=None
         for host in getattr(self,"workspace_hosts",{}).values():host.shutdown()
+        if getattr(self, "_home_session_unsubscribe", None):
+            self._home_session_unsubscribe()
+            self._home_session_unsubscribe = None
         if getattr(self,"splash",None) is not None and self.splash.winfo_exists():self.splash.close()
         if self.addons_center is not None and self.addons_center.winfo_exists():self.addons_center.close()
         if self.sessions_center is not None and self.sessions_center.winfo_exists():self.sessions_center.close()
         if self.context_help_window is not None and self.context_help_window.winfo_exists():self.context_help_window.close()
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
+        if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
+        if self.plugin_project_wizard_window is not None and self.plugin_project_wizard_window.winfo_exists():self.plugin_project_wizard_window.close()
+        if self.plugin_workbench_window is not None and self.plugin_workbench_window.winfo_exists():self.plugin_workbench_window.close()
+        if self.about_window is not None and self.about_window.winfo_exists():self.about_window.close()
+        self._remove_command_palette_shortcut()
         for name,owner,method in (("interactive-sessions",getattr(self,"interactive_sessions",None),"shutdown"),("addon-windows",getattr(self,"addon_window_host",None),"shutdown"),("plugins",getattr(self,"plugin_manager",None),"shutdown"),("reports",getattr(getattr(self,"pentest_workspace",None),"findings_reporting",None),"cleanup"),("apk",getattr(getattr(self,"pentest_workspace",None),"apk_lab",None),"cleanup"),("storage",getattr(getattr(self,"pentest_workspace",None),"storage_workspace",None),"cleanup"),("network",getattr(getattr(self,"pentest_workspace",None),"network_workspace",None),"cleanup"),("runtime",getattr(getattr(self,"pentest_workspace",None),"runtime_explorer",None),"cleanup"),("adb-explorer",getattr(getattr(self,"pentest_workspace",None),"adb_explorer",None),"cleanup")):
             if owner is not None and hasattr(owner,method):life.add_cleanup(name,getattr(owner,method))
         life.add_cleanup("deferred-workers",self._join_background_workers)

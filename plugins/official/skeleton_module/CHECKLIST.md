@@ -4,6 +4,8 @@
 - [ ] Semantic version and supported platforms
 - [ ] Minimal explicit capabilities
 - [ ] No private core/GUI imports
+- [ ] API 1.1 actions are explicit; state changes have confirmation
+- [ ] Unique field/action IDs and bounded runtime-only values
 - [ ] Immutable inputs/results
 - [ ] Selected device/target explicit
 - [ ] Active-scope checks

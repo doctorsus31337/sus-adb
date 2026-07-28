@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass,field
 from enum import Enum
 import re
-from typing import Mapping
+from types import MappingProxyType
+from typing import Any,Mapping
 
 class AddonUIMode(str,Enum):
     EMBEDDED="embedded";WINDOW="window";HYBRID="hybrid"
@@ -14,8 +15,10 @@ class PluginView:
 
 @dataclass(frozen=True,slots=True)
 class PluginPanelSpec:
-    title:str;views:tuple[PluginView,...];status:Mapping[str,str]=field(default_factory=dict)
-    def __post_init__(self):object.__setattr__(self,"status",dict(self.status))
+    title:str;views:tuple[PluginView,...];status:Mapping[str,str]=field(default_factory=dict);actions:tuple[Any,...]=()
+    def __post_init__(self):
+        from app.plugins.plugin_interactive import validate_actions
+        object.__setattr__(self,"views",tuple(self.views));object.__setattr__(self,"status",MappingProxyType(dict(self.status)));object.__setattr__(self,"actions",validate_actions(self.actions))
 
 @dataclass(frozen=True,slots=True)
 class AddonWindowSpec:
@@ -29,6 +32,7 @@ class AddonWindowSpec:
 class AddonCardSpec:
     plugin_id:str;name:str;version:str;description:str;capability_count:int;official:bool=True
     high_impact:bool=False;lifecycle_status:str="Available";diagnostic:str="";preferred_mode:AddonUIMode=AddonUIMode.WINDOW;privacy_note:str="";catalog_actions:tuple["AddonCatalogAction",...]=();openable:bool=True
+    update_available:bool=False;update_reviewed:bool=False;update_installable:bool=False;update_status:str="";candidate_version:str="";post_update_activation:bool=False
     def __post_init__(self):object.__setattr__(self,"preferred_mode",AddonUIMode(self.preferred_mode));object.__setattr__(self,"catalog_actions",tuple(v if isinstance(v,AddonCatalogAction) else AddonCatalogAction(**v) for v in self.catalog_actions))
 
 @dataclass(frozen=True,slots=True)

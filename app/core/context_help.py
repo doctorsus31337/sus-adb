@@ -181,6 +181,65 @@ TOPICS = (
         related=("Add-ons Center",),
     ),
     _topic(
+        "plugin-project-wizard", "Plugin Project Wizard",
+        "Generate a documented, inert Plugin API 1.1 starter from the official Skeleton architecture without executing or installing it.",
+        "Choose stable derivative-owned IDs, keep zero capabilities unless needed, explicitly validate, then choose each output destination.",
+        prerequisites=(
+            "The Wizard creates a starter project; it does not implement operational addon behavior.",
+            "Official `susadb.*` identities are reserved for bundled packages.",
+        ),
+        controls=(
+            "Back and Continue preserve one runtime-only draft and write nothing.",
+            "Validate Project runs production validation and Workbench static analysis explicitly.",
+            "Folder, ZIP, Workbench handoff, and Developer Brief export are separate explicit actions.",
+        ),
+        terminology=(
+            "Plugin and contribution IDs are stable derivative-owned identifiers.",
+            "Capability declarations request exact-digest approval but do not implement an operation.",
+            "Plugin API 1.1 forms and actions are immutable host-rendered contracts.",
+        ),
+        empty_states=(
+            "Opening performs no scan, destination prompt, analysis, generation, or plugin execution.",
+            "Canceling a native destination dialog changes nothing and paths are not remembered.",
+        ),
+        common_errors=(
+            "Static validation cannot prove future edits are safe.",
+            "Private host imports, plugin-owned Tk roots, work-on-open, and unrestricted operations are outside the SDK.",
+            "Normal install, trust, approval, enable, load, and open remain separate after generation.",
+        ),
+        example="Generate a zero-capability starter and give DEVELOPER_BRIEF.md to another LLM with the whole project.",
+        related=("Plugin Developer Workbench", "Plugin Manager"),
+    ),
+    _topic(
+        "plugin-workbench", "Plugin Developer Workbench",
+        "Statically inspect an explicit local plugin folder or ZIP without importing or executing candidate code.",
+        "Select one candidate, review compatibility and privacy findings, then explicitly export a report, build a deterministic ZIP, or forward it to Plugin Manager.",
+        prerequisites=(
+            "Use the Skeleton Module as the documented Plugin API v1 starting point.",
+            "Static analysis cannot prove third-party code is safe.",
+        ),
+        controls=(
+            "Refresh and Cancel control one bounded analysis.",
+            "Build Plugin ZIP excludes development clutter and validates the completed archive.",
+            "Review in Plugin Manager repeats production validation and stores the package disabled.",
+        ),
+        terminology=(
+            "Public SDK imports are app.plugins surfaces.",
+            "Capabilities remain digest-bound and explicitly approved.",
+            "Contribution factories return host-owned immutable presentation data.",
+        ),
+        empty_states=(
+            "Opening the Workbench performs no scan.",
+            "Canceling a file or folder dialog changes nothing.",
+        ),
+        common_errors=(
+            "Candidate tests and lifecycle methods are never executed.",
+            "ZIP traversal, symlinks, collisions, secrets, and oversized content are blocked.",
+        ),
+        example="Analyze an exported Skeleton derivative before explicitly building a ZIP.",
+        related=("Plugin Manager", "Add-ons Center"),
+    ),
+    _topic(
         "addons-center", "Add-ons Center",
         "Discover and manage official add-ons without automatic installation or loading.",
         "Review an add-on card, then perform only the lifecycle transition you intend.",
@@ -250,6 +309,44 @@ TOPICS = (
         "Search by tool or goal, then copy a preview into the appropriate confirmed workflow.",
         terminology=("argv", "placeholder", "endpoint"),
         related=("Console", "Sessions Center"),
+    ),
+    _topic(
+        "workflow-recipes", "Workflow Recipes",
+        "Follow operator-reviewed procedures that reuse existing SUS Companion screens without behaving like automation macros.",
+        "Choose a recipe, start it without running anything, review one classified step, and explicitly run or complete only that step.",
+        prerequisites=(
+            "A device or target is optional until a step explicitly requires one.",
+            "State-changing steps retain all existing scope and confirmation gates.",
+        ),
+        controls=(
+            "Run Check and Open Tool invoke only the visible current step.",
+            "Mark Complete, Retry, Skip, and Continue always require an operator choice.",
+            "Cancel stops the runtime-only run and does not undo completed actions.",
+        ),
+        terminology=(
+            "Informational and manual steps perform no host action.",
+            "Navigation opens an existing destination.",
+            "Read-only runs one bounded check.",
+            "State-changing requires a plain-language preview and confirmation.",
+        ),
+        empty_states=(
+            "Missing device or target state blocks only the dependent step.",
+            "A changed or disconnected bound device pauses the run.",
+        ),
+        common_errors=(
+            "A recipe never adopts a replacement serial or package automatically.",
+            "Restart the recipe explicitly to bind a different device or target.",
+        ),
+        example=(
+            "Open Device Readiness, review the exact serial, run one known-state "
+            "check, then choose Continue."
+        ),
+        related=(
+            "Environment Diagnostics",
+            "Sessions Center",
+            "Device Rescue",
+            "Contextual Help",
+        ),
     ),
 )
 
