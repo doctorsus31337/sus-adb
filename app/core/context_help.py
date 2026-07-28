@@ -181,6 +181,36 @@ TOPICS = (
         related=("Add-ons Center",),
     ),
     _topic(
+        "plugin-project-wizard", "Plugin Project Wizard",
+        "Generate a documented, inert Plugin API 1.1 starter from the official Skeleton architecture without executing or installing it.",
+        "Choose stable derivative-owned IDs, keep zero capabilities unless needed, explicitly validate, then choose each output destination.",
+        prerequisites=(
+            "The Wizard creates a starter project; it does not implement operational addon behavior.",
+            "Official `susadb.*` identities are reserved for bundled packages.",
+        ),
+        controls=(
+            "Back and Continue preserve one runtime-only draft and write nothing.",
+            "Validate Project runs production validation and Workbench static analysis explicitly.",
+            "Folder, ZIP, Workbench handoff, and Developer Brief export are separate explicit actions.",
+        ),
+        terminology=(
+            "Plugin and contribution IDs are stable derivative-owned identifiers.",
+            "Capability declarations request exact-digest approval but do not implement an operation.",
+            "Plugin API 1.1 forms and actions are immutable host-rendered contracts.",
+        ),
+        empty_states=(
+            "Opening performs no scan, destination prompt, analysis, generation, or plugin execution.",
+            "Canceling a native destination dialog changes nothing and paths are not remembered.",
+        ),
+        common_errors=(
+            "Static validation cannot prove future edits are safe.",
+            "Private host imports, plugin-owned Tk roots, work-on-open, and unrestricted operations are outside the SDK.",
+            "Normal install, trust, approval, enable, load, and open remain separate after generation.",
+        ),
+        example="Generate a zero-capability starter and give DEVELOPER_BRIEF.md to another LLM with the whole project.",
+        related=("Plugin Developer Workbench", "Plugin Manager"),
+    ),
+    _topic(
         "plugin-workbench", "Plugin Developer Workbench",
         "Statically inspect an explicit local plugin folder or ZIP without importing or executing candidate code.",
         "Select one candidate, review compatibility and privacy findings, then explicitly export a report, build a deterministic ZIP, or forward it to Plugin Manager.",
