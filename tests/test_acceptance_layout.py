@@ -12,6 +12,48 @@ ROOT = Path(__file__).parents[1]
 
 
 class AcceptanceLayoutTests(unittest.TestCase):
+    def test_script_studio_operations_wrap_without_losing_actions(self):
+        groups = (
+            (
+                "Copy Path",
+                "Open Containing Folder",
+                "Launch in Frida REPL",
+                "Launch Dedicated Session",
+                "Advanced Path",
+            ),
+            (
+                "Save",
+                "Save As",
+                "Revert",
+                "Validate",
+                "Load",
+                "Reload",
+                "Unload",
+                "Prepare Recipe",
+                "Launch Recipe",
+            ),
+            (
+                "Jump to Line",
+                "Copy Error",
+                "Technical Details",
+                "Compatibility Suggestions",
+            ),
+        )
+        for width in (1100, 1200, 1400, 1600):
+            for scale in (1.0, 1.25, 1.5):
+                available = int((width - 24) / scale)
+                for labels in groups:
+                    widths = tuple(
+                        estimated_button_width(label, 94)
+                        for label in labels
+                    )
+                    rows = wrap_widths(available, widths)
+                    self.assertEqual(
+                        tuple(index for row in rows for index in row),
+                        tuple(range(len(labels))),
+                    )
+                    self.assertLessEqual(len(rows), 3)
+
     def test_responsive_rows_fit_at_normal_and_scaled_widths(self):
         labels = (
             "Open Instrumentation",
