@@ -130,6 +130,6 @@ def verify(root):
  assets={"core_curated_script_studio_assets":{"count":core_total,"categories":core_counts},"example_plugin_assets":{"count":sum((resource_root/path).is_file() for path in EXAMPLE_ASSETS)},"official_bundled_plugins":{"count":len(official),"plugins":official},"installed_third_party_plugins":{"count":0,"packaged":False},"user_created_local_plugins":{"count":0,"packaged":False},"user_local_script_studio_assets":{"count":0,"packaged":False}}
  return {"ok":not missing and not unexpected and not integrity and not asset_errors,"root":root.name,"resource_root":resource_root.name,"build":build_info,"missing":missing,"excluded_present":tuple(unexpected),"integrity_errors":tuple(integrity),"asset_errors":tuple(asset_errors),"assets":assets}
 if __name__=="__main__":
- parser=argparse.ArgumentParser();parser.add_argument("root",nargs="?",default="dist/sus-companion-1.0.0-rc.2-linux-x86_64");parser.add_argument("--output");args=parser.parse_args();result=verify(args.root);report=json.dumps(result,indent=2,sort_keys=True)+"\n"
+ parser=argparse.ArgumentParser();parser.add_argument("root",nargs="?",default="dist/sus-companion-1.0.0-rc.3-linux-x86_64");parser.add_argument("--output");args=parser.parse_args();result=verify(args.root);report=json.dumps(result,indent=2,sort_keys=True)+"\n"
  if args.output:Path(args.output).write_text(report,encoding="utf-8")
  print(json.dumps(result,sort_keys=True));raise SystemExit(0 if result["ok"] else 1)

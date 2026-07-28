@@ -277,7 +277,7 @@ class PluginWorkbenchAnalyzer:
     def __init__(
         self, *, sdk_index=None, installed: Mapping[str, InstalledPluginSnapshot] = (),
         official_identities: Mapping[str, bool] = (),
-        host_version="1.0.0-rc.2", cancelled: Callable[[], bool] = lambda: False,
+        host_version="1.0.0-rc.3", cancelled: Callable[[], bool] = lambda: False,
     ):
         self.sdk = sdk_index or PublicSDKIndex.current()
         self.installed = dict(installed)

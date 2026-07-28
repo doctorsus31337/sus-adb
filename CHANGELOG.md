@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0-rc.3
+
+- Redesigned Workspace Home and added the compact selected-device dock,
+  Universal Command Palette, and Workflow Recipes.
+- Completed SUS Companion visual branding and improved Add-ons scrolling,
+  update lifecycle, Device Rescue, Frida, and Objection assistant reliability.
+- Added the Plugin Developer Workbench, Plugin Project Wizard, deterministic
+  addon folder/ZIP generation, and Plugin SDK 1.1 host-rendered interactions.
+- Stabilized isolated GUI acceptance, Linux/Windows packaging, privacy checks,
+  manifests, checksums, and exact-build verification.
+
 ## 1.0.0-rc.2
 
 - Rebranded the workstation as SUS Companion with responsive splash and lazy heavy workspaces.

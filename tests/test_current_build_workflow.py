@@ -15,7 +15,7 @@ class CurrentBuildWorkflowTests(unittest.TestCase):
         self.assertIn("short_commit", workflow)
         self.assertIn("safe_ref", workflow)
         self.assertIn("SUS_ADB_BUILD_CHANNEL: rc", workflow)
-        self.assertIn("default: release/1.0.0-rc.2", workflow)
+        self.assertIn("default: release/1.0.0-rc.3", workflow)
         for forbidden in (
             "actions/create-release", "softprops/action-gh-release",
             "gh release", "git tag", "contents: write",
@@ -41,18 +41,14 @@ class CurrentBuildWorkflowTests(unittest.TestCase):
         self.assertIn("Icon=sus-companion", (ROOT / "packaging/linux/sus-adb.desktop").read_text())
         self.assertIn("sus-companion.png", linux)
 
-    def test_readme_and_publication_plan_identify_rc2(self):
+    def test_readme_and_publication_plan_identify_rc3(self):
         readme = (ROOT / "README.md").read_text()
-        self.assertIn(
-            "Latest tested development branch: "
-            "`feature/operator-experience-reliability`",
-            readme,
-        )
-        self.assertIn("Stable RC branch: `release/1.0.0-rc.2`", readme)
+        self.assertIn("Accepted RC source branch: `release/1.0.0-rc.3`", readme)
+        self.assertIn("Current RC tag: `v1.0.0-rc.3`", readme)
         self.assertIn("python main.py", readme)
-        plan = (ROOT / "release/RC2_PUBLICATION_PLAN.md").read_text()
+        plan = (ROOT / "release/RC3_PUBLICATION_PLAN.md").read_text()
         self.assertIn("explicitly", plan)
-        self.assertIn("release/1.0.0-rc.2", plan)
+        self.assertIn("release/1.0.0-rc.3", plan)
 
     def test_windows_regressions_are_explicit_in_ci(self):
         workflow = (ROOT / ".github/workflows/test.yml").read_text()

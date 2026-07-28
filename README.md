@@ -1,4 +1,4 @@
-# SUS Companion 1.0.0 RC2
+# SUS Companion 1.0.0 RC3
 
 **Android Security & Recovery Workstation**
 
@@ -18,8 +18,8 @@ ADB is required for device workflows. Frida, Objection, Java/APK tools, packet/p
 
 ## Current tested builds
 
-- Latest tested development branch: `feature/operator-experience-reliability`
-- Stable RC branch: `release/1.0.0-rc.2`
+- Accepted RC source branch: `release/1.0.0-rc.3`
+- Current RC tag: `v1.0.0-rc.3`
 
 For a source checkout, select the intended branch or commit and run:
 

@@ -105,7 +105,7 @@ def main():
         about = app.open_about()
         assert app.open_about() is about
         assert about.artwork_image is not None
-        assert "1.0.0-rc.2" in about.version_label.cget("text")
+        assert "1.0.0-rc.3" in about.version_label.cget("text")
         about_measurements = []
         for width, height in ((720, 560), (900, 650), (1100, 760)):
             about.geometry(f"{width}x{height}+0+0")
