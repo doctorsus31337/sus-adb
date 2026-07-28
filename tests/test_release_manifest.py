@@ -22,6 +22,16 @@ ASSETS = load("release_assets", "packaging/common/release_assets.py")
 
 
 class ReleaseManifestTests(unittest.TestCase):
+    def verify(self, package, archive_contents=None):
+        return VERIFY.verify(
+            package,
+            archive_contents=(
+                VERIFY.PILLOW_RUNTIME_MODULES
+                if archive_contents is None
+                else archive_contents
+            ),
+        )
+
     def make_package(self, directory, selected=None):
         package = Path(directory) / "sus-companion-1.0.0-rc.3-linux-x86_64"
         resources = package / "_internal"
@@ -102,10 +112,10 @@ class ReleaseManifestTests(unittest.TestCase):
             self.assertEqual(manifest["build"]["short_commit"], "1234567890ab")
             self.assertIn("_internal/frida/_frida.abi3.so", listed)
             self.assertIn("_internal/frida-17.15.5.dist-info/METADATA", listed)
-            self.assertTrue(VERIFY.verify(package)["ok"])
+            self.assertTrue(self.verify(package)["ok"])
             (package / "_internal/frida/_frida.abi3.so").unlink()
             CHECKSUMS.generate(package)
-            self.assertIn("frida native runtime (*.so)", VERIFY.verify(package)["missing"])
+            self.assertIn("frida native runtime (*.so)", self.verify(package)["missing"])
 
     def test_windows_frida_native_component_is_platform_appropriate(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -117,7 +127,7 @@ class ReleaseManifestTests(unittest.TestCase):
             native = windows / "_internal/frida/_frida.abi3.so"
             native.rename(native.with_suffix(".pyd"))
             CHECKSUMS.generate(windows)
-            self.assertTrue(VERIFY.verify(windows)["ok"], VERIFY.verify(windows))
+            self.assertTrue(self.verify(windows)["ok"], self.verify(windows))
 
     def test_pillow_distribution_metadata_is_required(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -126,7 +136,29 @@ class ReleaseManifestTests(unittest.TestCase):
             CHECKSUMS.generate(package)
             self.assertIn(
                 "Pillow distribution metadata",
-                VERIFY.verify(package)["missing"],
+                self.verify(package)["missing"],
+            )
+
+    def test_frozen_pillow_tk_helper_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = self.make_package(directory)
+            modules = tuple(
+                name for name in VERIFY.PILLOW_RUNTIME_MODULES
+                if name != "PIL._tkinter_finder"
+            )
+            result = self.verify(package, modules)
+            self.assertFalse(result["ok"])
+            self.assertIn(
+                "frozen module: PIL._tkinter_finder",
+                result["missing"],
+            )
+            self.assertEqual(
+                result["runtime_modules"]["pillow"],
+                {
+                    "PIL.Image": True,
+                    "PIL.ImageTk": True,
+                    "PIL._tkinter_finder": False,
+                },
             )
 
     def test_checksum_helper(self):
@@ -141,7 +173,7 @@ class ReleaseManifestTests(unittest.TestCase):
 
     def test_zero_curated_assets_passes_and_reports_categories(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = VERIFY.verify(self.make_package(directory))
+            result = self.verify(self.make_package(directory))
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["assets"]["core_curated_script_studio_assets"]["count"], 0)
             self.assertEqual(result["assets"]["example_plugin_assets"]["count"], 2)
@@ -156,12 +188,12 @@ class ReleaseManifestTests(unittest.TestCase):
         selected["profiles"] = ("scripts/profiles/reviewed.json",)
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory, selected)
-            result = VERIFY.verify(package)
+            result = self.verify(package)
             self.assertTrue(result["ok"], result)
             self.assertEqual(result["assets"]["core_curated_script_studio_assets"]["count"], 2)
             (package / "_internal/scripts/frida/reviewed.js").unlink()
             CHECKSUMS.generate(package)
-            self.assertFalse(VERIFY.verify(package)["ok"])
+            self.assertFalse(self.verify(package)["ok"])
 
     def test_selection_uses_only_tracked_safe_assets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -190,7 +222,7 @@ class ReleaseManifestTests(unittest.TestCase):
             resources = package / "_internal"
             (resources / VERIFY.EXAMPLE_ASSETS[0]).unlink()
             CHECKSUMS.generate(package)
-            self.assertIn(VERIFY.EXAMPLE_ASSETS[0], VERIFY.verify(package)["missing"])
+            self.assertIn(VERIFY.EXAMPLE_ASSETS[0], self.verify(package)["missing"])
         for relative in ("scripts/frida/custom/flutter_popup_bypass.js", "cache/__pycache__/item.pyc"):
             with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
                 package = self.make_package(directory)
@@ -198,12 +230,12 @@ class ReleaseManifestTests(unittest.TestCase):
                 suspect.parent.mkdir(parents=True, exist_ok=True)
                 suspect.write_text("fixture", encoding="utf-8")
                 CHECKSUMS.generate(package)
-                self.assertFalse(VERIFY.verify(package)["ok"])
+                self.assertFalse(self.verify(package)["ok"])
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
             (package / "_internal/VERSION").unlink()
             CHECKSUMS.generate(package)
-            self.assertIn("VERSION", VERIFY.verify(package)["missing"])
+            self.assertIn("VERSION", self.verify(package)["missing"])
 
 
 if __name__ == "__main__":
