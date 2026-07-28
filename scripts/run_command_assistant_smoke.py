@@ -166,6 +166,101 @@ def main():
     assert output.read().count("[DEFERRED] synthetic diagnostics") == 1
     assert output.read().count("[STREAM] synthetic line") == 1
 
+    entry_inner = getattr(bar.entry, "_entry", bar.entry)
+
+    def select_all_entry(sequence="<Control-a>"):
+        entry_inner.focus_set()
+        app.update()
+        if sequence == "<Control-a>":
+            entry_inner.event_generate("<KeyPress>", keysym="a", state=0x0004)
+        elif sequence == "<Control-A>":
+            entry_inner.event_generate("<KeyPress>", keysym="A", state=0x0005)
+        else:
+            entry_inner.event_generate(sequence)
+        app.update()
+        return (
+            entry_inner.selection_present(),
+            entry_inner.index("sel.first") if entry_inner.selection_present() else None,
+            entry_inner.index("sel.last") if entry_inner.selection_present() else None,
+            entry_inner.index("insert"),
+        )
+
+    history_before_select_all = bar.history.entries()
+    bar._set_entry("adb devices -l")
+    selection = select_all_entry()
+    assert selection == (
+        True, 0, len("adb devices -l"), len("adb devices -l")
+    ), selection
+    assert bar.entry.get() == "adb devices -l"
+    assert executed == []
+    assert bar.history.entries() == history_before_select_all
+
+    bar._set_entry("")
+    assert select_all_entry() == (False, None, None, 0)
+    assert bar.entry.get() == ""
+
+    bar._set_entry("adb reboot bootloader")
+    bar._refresh()
+    highlighted = bar.result.suggestions[bar.selected_index]
+    select_all_entry()
+    entry_inner.event_generate("<KeyPress-a>")
+    entry_inner.event_generate("<KeyRelease-a>")
+    time.sleep((bar.REFRESH_DELAY_MS + 20) / 1000)
+    app.update()
+    assert bar.entry.get() == "a"
+    assert bar.suggestions_open
+    assert bar.result.suggestions[0].command_text.startswith("adb")
+    assert highlighted.command_text != bar.entry.get()
+    assert executed == []
+    assert bar.history.entries() == history_before_select_all
+
+    for sequence in ("<BackSpace>", "<Delete>"):
+        bar._set_entry("adb shell")
+        select_all_entry("<Control-A>")
+        entry_inner.event_generate(sequence)
+        app.update_idletasks()
+        assert bar.entry.get() == "", sequence
+        assert executed == []
+
+    output_inner.tag_remove("sel", "1.0", "end")
+    bar._set_entry("entry selection")
+    select_all_entry()
+    assert not output_inner.tag_ranges("sel")
+    entry_inner.selection_clear()
+    output.select_all()
+    assert output_inner.tag_ranges("sel")
+    assert not entry_inner.selection_present()
+    output_inner.tag_remove("sel", "1.0", "end")
+
+    bar._set_entry("")
+    entry_inner.event_generate("<Control-space>")
+    app.update_idletasks()
+    assert bar.suggestions_open
+    bar.hide_suggestions()
+
+    bar._set_entry("copy fixture")
+    select_all_entry()
+    entry_inner.event_generate("<Control-c>")
+    app.update_idletasks()
+    assert bar.clipboard_get() == "copy fixture"
+    entry_inner.event_generate("<Control-x>")
+    app.update_idletasks()
+    assert bar.entry.get() == ""
+    bar.clipboard_clear()
+    bar.clipboard_append("paste fixture")
+    entry_inner.event_generate("<Control-v>")
+    app.update_idletasks()
+    assert bar.entry.get() == "paste fixture"
+    assert executed == []
+
+    macos_sequences = bar._select_all_sequences("darwin")
+    assert macos_sequences == (
+        "<Control-a>", "<Control-A>", "<Command-a>", "<Command-A>",
+    )
+    assert bar._select_all_sequences("linux") == ("<Control-a>", "<Control-A>")
+    bar._set_entry("")
+    bar.hide_suggestions()
+
     contexts = (
         CommandCompletionContext(),
         CommandCompletionContext("USB-SERIAL", "device"),

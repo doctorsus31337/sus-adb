@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 
 import customtkinter as ctk
@@ -234,6 +235,23 @@ class CommandBar(GothicFrame):
             ("<Right>", self._right),
         ):
             self.bindings.bind(target, sequence, callback)
+        for sequence in self._select_all_sequences():
+            self.bindings.bind(target, sequence, self._select_all_command)
+
+    @staticmethod
+    def _select_all_sequences(platform=None):
+        sequences = ["<Control-a>", "<Control-A>"]
+        if (platform or sys.platform) == "darwin":
+            sequences.extend(("<Command-a>", "<Command-A>"))
+        return tuple(sequences)
+
+    def _select_all_command(self, _event=None):
+        """Select the full command and leave its insertion caret at the end."""
+        target = getattr(self.entry, "_entry", self.entry)
+        safe_focus(target)
+        target.selection_range(0, "end")
+        target.icursor("end")
+        return "break"
 
     def _key_released(self, event):
         if getattr(event, "keysym", "") in {
