@@ -3,6 +3,13 @@
 
 from __future__ import annotations
 
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 import customtkinter as ctk
 
 from app.core.workflow_recipes import (
@@ -40,6 +47,15 @@ def click(widget):
     """Generate a real CustomTkinter surface click."""
     surface = getattr(widget, "_label", None) or getattr(widget, "_canvas", widget)
     surface.event_generate("<Button-1>", x=3, y=3)
+
+
+def pump_until(widget, condition, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        widget.update()
+        if condition():
+            return True
+    return bool(condition())
 
 
 def specifications(calls):
@@ -251,9 +267,11 @@ def main():
     click(parts["description"])
     app.update()
     assert window._selected_recipe_id == "fixture-0"
+    window.focus_force()
     parts["focus"].focus_set()
+    assert pump_until(window, lambda: focused_within(parts["focus"]))
     parts["focus"].event_generate("<Return>")
-    app.update()
+    assert pump_until(window, lambda: window._view == "overview")
     assert window._view == "overview"
     assert controller.state.recipe_id == ""
     assert not calls

@@ -3,10 +3,15 @@
 
 from __future__ import annotations
 
+import sys
 import time
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import customtkinter as ctk
 
@@ -24,6 +29,15 @@ def bounds(widget):
         widget.winfo_rootx(), widget.winfo_rooty(),
         widget.winfo_width(), widget.winfo_height(),
     )
+
+
+def pump_until(app, condition, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app.update()
+        if condition():
+            return True
+    return bool(condition())
 
 
 def synthetic_service(count, limit=10, long=False):
@@ -70,9 +84,11 @@ def main():
     assert "sus-companion > Ready." in output.read()
     transcript_before = output.read()
     bar._set_entry("")
+    app.focus_force()
     output.focus_for_reading()
+    assert pump_until(app, lambda: app.focus_get() is output_inner)
     output_inner.event_generate("<KeyPress-a>")
-    app.update()
+    assert pump_until(app, lambda: bar.entry.get() == "a")
     assert output.read() == transcript_before
     assert bar.entry.get() == "a"
     assert executed == []
@@ -80,13 +96,17 @@ def main():
     app.update_idletasks()
     assert bar.suggestions_open
     bar.hide_suggestions()
+    assert pump_until(app, lambda: not bar.suggestion_panel.winfo_ismapped())
 
     bar._set_entry("db")
     bar.entry.icursor(0)
     output.focus_for_reading()
+    assert pump_until(app, lambda: app.focus_get() is output_inner)
     output_inner.event_generate("<KeyPress-a>")
-    app.update()
-    assert bar.entry.get() == "adb"
+    assert pump_until(app, lambda: bar.entry.get() == "adb")
+    assert bar.entry.get() == "adb", (
+        bar.entry.get(), bar.entry.index("insert")
+    )
     assert output.read() == transcript_before
     assert executed == []
 

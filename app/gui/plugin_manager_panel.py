@@ -9,8 +9,8 @@ import customtkinter as ctk
 from app.core.responsive_layout import estimated_button_width
 from app.core.worker import BackgroundWorker
 from app.gui.customtkinter_compat import (
-    PendingCallbackOwner,ScopedScrollableFrame,clamp_scroll_offset,
-    wheel_scroll_units,widget_exists,widget_within,
+    DeterministicTabview,PendingCallbackOwner,ScopedScrollableFrame,
+    clamp_scroll_offset,wheel_scroll_units,widget_exists,widget_within,
 )
 from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.plugin_capabilities import HIGH_IMPACT
@@ -197,8 +197,11 @@ class PluginSpecFrame(ctk.CTkFrame):
 class PluginManagerPanel(ctk.CTkFrame):
     SECTIONS=("Official Catalog","Installed","Active Panels","Details","Permissions","Contributions","Diagnostics","SDK")
     def __init__(self,parent,theme,manager,log,confirm=None):
-        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self._callbacks=PendingCallbackOwner(self);self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
-        for v in self.views.values():v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1);v.grid_rowconfigure(1,weight=1)
+        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self._callbacks=PendingCallbackOwner(self);self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=DeterministicTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
+        for name,v in self.views.items():
+            v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1)
+            v.grid_rowconfigure(0,weight=1 if name in {"Official Catalog","Active Panels","Details","Contributions"} else 0)
+            v.grid_rowconfigure(1,weight=1 if name in {"Installed","Permissions","Diagnostics","SDK"} else 0)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
     def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
     def _text(self,p):t=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);return t
@@ -206,12 +209,13 @@ class PluginManagerPanel(ctk.CTkFrame):
     def _header(self):
         h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=6,pady=4);h.grid_columnconfigure(0,weight=1);self.summary=ctk.CTkLabel(h,text="Plugins",text_color=self.theme["gold"],anchor="w",wraplength=760);self.summary.grid(row=0,column=0,sticky="ew",padx=7);self._button(h,"Refresh",self.refresh,0,1);self._button(h,"Install Local Plugin",self.install,0,2);self._button(h,"Verify All",self.verify_all,0,3);self._button(h,"Disable All Third-Party",self.disable_all,0,4);self.warning=ctk.CTkLabel(h,text="Third-party plugins remain disabled and untrusted by default.",text_color=self.theme["gold"],anchor="w",wraplength=900);self.warning.grid(row=1,column=0,columnspan=5,sticky="ew",padx=7)
     def _build(self):
-        p=self.views["Official Catalog"];self.official_cards=ScopedScrollableFrame(p,fg_color=self.theme["bg"]);self.official_cards.grid(row=0,column=0,rowspan=2,sticky="nsew");self.official_cards.grid_columnconfigure(0,weight=1)
+        p=self.views["Official Catalog"];self.official_cards=ScopedScrollableFrame(p,fg_color=self.theme["bg"]);self.official_cards.grid(row=0,column=0,sticky="nsew");self.official_cards.grid_columnconfigure(0,weight=1);self.official_cards._parent_canvas.bind("<Configure>",self._sync_official_scrollregion,add="+")
         p=self.views["Installed"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");bar.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(bar,placeholder_text="Search plugins",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=3);self._button(bar,"Apply",self.render,0,1)
         for i,(n,c) in enumerate((("Enable",self.enable),("Disable",self.disable),("Load",self.load),("Unload",self.unload),("Reload",self.reload),("Uninstall",self.uninstall)),2):self._button(bar,n,c,0,i)
         self.installed=self._text(p)
-        for name in ("Details","Permissions","Contributions","Diagnostics","SDK"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name])
-        self.active_host=ctk.CTkFrame(self.views["Active Panels"],fg_color=self.theme["bg"]);self.active_host.grid(row=0,column=0,rowspan=2,sticky="nsew");self.active_host.grid_columnconfigure(0,weight=1);self.active_host.grid_rowconfigure(0,weight=1)
+        for name in ("Details","Contributions"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name]);self.__dict__[name.lower()+"_view"].grid_configure(row=0)
+        for name in ("Permissions","Diagnostics","SDK"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name])
+        self.active_host=ctk.CTkFrame(self.views["Active Panels"],fg_color=self.theme["bg"]);self.active_host.grid(row=0,column=0,sticky="nsew");self.active_host.grid_columnconfigure(0,weight=1);self.active_host.grid_rowconfigure(0,weight=1)
         p=self.views["Permissions"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Approve Selected Requested",self.approve,0,0);self._button(bar,"Revoke Trust",self.revoke,0,1)
         p=self.views["Diagnostics"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Copy Diagnostics",lambda:self._copy(self.diagnostics_view.get("1.0","end-1c")),0,0);self._button(bar,"Quarantine",self.quarantine,0,1)
         p=self.views["SDK"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Create Plugin Skeleton",self.skeleton,0,0)
@@ -232,12 +236,30 @@ class PluginManagerPanel(ctk.CTkFrame):
         for child in self.official_cards.winfo_children():child.destroy()
         for row,item in enumerate(self.manager.official()):
             card=ctk.CTkFrame(self.official_cards,fg_color=self.theme["panel_alt"],border_width=1,border_color=self.theme["border"]);card.grid(row=row,column=0,sticky="ew",padx=8,pady=6);card.grid_columnconfigure(0,weight=1);m=item.manifest
-            ctk.CTkLabel(card,text=f"{m.name} · {m.version} · Official",text_color=self.theme["gold"],anchor="w",font=self.theme["header_font"],wraplength=700).grid(row=0,column=0,sticky="ew",padx=10,pady=(8,2));ctk.CTkLabel(card,text=f"{m.description}\nCapabilities: {len(m.requested_capabilities)} · {'Installed' if item.installed else 'Available'}",text_color=self.theme["text"],anchor="w",justify="left",wraplength=760).grid(row=1,column=0,sticky="ew",padx=10,pady=(0,8));button=self._button(card,"Installed" if item.installed else "Install",lambda pid=m.plugin_id,digest=item.package_digest:self.install_official(pid,digest),0,1);button.configure(state="disabled" if item.installed else "normal")
+            title=ctk.CTkLabel(card,text=f"{m.name} · {m.version} · Official",text_color=self.theme["gold"],anchor="w",font=self.theme["header_font"],wraplength=420);title.grid(row=0,column=0,sticky="ew",padx=10,pady=(8,2))
+            description=ctk.CTkLabel(card,text=f"{m.description}\nCapabilities: {len(m.requested_capabilities)} · {'Installed' if item.installed else 'Available'}",text_color=self.theme["text"],anchor="w",justify="left",wraplength=420);description.grid(row=1,column=0,sticky="ew",padx=10,pady=(0,8))
+            button=self._button(card,"Installed" if item.installed else "Install",lambda pid=m.plugin_id,digest=item.package_digest:self.install_official(pid,digest),0,1);button.configure(state="disabled" if item.installed else "normal")
+            card.bind("<Configure>",lambda _event,c=card,t=title,d=description,b=button:self._resize_official_card(c,t,d,b),add="+")
         self._callbacks.schedule_idle(self._restore_official_scroll,offset)
+    def _resize_official_card(self,card,title,description,button):
+        try:
+            logical_width=card._reverse_widget_scaling(card.winfo_width())
+            available=max(180,int(logical_width-float(button.cget("width"))-50))
+            if getattr(title,"_susadb_wraplength",None)==available:return
+            title._susadb_wraplength=available;description._susadb_wraplength=available
+            title.configure(wraplength=available);description.configure(wraplength=available)
+        except (AttributeError,TypeError,ValueError,tk.TclError):return
+    def _sync_official_scrollregion(self,_event=None):
+        canvas=self.official_cards._parent_canvas
+        try:
+            region=canvas.bbox("all")
+            if region:canvas.configure(scrollregion=region)
+        except (AttributeError,tk.TclError):return
     def _restore_official_scroll(self,offset):
         canvas=self.official_cards._parent_canvas
         if not widget_exists(canvas):return
         try:
+            self._sync_official_scrollregion()
             region=tuple(float(value) for value in str(canvas.cget("scrollregion")).split())
             extent=region[3]-region[1] if len(region)==4 else 0.0
             viewport=max(1,canvas.winfo_height())

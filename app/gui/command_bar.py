@@ -278,7 +278,7 @@ class CommandBar(GothicFrame):
             self._refresh_id = None
 
     def _refresh(self, manual=False):
-        self._refresh_id = None
+        self._cancel_refresh()
         if self._closed or not widget_exists(self.entry):
             return "break"
         self.result = self.completion_service.suggest(
@@ -484,6 +484,7 @@ class CommandBar(GothicFrame):
         return "break" if event is not None else None
 
     def hide_suggestions(self):
+        self._cancel_refresh()
         self.suggestion_panel.grid_remove()
         self.result = CommandSuggestionResult()
         self.selected_index = -1

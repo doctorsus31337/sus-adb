@@ -310,6 +310,7 @@ class SusADBWindow(ctk.CTk):
         self.instrumentation_panel = None
         self.script_studio_panel = None
         self._script_editor_focus = False
+        self._pentest_plugin_focus = False
         self.pentest_workspace = None
         self.selected_target = None
         self._deferred_started = False
@@ -615,13 +616,27 @@ class SusADBWindow(ctk.CTk):
         self._script_editor_focus = bool(active)
         self._sync_script_editor_focus()
 
+    def _set_pentest_plugin_focus(self, active):
+        if getattr(self, "_shutdown_started", False):
+            return
+        self._pentest_plugin_focus = bool(active)
+        self._sync_script_editor_focus()
+
     def _sync_script_editor_focus(self):
         if getattr(self, "_shutdown_started", False):
             return
         focused = (
-            self._script_editor_focus
-            and hasattr(self, "workspace")
-            and self.workspace.get() == "Scripts"
+            hasattr(self, "workspace")
+            and (
+                (
+                    self._script_editor_focus
+                    and self.workspace.get() == "Scripts"
+                )
+                or (
+                    self._pentest_plugin_focus
+                    and self.workspace.get() == "Pentest"
+                )
+            )
         )
         for widget in (
             getattr(self, "gothic_header", None),
@@ -680,7 +695,18 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_pentest(self, parent):
         from app.gui.pentest_workspace import PentestWorkspace
-        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler,state_changed_callback=self._publish_host_state,help_callback=self.open_context_help)
+        return PentestWorkspace(
+            parent,self.theme,"workspaces",self.frida_manager,
+            self.frida_runtime,self.tool_diagnostics,self.log,
+            self.navigate_workspace,adb=self.devices.adb,
+            script_library=self.script_library,
+            open_script_callback=self.open_generated_script,
+            plugin_manager=self.plugin_manager,
+            startup_profiler=self.startup_profiler,
+            state_changed_callback=self._publish_host_state,
+            help_callback=self.open_context_help,
+            content_focus_callback=self._set_pentest_plugin_focus,
+        )
 
     def _hydrate_instrumentation(self, panel):
         target=self.selected_target

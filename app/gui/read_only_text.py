@@ -48,6 +48,12 @@ class ReadOnlyTextView(ctk.CTkTextbox):
             ("<<Cut>>", self._block_edit),
             ("<<Paste>>", self._block_edit),
             ("<Button-2>", self._block_edit),
+            ("<Prior>", self._keyboard_scroll),
+            ("<Next>", self._keyboard_scroll),
+            ("<Home>", self._keyboard_scroll),
+            ("<End>", self._keyboard_scroll),
+            ("<Up>", self._keyboard_scroll),
+            ("<Down>", self._keyboard_scroll),
         ):
             self.bindings.bind(inner, sequence, callback)
         super().configure(state="disabled")
@@ -119,6 +125,29 @@ class ReadOnlyTextView(ctk.CTkTextbox):
 
     @staticmethod
     def _block_edit(_event=None):
+        return "break"
+
+    def _keyboard_scroll(self, event):
+        if self._closed or not widget_exists(self._textbox):
+            return None
+        keysym = getattr(event, "keysym", "")
+        try:
+            if keysym == "Prior":
+                self._textbox.yview_scroll(-1, "pages")
+            elif keysym == "Next":
+                self._textbox.yview_scroll(1, "pages")
+            elif keysym == "Home":
+                self._textbox.yview_moveto(0)
+            elif keysym == "End":
+                self._textbox.yview_moveto(1)
+            elif keysym == "Up":
+                self._textbox.yview_scroll(-3, "units")
+            elif keysym == "Down":
+                self._textbox.yview_scroll(3, "units")
+            else:
+                return None
+        except tk.TclError:
+            return None
         return "break"
 
     def _key_pressed(self, event):

@@ -25,12 +25,15 @@ class ReadOnlyTextAuditContractTests(unittest.TestCase):
             "<KeyPress>", "<Control-c>", "<Control-C>",
             "<Control-a>", "<Control-A>", "<Control-x>", "<Control-X>",
             "<Control-v>", "<Control-V>", "<<Cut>>", "<<Paste>>",
-            "<Button-2>",
+            "<Button-2>", "<Prior>", "<Next>", "<Home>", "<End>", "<Up>",
+            "<Down>",
         ):
             self.assertIn(sequence, self.component)
         self.assertNotIn("bind_all(", self.component)
         self.assertIn("ScopedEventBindings()", self.component)
         self.assertIn("ScopedScrollRouter(", self.component)
+        self.assertIn('self._textbox.yview_moveto(0)', self.component)
+        self.assertIn('self._textbox.yview_moveto(1)', self.component)
 
     def test_script_studio_classification_is_explicit(self):
         source = (ROOT / "app/gui/script_studio_panel.py").read_text(
