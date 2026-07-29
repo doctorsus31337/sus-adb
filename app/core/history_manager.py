@@ -37,3 +37,11 @@ class HistoryManager:
             return ""
 
         return self.history[self.index]
+
+    def reset_navigation(self):
+
+        self.index = len(self.history)
+
+    def entries(self):
+
+        return tuple(self.history)

@@ -110,7 +110,7 @@ def main():
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
   official=app.plugin_manager.official();assert len(official)==6;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
-  console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
+  app.navigate_workspace("Console");console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
   app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();assert no_question_help(sessions)
   for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
    sessions.geometry(f"{width}x{height}+0+0");sessions.update_idletasks();assert sessions.winfo_width()==width and sessions.winfo_height()==height;clipped=[(widget.cget("text"),widget.winfo_width()) for widget in descendants(sessions) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped() and not button_text_fits(widget)];assert not clipped,clipped
@@ -193,7 +193,7 @@ def main():
   guide=app.open_guided_setup();assert app.open_guided_setup() is guide;assert len(guide.STEPS)==10 and not guide.plan.executes_automatically
   app.navigate_workspace("Scripts");scripts=app.script_studio_panel;assert scripts is not None and scripts.device is device and scripts.target is target;assert app.navigate_workspace("Scripts") is scripts;assert no_question_help(app)
   assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded addons"
-  assert "SUS Companion" in app.title() and "1.0.0-rc.3" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
+  assert "SUS Companion" in app.title() and "1.0.0-rc.4" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
   scaling_results=[]
   for scale in (1.25,1.5):
    ctk.set_widget_scaling(scale);app.geometry("1200x760+0+0");app.go_home();app.update_idletasks();buttons=[card.open_button for card in app.home_panel.cards.values()]+app.home_panel.explore_buttons;assert all(button_text_fits(button) for button in buttons);assert app.device_dock.winfo_rooty()+app.device_dock.winfo_height()<=app.workspace.winfo_rooty();assert app.status_bar.winfo_rooty()+app.status_bar.winfo_height()<=app.winfo_rooty()+app.winfo_height();scaling_results.append((scale,app.gothic_header.winfo_height(),app.device_dock.winfo_height(),app.home_panel.winfo_height(),next(iter(app.home_panel.cards.values())).winfo_width()))

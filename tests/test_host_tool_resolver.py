@@ -23,6 +23,16 @@ class ADB:
 
 
 class HostToolResolverTests(unittest.TestCase):
+    def test_empty_interpreter_directory_is_missing_without_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            resolver = HostToolResolver(
+                which=lambda _name: None,
+                interpreter=Path(directory) / "python",
+            )
+            for name in ("frida", "frida-ps", "objection"):
+                with self.subTest(name=name):
+                    self.assertIsNone(resolver.resolve(name))
+
     def test_active_interpreter_directory_resolves_without_path(self):
         with tempfile.TemporaryDirectory() as directory:
             tool = Path(directory) / "frida-ps"

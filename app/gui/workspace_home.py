@@ -7,6 +7,7 @@ import textwrap
 import customtkinter as ctk
 
 from app.core.workspace_navigation import WorkspaceHomeState
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 
 
 class WorkspaceHomeCard(ctk.CTkButton):
@@ -152,7 +153,7 @@ class WorkspaceHome(ctk.CTkFrame):
         if self.cards:
             return
         self._content_after_id = None
-        self.scroll = ctk.CTkScrollableFrame(
+        self.scroll = ScopedScrollableFrame(
             self,
             fg_color=self.theme["bg"],
             scrollbar_button_color=self.theme["gold_dark"],

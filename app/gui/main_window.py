@@ -14,11 +14,19 @@ import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
-from app.gui.customtkinter_compat import install_scroll_target_guard, safe_focus
+from app.gui.customtkinter_compat import (
+    DeterministicTabview,
+    install_scroll_target_guard,
+    safe_focus,
+)
 install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
 from app.core.command_router import CommandRouter
+from app.core.command_completion import (
+    CommandCompletionContext,
+    CommandCompletionService,
+)
 from app.core.contextual_assistant import ContextualAssistantService
 from app.core.context_help import HelpRegistry
 from app.core.device import Device
@@ -40,6 +48,7 @@ from app.core.script_validator import ScriptValidator
 from app.core.worker import BackgroundWorker
 from app.gui.cheat_sheet_window import CheatSheetWindow
 from app.gui.command_bar import CommandBar
+from app.gui.console_output import ConsoleOutput
 from app.gui.device_dock import DeviceDock
 from app.gui.gothic_header import GothicHeader
 from app.gui.menu_bar import MenuBar
@@ -48,7 +57,6 @@ from app.gui.splash_screen import SplashScreen
 from app.gui.branding_images import BrandingImages
 from app.gui.theme import get_theme
 from app.modules.environment import EnvironmentModule
-from app.utils.clipboard import ClipboardManager
 from app.utils.system_info import SystemInfo
 from app.widgets.status_bar import StatusBar
 from app.plugins.contribution_registry import ContributionRegistry
@@ -200,6 +208,7 @@ class SusADBWindow(ctk.CTk):
             diagnosis_provider=self.frida_manager.diagnose,
         )
         self.command_router=CommandRouter(self.host_tools)
+        self.command_completion=CommandCompletionService()
         self.interactive_sessions=InteractiveSessionManager(
             self.external_terminal,self.host_tools,
             selected_serial_provider=lambda:self.devices.selected_serial,
@@ -304,6 +313,8 @@ class SusADBWindow(ctk.CTk):
         self.crash_dialog = None
         self.instrumentation_panel = None
         self.script_studio_panel = None
+        self._script_editor_focus = False
+        self._pentest_plugin_focus = False
         self.pentest_workspace = None
         self.selected_target = None
         self._deferred_started = False
@@ -440,7 +451,7 @@ class SusADBWindow(ctk.CTk):
         body.grid(row=2, column=0, sticky="nsew", padx=20, pady=(4, 7))
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(0, weight=1)
-        self.workspace = ctk.CTkTabview(
+        self.workspace = DeterministicTabview(
             body,
             fg_color=self.theme["panel"],
             segmented_button_fg_color=self.theme["panel_alt"],
@@ -499,11 +510,20 @@ class SusADBWindow(ctk.CTk):
         )
         self.home_panel.grid(row=0, column=0, sticky="nsew")
 
-        self.command_bar = CommandBar(console_tab, self.execute_command)
+        self.command_bar = CommandBar(
+            console_tab,
+            self.execute_command,
+            theme=self.theme,
+            completion_service=self.command_completion,
+            context_provider=self._command_completion_context,
+            history=self.terminal.history,
+        )
         self.command_bar.grid(row=0, column=0, sticky="ew", pady=(0, 10))
 
-        self.console = ctk.CTkTextbox(
+        self.console = ConsoleOutput(
             console_tab,
+            handoff=self.command_bar.handoff_character,
+            initial_text="sus-companion > Ready.\n\n",
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
             font=self.theme["terminal_font"],
@@ -511,8 +531,6 @@ class SusADBWindow(ctk.CTk):
             border_color=self.theme["border"],
         )
         self.console.grid(row=1, column=0, sticky="nsew")
-        self.console.insert("end", "sus-companion > Ready.\n\n")
-        self.console.bind("<Control-c>", self.copy_console_selection)
         self.startup_profiler.record_interval("console-workspace",started,time.perf_counter())
 
         started=time.perf_counter()
@@ -592,8 +610,56 @@ class SusADBWindow(ctk.CTk):
             launch_session_callback=self.open_script_session,
             open_folder_callback=self.open_local_directory,
             help_callback=self.open_context_help,
+            editor_focus_callback=self._set_script_editor_focus,
             ui_dispatch=self.call_on_ui,
         )
+
+    def _set_script_editor_focus(self, active):
+        if getattr(self, "_shutdown_started", False):
+            return
+        self._script_editor_focus = bool(active)
+        self._sync_script_editor_focus()
+
+    def _set_pentest_plugin_focus(self, active):
+        if getattr(self, "_shutdown_started", False):
+            return
+        self._pentest_plugin_focus = bool(active)
+        self._sync_script_editor_focus()
+
+    def _sync_script_editor_focus(self):
+        if getattr(self, "_shutdown_started", False):
+            return
+        focused = (
+            hasattr(self, "workspace")
+            and (
+                (
+                    self._script_editor_focus
+                    and self.workspace.get() == "Scripts"
+                )
+                or (
+                    self._pentest_plugin_focus
+                    and self.workspace.get() == "Pentest"
+                )
+            )
+        )
+        for widget in (
+            getattr(self, "gothic_header", None),
+            getattr(self, "device_dock", None),
+            getattr(self, "status_bar", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                exists = bool(widget.winfo_exists())
+            except tk.TclError:
+                exists = False
+            if not exists:
+                continue
+            manager = widget.winfo_manager()
+            if focused and manager:
+                widget.grid_remove()
+            elif not focused and not manager:
+                widget.grid()
 
     def _set_script_advisories(self, value):
         self.app_config.setdefault("script_studio",{})[
@@ -633,7 +699,18 @@ class SusADBWindow(ctk.CTk):
 
     def _construct_pentest(self, parent):
         from app.gui.pentest_workspace import PentestWorkspace
-        return PentestWorkspace(parent,self.theme,"workspaces",self.frida_manager,self.frida_runtime,self.tool_diagnostics,self.log,self.navigate_workspace,adb=self.devices.adb,script_library=self.script_library,open_script_callback=self.open_generated_script,plugin_manager=self.plugin_manager,startup_profiler=self.startup_profiler,state_changed_callback=self._publish_host_state,help_callback=self.open_context_help)
+        return PentestWorkspace(
+            parent,self.theme,"workspaces",self.frida_manager,
+            self.frida_runtime,self.tool_diagnostics,self.log,
+            self.navigate_workspace,adb=self.devices.adb,
+            script_library=self.script_library,
+            open_script_callback=self.open_generated_script,
+            plugin_manager=self.plugin_manager,
+            startup_profiler=self.startup_profiler,
+            state_changed_callback=self._publish_host_state,
+            help_callback=self.open_context_help,
+            content_focus_callback=self._set_pentest_plugin_focus,
+        )
 
     def _hydrate_instrumentation(self, panel):
         target=self.selected_target
@@ -654,9 +731,12 @@ class SusADBWindow(ctk.CTk):
 
     def _workspace_selected(self):
         name = self.workspace.get()
+        if name != "Console" and hasattr(self, "command_bar"):
+            self.command_bar.hide_suggestions()
         if hasattr(self, "workspace_controller"):
             self.workspace_controller.adopt(name)
         self._ensure_workspace(name)
+        self._sync_script_editor_focus()
         if name == "Home":
             self._refresh_home_state()
         self._focus_workspace(name)
@@ -664,9 +744,12 @@ class SusADBWindow(ctk.CTk):
     def _show_principal_workspace(self, name):
         if name not in self.workspace._tab_dict:
             return None
+        if name != "Console" and hasattr(self, "command_bar"):
+            self.command_bar.hide_suggestions()
         if self.workspace.get() != name:
             self.workspace.set(name)
         panel = self._ensure_workspace(name)
+        self._sync_script_editor_focus()
         if name == "Home":
             self._refresh_home_state()
         self._focus_workspace(name)
@@ -766,10 +849,32 @@ class SusADBWindow(ctk.CTk):
             return
         if hasattr(self,"logging_manager"):self.logging_manager.log("INFO",text)
         if hasattr(self,"console"):
-            self.console.insert("end", f"{text}\n");self.console.see("end")
+            self.console.append(f"{text}\n")
 
     def execute_command(self, command: str):
         self.terminal.execute(command)
+
+    def _command_completion_context(self):
+        """Project current immutable host state without diagnostics or discovery."""
+        snapshot = self.host_state.snapshot()
+        target = snapshot.selected_target
+        selected_target = (
+            target.identifier or target.name if target is not None else ""
+        )
+        return CommandCompletionContext(
+            selected_serial=snapshot.selected_serial,
+            selected_device_state=(
+                snapshot.selected_device.state
+                if snapshot.selected_device is not None else ""
+            ),
+            selected_target=selected_target,
+            platform=os.name,
+            tool_availability=tuple(
+                (name, self.host_tools.cached(name))
+                for name in ("adb", "frida", "frida-ps", "frida-trace", "objection")
+            ),
+            cwd=self.terminal.cwd,
+        )
 
     def _interactive_command_requested(self,route):
         if threading.current_thread() is not threading.main_thread():
@@ -1739,6 +1844,14 @@ class SusADBWindow(ctk.CTk):
         panel=self.enter_pentest_workspace()
         if panel:panel.open_scope_dialog()
 
+    def _cancel_tk_after_callbacks(self):
+        """Cancel callbacks owned by this closing Tcl interpreter."""
+        try:callback_ids=tuple(self.tk.call("after","info"))
+        except tk.TclError:return
+        for callback_id in callback_ids:
+            try:self.tk.call("after","cancel",callback_id)
+            except tk.TclError:pass
+
     def shutdown(self):
         if getattr(self,"_shutdown_started",False):return
         shutdown_started=time.perf_counter()
@@ -1758,6 +1871,8 @@ class SusADBWindow(ctk.CTk):
         if self.guided_setup_window is not None and self.guided_setup_window.winfo_exists():self.guided_setup_window.close()
         if self.learning_center_window is not None and self.learning_center_window.winfo_exists():self.learning_center_window.close()
         if self.command_palette is not None and self.command_palette.winfo_exists():self.command_palette.close()
+        if hasattr(self, "console"):self.console.close()
+        if hasattr(self, "command_bar"):self.command_bar.close()
         if self.workflow_recipes_window is not None and self.workflow_recipes_window.winfo_exists():self.workflow_recipes_window.close()
         if self.plugin_project_wizard_window is not None and self.plugin_project_wizard_window.winfo_exists():self.plugin_project_wizard_window.close()
         if self.plugin_workbench_window is not None and self.plugin_workbench_window.winfo_exists():self.plugin_workbench_window.close()
@@ -1773,17 +1888,17 @@ class SusADBWindow(ctk.CTk):
         if hasattr(self,"recovery_manager"):self.recovery_manager.mark_clean_shutdown()
         self.startup_profiler.record_interval("shutdown",shutdown_started,time.perf_counter(),classification="on-demand")
         if hasattr(self,"logging_manager"):self.logging_manager.close()
+        self._cancel_tk_after_callbacks()
         self.destroy()
 
     def copy_console_selection(self, _event=None):
-        return "break" if ClipboardManager.copy(self.console) else None
+        return self.console.copy_selection()
 
     def clear_console(self):
         if threading.current_thread() is not threading.main_thread():
             self.after(0, self.clear_console)
             return
-        self.console.delete("1.0", "end")
-        self.console.insert("end", "sus-companion > Console cleared.\n\n")
+        self.console.replace("sus-companion > Console cleared.\n\n")
 
     def save_console(self):
-        FileManager.save_console(self.console.get("1.0", "end"))
+        FileManager.save_console(self.console.read())

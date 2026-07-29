@@ -5,6 +5,8 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
+from app.gui.customtkinter_compat import ScopedScrollableFrame
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class ContextHelpWindow(ctk.CTkToplevel):
@@ -96,7 +98,7 @@ class ContextHelpWindow(ctk.CTkToplevel):
             tab.configure(fg_color=self.theme["bg"])
             tab.grid_rowconfigure(0, weight=1)
             tab.grid_columnconfigure(1, weight=1)
-        self.topic_list = ctk.CTkScrollableFrame(
+        self.topic_list = ScopedScrollableFrame(
             self.topic_tab,
             width=260,
             fg_color=self.theme["panel_alt"],
@@ -107,7 +109,7 @@ class ContextHelpWindow(ctk.CTkToplevel):
         self.topic_list.grid_columnconfigure(0, weight=1)
         self.topic_text = self._text(self.topic_tab)
         self.topic_text.grid(row=0, column=1, sticky="nsew", padx=(3, 6), pady=6)
-        self.glossary_list = ctk.CTkScrollableFrame(
+        self.glossary_list = ScopedScrollableFrame(
             self.glossary_tab,
             width=260,
             fg_color=self.theme["panel_alt"],
@@ -124,7 +126,7 @@ class ContextHelpWindow(ctk.CTkToplevel):
         )
 
     def _text(self, parent):
-        widget = ctk.CTkTextbox(
+        widget = ReadOnlyTextView(
             parent,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
@@ -133,15 +135,11 @@ class ContextHelpWindow(ctk.CTkToplevel):
             wrap="word",
             font=("Segoe UI", 12),
         )
-        widget.configure(state="disabled")
         return widget
 
     @staticmethod
     def _set_text(widget, text):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", text)
-        widget.configure(state="disabled")
+        widget.replace(text)
 
     def _search_changed(self):
         self._render_topic_list()

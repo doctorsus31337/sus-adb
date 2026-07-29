@@ -9,38 +9,27 @@ import customtkinter as ctk
 from app.core.responsive_layout import estimated_button_width
 from app.core.worker import BackgroundWorker
 from app.gui.customtkinter_compat import (
-    PendingCallbackOwner,ScopedEventBindings,clamp_scroll_offset,
-    wheel_scroll_units,widget_exists,widget_within,
+    DeterministicTabview,PendingCallbackOwner,ScopedScrollableFrame,
+    clamp_scroll_offset,wheel_scroll_units,widget_exists,widget_within,
 )
+from app.gui.read_only_text import ReadOnlyTextView
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.plugin_interactive import (
     PluginActionRequest,PluginActionResult,PluginContextBinding,PluginFieldType,
     PluginProgressUpdate,validate_form,
 )
 from app.plugins.plugin_ui import PluginPanelSpec
-class PluginActionScrollableFrame(ctk.CTkScrollableFrame):
-    """CTk viewport without CustomTkinter's process-global input bindings."""
-    _GLOBAL_INPUT=("<MouseWheel>","<KeyPress-Shift_L>","<KeyPress-Shift_R>","<KeyRelease-Shift_L>","<KeyRelease-Shift_R>")
-    def __init__(self,*args,**kwargs):
-        self._building=True
-        super().__init__(*args,**kwargs)
-        self._building=False
-    def bind_all(self,sequence=None,func=None,add=None):
-        if self._building and sequence in self._GLOBAL_INPUT:return None
-        return super().bind_all(sequence,func,add)
+class PluginActionScrollableFrame(ScopedScrollableFrame):
+    """Plugin action viewport using the canonical host-owned scroll router."""
 class PluginSpecFrame(ctk.CTkFrame):
     def __init__(self,parent,theme,spec,*,plugin_id="",context_provider=lambda:None,authorize=lambda _caps:None,start_background=None,ui_dispatch=None,confirm=None,navigate=None,refresh_factory=None):
-        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.spec=None;self.pages={};self.plugin_id=plugin_id;self.context_provider=context_provider;self.authorize=authorize;self.start_background=start_background or (lambda target,callback:BackgroundWorker(target,callback=callback).start());self.ui_dispatch=ui_dispatch or (lambda callback,*args:self.after(0,callback,*args));self.confirm=confirm or (lambda title,text:messagebox.askyesno(title,text,parent=self.winfo_toplevel()));self.navigate=navigate or (lambda _spec:False);self.refresh_factory=refresh_factory;self.field_vars={};self.field_widgets={};self.field_labels={};self.action_cards={};self.action_titles={};self.action_descriptions={};self.action_buttons={};self._multiline_widgets=[];self.active_action=None;self.cancel_event=None;self.generation=0;self.closed=False;self._callbacks=PendingCallbackOwner(self);self._action_input=ScopedEventBindings();self._field_input=ScopedEventBindings();self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1)
+        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.spec=None;self.pages={};self.plugin_id=plugin_id;self.context_provider=context_provider;self.authorize=authorize;self.start_background=start_background or (lambda target,callback:BackgroundWorker(target,callback=callback).start());self.ui_dispatch=ui_dispatch or (lambda callback,*args:self.after(0,callback,*args));self.confirm=confirm or (lambda title,text:messagebox.askyesno(title,text,parent=self.winfo_toplevel()));self.navigate=navigate or (lambda _spec:False);self.refresh_factory=refresh_factory;self.field_vars={};self.field_widgets={};self.field_labels={};self.action_cards={};self.action_titles={};self.action_descriptions={};self.action_buttons={};self._multiline_widgets=[];self.active_action=None;self.cancel_event=None;self.generation=0;self.closed=False;self._callbacks=PendingCallbackOwner(self);self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(2,weight=1)
         self.title_label=ctk.CTkLabel(self,text="",text_color=theme["gold"],font=theme["header_font"],anchor="w",wraplength=760);self.title_label.grid(row=0,column=0,sticky="ew",padx=8,pady=4)
         self.status_label=ctk.CTkLabel(self,text="",text_color=theme["muted"],anchor="w",wraplength=900);self.status_label.grid(row=1,column=0,sticky="ew",padx=8)
         self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=2,column=0,sticky="nsew",padx=5,pady=5)
         self.action_host=PluginActionScrollableFrame(self,fg_color=theme["panel"],height=210);self.action_host.grid(row=3,column=0,sticky="ew",padx=5,pady=(0,5));self.action_host.grid_columnconfigure(0,weight=1)
         self.action_host._parent_canvas.configure(takefocus=True,yscrollincrement=1)
         self.action_status=ctk.CTkLabel(self.action_host,text="",text_color=theme["muted"],anchor="w",wraplength=820);self.action_status.grid(row=999,column=0,sticky="ew",padx=8,pady=4)
-        owner=self.winfo_toplevel()
-        for sequence in ("<MouseWheel>","<Button-4>","<Button-5>"):self._action_input.bind(owner,sequence,self._action_wheel)
-        for sequence in ("<Prior>","<Next>","<Home>","<End>","<Up>","<Down>"):self._action_input.bind(owner,sequence,self._action_key)
-        self._action_input.bind(owner,"<FocusIn>",self._action_focus_in)
         self.update_spec(spec)
     def update_spec(self,spec):
         if spec==self.spec:return
@@ -51,13 +40,13 @@ class PluginSpecFrame(ctk.CTkFrame):
         for view in spec.views:
             body=self.pages.get(view.name)
             if body is None:
-                page=self.tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ctk.CTkTextbox(page,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_color=self.theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);self.pages[view.name]=body
-            text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.configure(state="normal");body.delete("1.0","end");body.insert("1.0",text);body.configure(state="disabled")
+                page=self.tabs.add(view.name);page.grid_columnconfigure(0,weight=1);page.grid_rowconfigure(0,weight=1);body=ReadOnlyTextView(page,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_color=self.theme["border"],border_width=1,wrap="word");body.grid(row=0,column=0,sticky="nsew",padx=4,pady=4);self.pages[view.name]=body
+            text=view.body+("\n\n"+"\n".join(f"{k}: {v}" for k,v in view.rows) if view.rows else "")+(f"\n\nWARNING: {view.warning}" if view.warning else "");body.replace(text)
         if selected in self.pages:self.tabs.set(selected)
         self._render_actions()
     def _render_actions(self):
         offset=self._action_scroll_offset()
-        self._field_input.close();self._field_input=ScopedEventBindings()
+        self.action_host.clear_nested_scrolls()
         for child in self.action_host.winfo_children():
             if child is not self.action_status:child.destroy()
         self.field_vars={};self.field_widgets={};self.field_labels={};self.action_cards={};self.action_titles={};self.action_descriptions={};self.action_buttons={};self._multiline_widgets=[]
@@ -80,7 +69,7 @@ class PluginSpecFrame(ctk.CTkFrame):
                     elif field.field_type is PluginFieldType.CHOICE:widget=ctk.CTkComboBox(card,values=[v.option_id for v in field.options],variable=variable,fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],button_color=self.theme["gold_dark"],button_hover_color=self.theme["red_hover"],text_color=self.theme["text"])
                     elif field.field_type is PluginFieldType.MULTILINE:
                         widget=ctk.CTkTextbox(card,height=70,fg_color=self.theme["terminal_bg"],text_color=self.theme["text"],border_color=self.theme["gold_dark"],border_width=1,wrap="word");widget.insert("1.0",str(default));self.field_vars[key]=(field,widget);self._multiline_widgets.append(widget)
-                        for sequence in ("<MouseWheel>","<Button-4>","<Button-5>"):self._field_input.bind(widget._textbox,sequence,self._multiline_wheel)
+                        self.action_host.register_nested_scroll(widget)
                     else:widget=ctk.CTkEntry(card,textvariable=variable,placeholder_text=field.placeholder,show="•" if field.field_type is PluginFieldType.PASSWORD or field.sensitive else "",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"],state="disabled" if field.field_type is PluginFieldType.READ_ONLY else "normal")
                     widget.grid(row=field_row,column=0,columnspan=2,sticky="ew",padx=8,pady=(0,3));self.field_widgets[key]=widget;field_row+=1
             button=ctk.CTkButton(card,text=action.label,command=lambda value=action:self.invoke_action(value),fg_color=self.theme["red"] if action.primary else self.theme["panel_alt"],hover_color=self.theme["red_hover"] if action.primary else self.theme["gold_dark"],border_width=1,border_color=self.theme["gold_dark"],text_color=self.theme["text"]);button.grid(row=field_row,column=1,sticky="e",padx=8,pady=7);self.action_buttons[action.action_id]=button
@@ -124,37 +113,19 @@ class PluginSpecFrame(ctk.CTkFrame):
         except (AttributeError,tk.TclError):return False
         return False
     def _multiline_wheel(self,event):
-        widget=self._multiline_for(getattr(event,"widget",None))
-        return "break" if widget is not None and self._scroll_multiline(widget,event) else None
+        return self.action_host._scroll_router._nested_wheel(event)
     def _action_wheel(self,event):
+        router=self.action_host._scroll_router
         origin=getattr(event,"widget",None)
-        if not self._action_visible() or not self._action_contains(origin):return None
-        multiline=self._multiline_for(origin)
-        if multiline is not None and self._scroll_multiline(multiline,event):return "break"
-        units=wheel_scroll_units(event,lines=36)
-        if not units:return None
-        try:self.action_host._parent_canvas.yview_scroll(units,"units")
-        except tk.TclError:return None
-        return "break"
+        nested=router._nested_for(origin)
+        units=wheel_scroll_units(event,lines=3)
+        if nested is not None and units and router._can_scroll(nested,units):
+            return router._nested_wheel(event)
+        return self.action_host._scroll_router._wheel(event)
     def _action_key(self,event):
-        origin=getattr(event,"widget",None);keysym=getattr(event,"keysym","")
-        if not self._action_visible() or not self._action_contains(origin):return None
-        if keysym in {"Up","Down","Home","End"} and self._editing_control(origin):return None
-        canvas=self.action_host._parent_canvas
-        try:
-            if keysym=="Prior":canvas.yview_scroll(-1,"pages")
-            elif keysym=="Next":canvas.yview_scroll(1,"pages")
-            elif keysym=="Home":canvas.yview_moveto(0)
-            elif keysym=="End":canvas.yview_moveto(1)
-            elif keysym=="Up":canvas.yview_scroll(-36,"units")
-            elif keysym=="Down":canvas.yview_scroll(36,"units")
-            else:return None
-        except tk.TclError:return None
-        return "break"
+        return self.action_host._scroll_router._key(event)
     def _action_focus_in(self,event):
-        origin=getattr(event,"widget",None)
-        if self._action_visible() and self._action_contains(origin):self._callbacks.schedule_idle(self._ensure_action_visible,origin)
-        return None
+        return self.action_host._scroll_router._focus_in(event)
     def _ensure_action_visible(self,widget):
         if not self._action_visible() or not self._action_contains(widget):return
         try:
@@ -218,7 +189,7 @@ class PluginSpecFrame(ctk.CTkFrame):
         if self.cancel_event:self.cancel_event.set();self.action_status.configure(text="Cancellation requested…",text_color=self.theme["gold"])
     def cleanup(self):
         self.closed=True;self.generation+=1;self.cancel_action()
-        self._field_input.close();self._action_input.close();self._callbacks.cancel_all()
+        self.action_host._scroll_router.close();self._callbacks.cancel_all()
         for (action_id,field_id),(field,holder) in tuple(self.field_vars.items()):
             if field.sensitive or field.field_type is PluginFieldType.PASSWORD:
                 if isinstance(holder,ctk.CTkTextbox):holder.delete("1.0","end")
@@ -226,21 +197,25 @@ class PluginSpecFrame(ctk.CTkFrame):
 class PluginManagerPanel(ctk.CTkFrame):
     SECTIONS=("Official Catalog","Installed","Active Panels","Details","Permissions","Contributions","Diagnostics","SDK")
     def __init__(self,parent,theme,manager,log,confirm=None):
-        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=ctk.CTkTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
-        for v in self.views.values():v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1);v.grid_rowconfigure(1,weight=1)
+        super().__init__(parent,fg_color=theme["bg"],corner_radius=0);self.theme=theme;self.manager=manager;self.log=log;self.confirm=confirm or (lambda t,m:messagebox.askyesno(t,m,parent=self.winfo_toplevel()));self.selected=None;self._callbacks=PendingCallbackOwner(self);self.grid_columnconfigure(0,weight=1);self.grid_rowconfigure(1,weight=1);self._header();self.tabs=DeterministicTabview(self,fg_color=theme["panel"],segmented_button_fg_color=theme["panel_alt"],segmented_button_selected_color=theme["red"],segmented_button_selected_hover_color=theme["red_hover"],segmented_button_unselected_color=theme["panel_alt"],segmented_button_unselected_hover_color=theme["gold_dark"],text_color=theme["text"]);self.tabs.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);self.views={n:self.tabs.add(n) for n in self.SECTIONS}
+        for name,v in self.views.items():
+            v.configure(fg_color=theme["bg"]);v.grid_columnconfigure(0,weight=1)
+            v.grid_rowconfigure(0,weight=1 if name in {"Official Catalog","Active Panels","Details","Contributions"} else 0)
+            v.grid_rowconfigure(1,weight=1 if name in {"Installed","Permissions","Diagnostics","SDK"} else 0)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
     def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
-    def _text(self,p):t=ctk.CTkTextbox(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);t.configure(state="disabled");return t
-    def _set(self,w,text):w.configure(state="normal");w.delete("1.0","end");w.insert("1.0",text);w.configure(state="disabled")
+    def _text(self,p):t=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);return t
+    def _set(self,w,text):w.replace(text)
     def _header(self):
         h=ctk.CTkFrame(self,fg_color=self.theme["panel"],border_width=1,border_color=self.theme["gold_dark"]);h.grid(row=0,column=0,sticky="ew",padx=6,pady=4);h.grid_columnconfigure(0,weight=1);self.summary=ctk.CTkLabel(h,text="Plugins",text_color=self.theme["gold"],anchor="w",wraplength=760);self.summary.grid(row=0,column=0,sticky="ew",padx=7);self._button(h,"Refresh",self.refresh,0,1);self._button(h,"Install Local Plugin",self.install,0,2);self._button(h,"Verify All",self.verify_all,0,3);self._button(h,"Disable All Third-Party",self.disable_all,0,4);self.warning=ctk.CTkLabel(h,text="Third-party plugins remain disabled and untrusted by default.",text_color=self.theme["gold"],anchor="w",wraplength=900);self.warning.grid(row=1,column=0,columnspan=5,sticky="ew",padx=7)
     def _build(self):
-        p=self.views["Official Catalog"];self.official_cards=ctk.CTkScrollableFrame(p,fg_color=self.theme["bg"]);self.official_cards.grid(row=0,column=0,rowspan=2,sticky="nsew");self.official_cards.grid_columnconfigure(0,weight=1)
+        p=self.views["Official Catalog"];self.official_cards=ScopedScrollableFrame(p,fg_color=self.theme["bg"]);self.official_cards.grid(row=0,column=0,sticky="nsew");self.official_cards.grid_columnconfigure(0,weight=1);self.official_cards._parent_canvas.bind("<Configure>",self._sync_official_scrollregion,add="+")
         p=self.views["Installed"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");bar.grid_columnconfigure(0,weight=1);self.search=ctk.CTkEntry(bar,placeholder_text="Search plugins",fg_color=self.theme["terminal_bg"],border_color=self.theme["gold_dark"],text_color=self.theme["text"]);self.search.grid(row=0,column=0,sticky="ew",padx=3);self._button(bar,"Apply",self.render,0,1)
         for i,(n,c) in enumerate((("Enable",self.enable),("Disable",self.disable),("Load",self.load),("Unload",self.unload),("Reload",self.reload),("Uninstall",self.uninstall)),2):self._button(bar,n,c,0,i)
         self.installed=self._text(p)
-        for name in ("Details","Permissions","Contributions","Diagnostics","SDK"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name])
-        self.active_host=ctk.CTkFrame(self.views["Active Panels"],fg_color=self.theme["bg"]);self.active_host.grid(row=0,column=0,rowspan=2,sticky="nsew");self.active_host.grid_columnconfigure(0,weight=1);self.active_host.grid_rowconfigure(0,weight=1)
+        for name in ("Details","Contributions"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name]);self.__dict__[name.lower()+"_view"].grid_configure(row=0)
+        for name in ("Permissions","Diagnostics","SDK"):self.__dict__[name.lower()+"_view"]=self._text(self.views[name])
+        self.active_host=ctk.CTkFrame(self.views["Active Panels"],fg_color=self.theme["bg"]);self.active_host.grid(row=0,column=0,sticky="nsew");self.active_host.grid_columnconfigure(0,weight=1);self.active_host.grid_rowconfigure(0,weight=1)
         p=self.views["Permissions"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Approve Selected Requested",self.approve,0,0);self._button(bar,"Revoke Trust",self.revoke,0,1)
         p=self.views["Diagnostics"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Copy Diagnostics",lambda:self._copy(self.diagnostics_view.get("1.0","end-1c")),0,0);self._button(bar,"Quarantine",self.quarantine,0,1)
         p=self.views["SDK"];bar=ctk.CTkFrame(p,fg_color="transparent");bar.grid(row=0,column=0,sticky="ew");self._button(bar,"Create Plugin Skeleton",self.skeleton,0,0)
@@ -255,10 +230,42 @@ class PluginManagerPanel(ctk.CTkFrame):
             self._set(self.details_view,json.dumps(m.to_dict(),indent=2,default=str));approved=self.manager.trust.approved(m.plugin_id,m.package_digest);self._set(self.permissions_view,"Requested:\n"+"\n".join(f"- {v}{' — HIGH IMPACT' if v in HIGH_IMPACT else ''}" for v in m.requested_capabilities)+"\n\nApproved:\n"+"\n".join(approved));self._set(self.contributions_view,"\n".join(f"{c.contribution_type} · {c.contribution_id} · {c.title}" for c in self.manager.registry.by_plugin(m.plugin_id)) or "No active contributions; contributions register only after explicit trusted load.");status=self.manager.loader.statuses.get(m.plugin_id);self._set(self.diagnostics_view,f"Digest: {m.package_digest}\nTrust: {m.trust_state.value}\nEnabled: {m.enabled}\nLoader: {getattr(status,'state','discovered')}\nLast error: {getattr(status,'last_error','')}")
         self._set(self.sdk_view,"Plugin API v1.1 (compatible with v1.0)\n\nDocumentation: docs/plugin-sdk/README.md\nHarmless disabled example: plugins/examples/hello_plugin\n\nPython plugins are trusted code. In-process loading is not a hardened sandbox. No download, update, enable, trust, or load occurs automatically.")
     def render_official(self):
+        canvas=self.official_cards._parent_canvas
+        try:offset=max(0.0,float(canvas.canvasy(0)))
+        except (TypeError,ValueError,tk.TclError):offset=0.0
         for child in self.official_cards.winfo_children():child.destroy()
         for row,item in enumerate(self.manager.official()):
             card=ctk.CTkFrame(self.official_cards,fg_color=self.theme["panel_alt"],border_width=1,border_color=self.theme["border"]);card.grid(row=row,column=0,sticky="ew",padx=8,pady=6);card.grid_columnconfigure(0,weight=1);m=item.manifest
-            ctk.CTkLabel(card,text=f"{m.name} · {m.version} · Official",text_color=self.theme["gold"],anchor="w",font=self.theme["header_font"],wraplength=700).grid(row=0,column=0,sticky="ew",padx=10,pady=(8,2));ctk.CTkLabel(card,text=f"{m.description}\nCapabilities: {len(m.requested_capabilities)} · {'Installed' if item.installed else 'Available'}",text_color=self.theme["text"],anchor="w",justify="left",wraplength=760).grid(row=1,column=0,sticky="ew",padx=10,pady=(0,8));button=self._button(card,"Installed" if item.installed else "Install",lambda pid=m.plugin_id,digest=item.package_digest:self.install_official(pid,digest),0,1);button.configure(state="disabled" if item.installed else "normal")
+            title=ctk.CTkLabel(card,text=f"{m.name} · {m.version} · Official",text_color=self.theme["gold"],anchor="w",font=self.theme["header_font"],wraplength=420);title.grid(row=0,column=0,sticky="ew",padx=10,pady=(8,2))
+            description=ctk.CTkLabel(card,text=f"{m.description}\nCapabilities: {len(m.requested_capabilities)} · {'Installed' if item.installed else 'Available'}",text_color=self.theme["text"],anchor="w",justify="left",wraplength=420);description.grid(row=1,column=0,sticky="ew",padx=10,pady=(0,8))
+            button=self._button(card,"Installed" if item.installed else "Install",lambda pid=m.plugin_id,digest=item.package_digest:self.install_official(pid,digest),0,1);button.configure(state="disabled" if item.installed else "normal")
+            card.bind("<Configure>",lambda _event,c=card,t=title,d=description,b=button:self._resize_official_card(c,t,d,b),add="+")
+        self._callbacks.schedule_idle(self._restore_official_scroll,offset)
+    def _resize_official_card(self,card,title,description,button):
+        try:
+            logical_width=card._reverse_widget_scaling(card.winfo_width())
+            available=max(180,int(logical_width-float(button.cget("width"))-50))
+            if getattr(title,"_susadb_wraplength",None)==available:return
+            title._susadb_wraplength=available;description._susadb_wraplength=available
+            title.configure(wraplength=available);description.configure(wraplength=available)
+        except (AttributeError,TypeError,ValueError,tk.TclError):return
+    def _sync_official_scrollregion(self,_event=None):
+        canvas=self.official_cards._parent_canvas
+        try:
+            region=canvas.bbox("all")
+            if region:canvas.configure(scrollregion=region)
+        except (AttributeError,tk.TclError):return
+    def _restore_official_scroll(self,offset):
+        canvas=self.official_cards._parent_canvas
+        if not widget_exists(canvas):return
+        try:
+            self._sync_official_scrollregion()
+            region=tuple(float(value) for value in str(canvas.cget("scrollregion")).split())
+            extent=region[3]-region[1] if len(region)==4 else 0.0
+            viewport=max(1,canvas.winfo_height())
+            offset=clamp_scroll_offset(offset,extent,viewport)
+            canvas.yview_moveto(offset/extent if extent else 0)
+        except (TypeError,ValueError,tk.TclError):return
     def install_official(self,plugin_id=None,digest=""):
         if plugin_id:self._run("Install official plugin",lambda:self.manager.install_official(plugin_id,digest))
     def render_active(self):
@@ -316,4 +323,5 @@ class PluginManagerPanel(ctk.CTkFrame):
     def set_selected_target(self,_):pass
     def cleanup(self):
         if getattr(self,"unsubscribe",None):self.unsubscribe();self.unsubscribe=None
+        self._callbacks.cancel_all()
         self.manager.shutdown()

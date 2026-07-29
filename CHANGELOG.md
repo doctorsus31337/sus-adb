@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.0-rc.4
+
+- Added universal mouse-wheel, touchpad, Linux Button-4/Button-5, and keyboard
+  scrolling with scoped ownership, nested boundaries, and lifecycle cleanup.
+- Added the Console Command Assistant with contextual non-executing completion,
+  related suggestions, command classifications, and history integration.
+- Made Console transcripts and application display surfaces read-only while
+  preserving selection, copy, navigation, and intentional editable controls.
+- Rebalanced the Script Studio Agent Editor around the source editor, compact
+  Ready state, bounded details, responsive access to all nine operations, and
+  reversible Editor focus presentation.
+- Preserved independently verifiable Linux and Windows portable packaging,
+  Plugin SDK 1.1, and Plugin API 1.0 compatibility.
+
 ## 1.0.0-rc.3
 
 - Redesigned Workspace Home and added the compact selected-device dock,

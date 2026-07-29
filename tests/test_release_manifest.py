@@ -33,17 +33,17 @@ class ReleaseManifestTests(unittest.TestCase):
         )
 
     def make_package(self, directory, selected=None):
-        package = Path(directory) / "sus-companion-1.0.0-rc.3-linux-x86_64"
+        package = Path(directory) / "sus-companion-1.0.0-rc.4-linux-x86_64"
         resources = package / "_internal"
         for relative in ("app/themes", "app/resources", "docs", "plugins/examples/hello_plugin/assets", "packaging"):
             (resources / relative).mkdir(parents=True, exist_ok=True)
         (package / "sus-companion").write_text("executable", encoding="utf-8")
         (package / "sus-adb").write_text("compatibility launcher", encoding="utf-8")
-        (resources / "VERSION").write_text("1.0.0-rc.3\n", encoding="utf-8")
+        (resources / "VERSION").write_text("1.0.0-rc.4\n", encoding="utf-8")
         (resources / "build-info.json").write_text(json.dumps({
             "format": 1,
             "product": "SUS Companion",
-            "version": "1.0.0-rc.3",
+            "version": "1.0.0-rc.4",
             "commit": "1234567890abcdef",
             "short_commit": "1234567890ab",
             "ref": "feature/testing",
@@ -94,7 +94,7 @@ class ReleaseManifestTests(unittest.TestCase):
         required = (
             "VERSION", "packaging/pyinstaller/sus_adb.spec",
             "packaging/common/release_assets.py", "packaging/linux/build_linux.sh",
-            "packaging/windows/build_windows.ps1", "release/RC3_CHECKLIST.md",
+            "packaging/windows/build_windows.ps1", "release/RC4_CHECKLIST.md",
         )
         self.assertTrue(all((ROOT / item).exists() for item in required))
         text = (ROOT / "packaging/pyinstaller/sus_adb.spec").read_text()
@@ -120,7 +120,7 @@ class ReleaseManifestTests(unittest.TestCase):
     def test_windows_frida_native_component_is_platform_appropriate(self):
         with tempfile.TemporaryDirectory() as directory:
             package = self.make_package(directory)
-            windows = package.with_name("sus-companion-1.0.0-rc.3-windows-amd64")
+            windows = package.with_name("sus-companion-1.0.0-rc.4-windows-amd64")
             package.rename(windows)
             (windows / "sus-companion").rename(windows / "sus-companion.exe")
             (windows / "sus-adb").rename(windows / "sus-adb.cmd")

@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from tkinter import messagebox
 
 import customtkinter as ctk
+from app.gui.read_only_text import ReadOnlyTextView
 
 from app.core.command_result import CommandResult
 from app.core.device import Device
@@ -24,6 +25,7 @@ from app.core.objection_manager import ObjectionManager
 from app.core.target_discovery import TargetDiscovery, TargetDiscoveryResult, filter_targets
 from app.core.tool_diagnostics import ToolDiagnostic, ToolDiagnostics
 from app.core.worker import BackgroundWorker
+from app.gui.customtkinter_compat import ScopedScrollableFrame
 from app.gui.instrumentation_reference_window import InstrumentationReferenceWindow
 
 
@@ -263,7 +265,7 @@ class InstrumentationPanel(ctk.CTkFrame):
     def _build_results_section(self, parent):
         frame = self._section(parent, "Instrumentation Results", 0, 0)
         frame.grid_rowconfigure(1, weight=1)
-        self.results = ctk.CTkTextbox(
+        self.results = ReadOnlyTextView(
             frame, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], font=("Consolas", 12),
             border_width=1, border_color=self.theme["border"], wrap="none",
@@ -344,7 +346,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.target_count.grid(row=0, column=4, padx=8)
 
-        self.target_list = ctk.CTkScrollableFrame(
+        self.target_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
             border_width=1, border_color=self.theme["border"],
             scrollbar_button_color=self.theme["gold_dark"],
@@ -437,7 +439,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.installed_count.grid(row=0, column=2, sticky="e", padx=8)
         filters.grid_columnconfigure(2, weight=1)
 
-        self.installed_list = ctk.CTkScrollableFrame(
+        self.installed_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
             border_width=1, border_color=self.theme["border"],
             scrollbar_button_color=self.theme["gold_dark"],
@@ -534,7 +536,7 @@ class InstrumentationPanel(ctk.CTkFrame):
             2, 2,
         )
 
-        self.command_preview = ctk.CTkTextbox(
+        self.command_preview = ReadOnlyTextView(
             frame, height=76, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], font=("Consolas", 12),
             border_width=1, border_color=self.theme["gold_dark"], wrap="word",
@@ -542,7 +544,6 @@ class InstrumentationPanel(ctk.CTkFrame):
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
         self.command_preview.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=12, pady=(6, 10))
-        self.command_preview.configure(state="disabled")
         self.session_notice = ctk.CTkLabel(
             frame, text="Select a target to preview and validate a session.",
             text_color=self.theme["muted"], justify="left", anchor="w", wraplength=800,
@@ -1167,10 +1168,7 @@ class InstrumentationPanel(ctk.CTkFrame):
             lines.append(f"Frida: {self._preview_text(self.frida_preview_command)}")
         if self.objection_preview_command:
             lines.append(f"Objection: {self._preview_text(self.objection_preview_command)}")
-        self.command_preview.configure(state="normal")
-        self.command_preview.delete("1.0", "end")
-        self.command_preview.insert("1.0", "\n".join(lines))
-        self.command_preview.configure(state="disabled")
+        self.command_preview.replace("\n".join(lines))
         self._update_target_actions()
 
     @staticmethod

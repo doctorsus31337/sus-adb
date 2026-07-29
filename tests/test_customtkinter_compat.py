@@ -1,11 +1,23 @@
 import contextlib,io,tkinter as tk,unittest
 from types import SimpleNamespace
-from app.gui.customtkinter_compat import PendingCallbackOwner,clamp_scroll_offset,install_scroll_target_guard,keyboard_focus_target,safe_focus,wheel_scroll_units
+from app.gui.customtkinter_compat import DeterministicTabview,PendingCallbackOwner,ScopedScrollRouter,clamp_scroll_offset,install_scroll_target_guard,keyboard_focus_target,safe_focus,wheel_scroll_units
 
 def widget(master=None):
     value=object.__new__(tk.Misc);value.master=master;return value
 
 class T(unittest.TestCase):
+ def test_deterministic_tabview_uses_one_synchronous_selection_path(self):
+  class Page:
+   def __init__(self):self.forgotten=0
+   def grid_forget(self):self.forgotten+=1
+  class Segmented:
+   def __init__(self):self.selected=[]
+   def set(self,name):self.selected.append(name)
+  view=object.__new__(DeterministicTabview);first=Page();second=Page();callbacks=[];mapped=[]
+  view._tab_dict={"First":first,"Second":second};view._current_name="First";view._segmented_button=Segmented();view._command=lambda:callbacks.append(view.get());view._set_grid_current_tab=lambda:mapped.append(view._current_name);view.after=lambda *_args: self.fail("deterministic selection scheduled a callback")
+  view.set("Second");self.assertEqual(view.get(),"Second");self.assertEqual(first.forgotten,1);self.assertEqual(callbacks,[]);self.assertEqual(mapped,["Second"])
+  view._segmented_button_callback("First");self.assertEqual(view.get(),"First");self.assertEqual(second.forgotten,1);self.assertEqual(callbacks,["First"]);self.assertEqual(mapped,["Second","First"])
+  with self.assertRaisesRegex(ValueError,"Missing"):view.set("Missing")
  def scroll_class(self,name="_check_if_valid_scroll"):
   def validate(self,target):
    if target is self._parent_canvas:return True
@@ -72,3 +84,20 @@ class T(unittest.TestCase):
   self.assertEqual(clamp_scroll_offset(1600,1800,500),1300)
   self.assertEqual(clamp_scroll_offset(900,400,500),0)
   self.assertEqual(clamp_scroll_offset(-10,1800,500),0)
+ def test_nested_boundary_direction_is_exact(self):
+  class View:
+   def __init__(self,first,last):self.first=first;self.last=last
+   def yview(self):return self.first,self.last
+  self.assertTrue(ScopedScrollRouter._can_scroll(View(.2,.8),-3))
+  self.assertTrue(ScopedScrollRouter._can_scroll(View(.2,.8),3))
+  self.assertFalse(ScopedScrollRouter._can_scroll(View(0,.8),-3))
+  self.assertFalse(ScopedScrollRouter._can_scroll(View(.2,1),3))
+ def test_editing_and_choice_controls_are_excluded(self):
+  Entry=type("CTkEntry",(tk.Misc,),{})
+  Combo=type("CTkComboBox",(tk.Misc,),{})
+  entry=object.__new__(Entry);entry.master=None
+  combo=object.__new__(Combo);combo.master=None
+  child=widget(entry)
+  self.assertTrue(ScopedScrollRouter._editing_control(child))
+  self.assertTrue(ScopedScrollRouter._choice_control(combo))
+  self.assertFalse(ScopedScrollRouter._choice_control(widget()))

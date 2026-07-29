@@ -5,7 +5,12 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
-from app.gui.customtkinter_compat import PendingCallbackOwner, widget_exists
+from app.gui.customtkinter_compat import (
+    PendingCallbackOwner,
+    ScopedScrollableFrame,
+    widget_exists,
+)
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class LearningCenterWindow(ctk.CTkToplevel):
@@ -185,7 +190,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
         )
 
     def _list(self, parent, width):
-        frame = ctk.CTkScrollableFrame(
+        frame = ScopedScrollableFrame(
             parent, width=width, fg_color=self.theme["panel_alt"],
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],
@@ -194,12 +199,11 @@ class LearningCenterWindow(ctk.CTkToplevel):
         return frame
 
     def _text(self, parent):
-        widget = ctk.CTkTextbox(
+        widget = ReadOnlyTextView(
             parent, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
-        widget.configure(state="disabled")
         return widget
 
     def _button(self, parent, text, command, column):
@@ -214,10 +218,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
 
     @staticmethod
     def _set_text(widget, value):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", value)
-        widget.configure(state="disabled")
+        widget.replace(value)
 
     def show_context(self, topic_id):
         self.context_topic = topic_id or ""

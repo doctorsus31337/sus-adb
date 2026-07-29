@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$packageName = "sus-companion-1.0.0-rc.3-windows-$env:PROCESSOR_ARCHITECTURE".ToLowerInvariant()
+$packageName = "sus-companion-1.0.0-rc.4-windows-$env:PROCESSOR_ARCHITECTURE".ToLowerInvariant()
 python packaging/common/generate_build_info.py build/packaging/build-info.json
 $env:SUS_ADB_PACKAGE_NAME = $packageName
 python -m PyInstaller --clean --noconfirm packaging/pyinstaller/sus_adb.spec

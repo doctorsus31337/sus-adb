@@ -6,6 +6,8 @@ import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
 from app.core.guide_engine import GuideGoal
+from app.gui.customtkinter_compat import ScopedScrollableFrame
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class GuidedSetupWindow(ctk.CTkToplevel):
@@ -89,7 +91,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         )
         self.goal.grid(row=0, column=1, sticky="ew", padx=8, pady=8)
         self.goal.set(GuideGoal.SEE_INSTALLED_APPS.value)
-        self.steps = ctk.CTkScrollableFrame(
+        self.steps = ScopedScrollableFrame(
             self,
             width=270,
             fg_color=self.theme["panel"],
@@ -125,7 +127,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
             font=self.theme["header_font"], anchor="w",
         )
         self.heading.grid(row=0, column=0, sticky="ew", padx=10, pady=(9, 4))
-        self.details = ctk.CTkTextbox(
+        self.details = ReadOnlyTextView(
             body,
             fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"],
@@ -134,7 +136,6 @@ class GuidedSetupWindow(ctk.CTkToplevel):
             wrap="word",
         )
         self.details.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
-        self.details.configure(state="disabled")
         actions = ctk.CTkFrame(body, fg_color="transparent")
         actions.grid(row=2, column=0, sticky="ew", padx=7, pady=7)
         for column in range(4):
@@ -160,10 +161,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
 
     @staticmethod
     def _set_text(widget, text):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", text)
-        widget.configure(state="disabled")
+        widget.replace(text)
 
     def refresh(self):
         self.plan = self.engine.plan(self.goal.get(), self.state_provider())

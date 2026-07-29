@@ -12,6 +12,88 @@ ROOT = Path(__file__).parents[1]
 
 
 class AcceptanceLayoutTests(unittest.TestCase):
+    def test_script_studio_operations_wrap_without_losing_actions(self):
+        groups = (
+            (
+                "Copy Path",
+                "Open Containing Folder",
+                "Launch in Frida REPL",
+                "Launch Dedicated Session",
+                "Advanced Path",
+            ),
+            (
+                "Save",
+                "Save As",
+                "Revert",
+                "Validate",
+                "Load",
+                "Reload",
+                "Unload",
+                "Prepare Recipe",
+                "Launch Recipe",
+            ),
+            (
+                "Jump to Line",
+                "Copy Error",
+                "Technical Details",
+                "Compatibility Suggestions",
+            ),
+        )
+        for width in (1100, 1200, 1400, 1600):
+            for scale in (1.0, 1.25, 1.5):
+                available = int((width - 24) / scale)
+                for labels in groups:
+                    widths = tuple(
+                        estimated_button_width(label, 94)
+                        for label in labels
+                    )
+                    rows = wrap_widths(available, widths)
+                    self.assertEqual(
+                        tuple(index for row in rows for index in row),
+                        tuple(range(len(labels))),
+                    )
+                    self.assertLessEqual(len(rows), 3)
+
+    def test_script_studio_ready_strip_and_details_are_separate(self):
+        panel = (ROOT / "app/gui/script_studio_panel.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('border_color=self.theme["gold_dark"], height=1,', panel)
+        self.assertIn("self.operation_auxiliary = ctk.CTkFrame(", panel)
+        self.assertIn(
+            "self.operation_details = ReadOnlyTextView(\n"
+            "            self.operation_auxiliary",
+            panel,
+        )
+        self.assertIn("self.operation_auxiliary.grid_remove()", panel)
+        self.assertIn("self.editor_focus_callback(editor_focused)", panel)
+
+    def test_script_studio_smoke_measures_the_real_main_shell_widgets(self):
+        smoke = (ROOT / "scripts/run_script_studio_smoke.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("from app.gui.main_window import SusADBWindow", smoke)
+        self.assertNotIn("panel = ScriptStudioPanel(", smoke)
+        for expression in (
+            "case_panel.editor.winfo_rooty()",
+            "case_panel.editor.winfo_height()",
+            "case_panel.operation_notice.winfo_rooty()",
+            "case_panel.operation_notice.winfo_height()",
+            "case_panel.bottom_actions.winfo_rooty()",
+            "case_panel.bottom_actions.winfo_height()",
+            "assert ratio >= 4",
+        ):
+            self.assertIn(expression, smoke)
+
+    def test_script_editor_focus_is_host_owned_and_reversible(self):
+        main = (ROOT / "app/gui/main_window.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "editor_focus_callback=self._set_script_editor_focus", main
+        )
+        self.assertIn("def _sync_script_editor_focus(self):", main)
+        self.assertIn("widget.grid_remove()", main)
+        self.assertIn("widget.grid()", main)
+
     def test_responsive_rows_fit_at_normal_and_scaled_widths(self):
         labels = (
             "Open Instrumentation",

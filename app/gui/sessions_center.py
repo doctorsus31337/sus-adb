@@ -13,6 +13,7 @@ from app.core.interactive_sessions import InteractiveSessionState
 from app.core.script_descriptor import ScriptKind
 from app.core.worker import BackgroundWorker
 from app.gui.customtkinter_compat import safe_focus, widget_exists
+from app.gui.read_only_text import ReadOnlyTextView
 
 
 class SessionsCenter(ctk.CTkToplevel):
@@ -236,21 +237,17 @@ class SessionsCenter(ctk.CTkToplevel):
             body, text=explanation, text_color=self.theme["muted"],
             anchor="w", justify="left", wraplength=900,
         ).grid(row=0, column=0, columnspan=3, sticky="ew", padx=8, pady=6)
-        preview = ctk.CTkTextbox(
+        preview = ReadOnlyTextView(
             body, height=150, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
         preview.grid(row=7, column=0, columnspan=3, sticky="nsew", padx=8, pady=7)
-        preview.configure(state="disabled")
         return body, preview
 
     @staticmethod
     def _set_text(widget, value):
-        widget.configure(state="normal")
-        widget.delete("1.0", "end")
-        widget.insert("1.0", value)
-        widget.configure(state="disabled")
+        widget.replace(value)
 
     def _labeled(self, body, row, label, widget):
         ctk.CTkLabel(
@@ -386,13 +383,12 @@ class SessionsCenter(ctk.CTkToplevel):
             recovery_actions, "Technical Details",
             self.show_technical_details, 2,
         )
-        self.sessions_text = ctk.CTkTextbox(
+        self.sessions_text = ReadOnlyTextView(
             body, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
         self.sessions_text.grid(row=3, column=0, sticky="nsew", padx=8, pady=7)
-        self.sessions_text.configure(state="disabled")
 
     def _selected(self):
         return self.context.selected_device
