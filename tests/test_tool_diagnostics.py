@@ -1,6 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from app.core.command_result import CommandResult
+from app.core.host_tool_resolver import HostToolResolver
 from app.core.tool_diagnostics import ToolDiagnostics
 
 
@@ -16,7 +19,14 @@ class FakeRunner:
 class ToolDiagnosticsTests(unittest.TestCase):
     def test_missing_executable_is_structured(self):
         runner = FakeRunner()
-        diagnostic = ToolDiagnostics(runner, which=lambda _name: None).check("frida")
+        with tempfile.TemporaryDirectory() as directory:
+            resolver = HostToolResolver(
+                which=lambda _name: None,
+                interpreter=Path(directory) / "python",
+            )
+            diagnostic = ToolDiagnostics(
+                runner, resolver=resolver
+            ).check("frida")
         self.assertFalse(diagnostic.installed)
         self.assertIn("configure its executable path", diagnostic.error.lower())
         self.assertEqual(runner.commands, [])
