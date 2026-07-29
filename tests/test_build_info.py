@@ -41,7 +41,7 @@ class BuildInfoTests(unittest.TestCase):
     def test_local_git_fallback_timestamp_and_json_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "VERSION").write_text("1.0.0-rc.3\n", encoding="utf-8")
+            (root / "VERSION").write_text("1.0.0-rc.4\n", encoding="utf-8")
             values = {
                 ("git", "rev-parse", "HEAD"): "b" * 40,
                 ("git", "branch", "--show-current"): "feature/local",

@@ -80,10 +80,10 @@ class AppMetadata:
     legacy_application_name: str = "SUS-ADB Companion"
     preferred_executable: str = "sus-companion"
     legacy_executable: str = "sus-adb"
-    version: str = "1.0.0-rc.3"
+    version: str = "1.0.0-rc.4"
     release_channel: str = "rc"
     build_channel: str = "source"
-    build_identifier: str = "rc3"
+    build_identifier: str = "rc4"
     repository_revision: str = UNKNOWN
     repository_ref: str = UNKNOWN
     build_timestamp: str = UNKNOWN
@@ -130,7 +130,7 @@ class AppMetadata:
         try:
             version = version_path.read_text(encoding="utf-8").strip()
         except OSError:
-            version = "1.0.0-rc.3"
+            version = "1.0.0-rc.4"
         info_path = Path(
             build_info_file or version_path.with_name("build-info.json")
         )
@@ -140,7 +140,7 @@ class AppMetadata:
         )
         return cls(
             version=version,
-            build_identifier=env.get("SUS_ADB_BUILD_ID", "rc3"),
+            build_identifier=env.get("SUS_ADB_BUILD_ID", "rc4"),
             repository_revision=env.get(
                 "SUS_ADB_REVISION",
                 info.get("commit", source_info.get("commit", UNKNOWN)),

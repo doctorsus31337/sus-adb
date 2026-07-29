@@ -6,7 +6,7 @@ on:
       ref:
         description: Branch, tag, or commit to package
         required: true
-        default: release/1.0.0-rc.3
+        default: release/1.0.0-rc.4
         type: string
 
 permissions:

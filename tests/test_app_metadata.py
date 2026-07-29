@@ -3,8 +3,8 @@ from pathlib import Path
 from app.core.app_metadata import AppMetadata,create_metadata
 class MetadataTests(unittest.TestCase):
  def test_injected_metadata_is_deterministic(self):
-  value=create_metadata(version="1.0.0-rc.3",repository_revision="abc1234567890",repository_ref="release/1.0.0-rc.3",build_timestamp="2026-01-01T00:00:00Z",build_channel="rc",platform_name="TestOS",architecture="test64",python_version="3.13")
-  self.assertIsInstance(value,AppMetadata);self.assertEqual(value.release_channel,"rc");self.assertIn("SUS Companion",value.display_version);self.assertIn("1.0.0-rc.3",value.display_version);self.assertEqual(value.descriptor,"Android Security & Recovery Workstation");self.assertEqual(value.short_revision,"abc123456789");self.assertIn("Branch/ref: release/1.0.0-rc.3",value.build_details);self.assertIn("Build channel: rc",value.build_details);self.assertEqual(value.configuration_schema_version,4)
+  value=create_metadata(version="1.0.0-rc.4",repository_revision="abc1234567890",repository_ref="release/1.0.0-rc.4",build_timestamp="2026-01-01T00:00:00Z",build_channel="rc",platform_name="TestOS",architecture="test64",python_version="3.13")
+  self.assertIsInstance(value,AppMetadata);self.assertEqual(value.release_channel,"rc");self.assertIn("SUS Companion",value.display_version);self.assertIn("1.0.0-rc.4",value.display_version);self.assertEqual(value.descriptor,"Android Security & Recovery Workstation");self.assertEqual(value.short_revision,"abc123456789");self.assertIn("Branch/ref: release/1.0.0-rc.4",value.build_details);self.assertIn("Build channel: rc",value.build_details);self.assertEqual(value.configuration_schema_version,4)
  def test_packaged_build_info_and_environment_override(self):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);version=root/"VERSION";info=root/"build-info.json";version.write_text("2.0.0-test\n");info.write_text(json.dumps({"commit":"a"*40,"ref":"feature/from-file","timestamp":"2026-07-24T12:00:00Z","channel":"testing"}))
