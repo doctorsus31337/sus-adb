@@ -309,6 +309,7 @@ class SusADBWindow(ctk.CTk):
         self.crash_dialog = None
         self.instrumentation_panel = None
         self.script_studio_panel = None
+        self._script_editor_focus = False
         self.pentest_workspace = None
         self.selected_target = None
         self._deferred_started = False
@@ -604,8 +605,42 @@ class SusADBWindow(ctk.CTk):
             launch_session_callback=self.open_script_session,
             open_folder_callback=self.open_local_directory,
             help_callback=self.open_context_help,
+            editor_focus_callback=self._set_script_editor_focus,
             ui_dispatch=self.call_on_ui,
         )
+
+    def _set_script_editor_focus(self, active):
+        if getattr(self, "_shutdown_started", False):
+            return
+        self._script_editor_focus = bool(active)
+        self._sync_script_editor_focus()
+
+    def _sync_script_editor_focus(self):
+        if getattr(self, "_shutdown_started", False):
+            return
+        focused = (
+            self._script_editor_focus
+            and hasattr(self, "workspace")
+            and self.workspace.get() == "Scripts"
+        )
+        for widget in (
+            getattr(self, "gothic_header", None),
+            getattr(self, "device_dock", None),
+            getattr(self, "status_bar", None),
+        ):
+            if widget is None:
+                continue
+            try:
+                exists = bool(widget.winfo_exists())
+            except tk.TclError:
+                exists = False
+            if not exists:
+                continue
+            manager = widget.winfo_manager()
+            if focused and manager:
+                widget.grid_remove()
+            elif not focused and not manager:
+                widget.grid()
 
     def _set_script_advisories(self, value):
         self.app_config.setdefault("script_studio",{})[
@@ -671,6 +706,7 @@ class SusADBWindow(ctk.CTk):
         if hasattr(self, "workspace_controller"):
             self.workspace_controller.adopt(name)
         self._ensure_workspace(name)
+        self._sync_script_editor_focus()
         if name == "Home":
             self._refresh_home_state()
         self._focus_workspace(name)
@@ -683,6 +719,7 @@ class SusADBWindow(ctk.CTk):
         if self.workspace.get() != name:
             self.workspace.set(name)
         panel = self._ensure_workspace(name)
+        self._sync_script_editor_focus()
         if name == "Home":
             self._refresh_home_state()
         self._focus_workspace(name)
