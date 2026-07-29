@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from app.core.fastboot_command import FastbootCommandPolicy
 from app.core.command_registry import CommandRegistry
 
 
@@ -27,6 +28,7 @@ class CommandRoute:
     classification: CommandClassification
     session_type: str = ""
     serial: str = ""
+    fastboot_serial: str = ""
     target: str = ""
     reason: str = ""
 
@@ -61,12 +63,14 @@ class CommandRouter:
             return CommandRoute(raw, (), (), CommandClassification.UNSUPPORTED, reason=f"Could not parse command: {exc}")
         if not argv:
             return CommandRoute(raw, (), (), CommandClassification.UNSUPPORTED, reason="No command was provided.")
+        name = self._name(argv[0])
         resolved = argv
         if self.resolver is not None:
-            executable = self.resolver.resolve(argv[0])
+            executable = self.resolver.resolve(name)
             if executable:
                 resolved = (executable, *argv[1:])
-        name = self._name(argv[0])
+        if name == "fastboot":
+            return self._fastboot(raw, argv, resolved)
         if name == "adb":
             return self._adb(raw, argv, resolved)
         if name == "objection":
@@ -96,6 +100,20 @@ class CommandRouter:
         return CommandRoute(
             raw, argv, resolved, CommandClassification.AMBIGUOUS,
             reason="This command is not in the supported command registry. Use a dedicated terminal for unclassified commands.",
+        )
+
+    @staticmethod
+    def _fastboot(raw, argv, resolved):
+        parsed = FastbootCommandPolicy.parse(argv)
+        if not parsed.allowed:
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                reason=parsed.reason,
+            )
+        return CommandRoute(
+            raw, argv, resolved, CommandClassification.ONE_SHOT,
+            fastboot_serial=parsed.serial,
+            reason="Fastboot command matches the reviewed read-only grammar.",
         )
 
     def _adb(self, raw, argv, resolved):

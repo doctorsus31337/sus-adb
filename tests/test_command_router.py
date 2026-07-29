@@ -59,6 +59,59 @@ class CommandRouterTests(unittest.TestCase):
             self.assertEqual(route.resolved_argv[0], str(executable.resolve()))
             self.assertEqual(route.resolved_argv[1:], ("-s", "SERIAL", "shell"))
 
+    def test_fastboot_is_validated_before_generic_registry_fallback(self):
+        router = CommandRouter()
+        allowed = (
+            "fastboot --version",
+            "fastboot help",
+            "fastboot devices",
+            "fastboot devices -l",
+            "fastboot -s FB-SERIAL getvar product",
+            "fastboot --serial FB-SERIAL getvar all",
+        )
+        for command in allowed:
+            with self.subTest(command=command):
+                route = router.classify(command)
+                self.assertEqual(route.classification, CommandClassification.ONE_SHOT)
+        blocked = (
+            "fastboot flash boot boot.img",
+            "fastboot erase userdata",
+            "fastboot reboot",
+            "fastboot oem fixture",
+            "fastboot mystery",
+        )
+        for command in blocked:
+            with self.subTest(command=command):
+                route = router.classify(command)
+                self.assertEqual(route.classification, CommandClassification.UNSUPPORTED)
+                self.assertIn("not supported", route.reason)
+
+    def test_fastboot_serial_has_distinct_route_context(self):
+        route = CommandRouter().classify(
+            "fastboot --serial FB-SERIAL getvar current-slot"
+        )
+        self.assertEqual(route.fastboot_serial, "FB-SERIAL")
+        self.assertEqual(route.serial, "")
+
+    def test_fastboot_exe_normalizes_and_configured_space_path_is_one_token(self):
+        with tempfile.TemporaryDirectory(prefix="fastboot tools ") as directory:
+            executable = Path(directory) / "fastboot.exe"
+            executable.touch()
+            resolver = HostToolResolver(
+                {"fastboot": str(executable)},
+                which=lambda _name: None,
+                platform_name="nt",
+            )
+            route = CommandRouter(resolver, platform_name="nt").classify(
+                "fastboot.exe --serial FB-SERIAL getvar product"
+            )
+            self.assertEqual(route.classification, CommandClassification.ONE_SHOT)
+            self.assertEqual(route.resolved_argv[0], str(executable.resolve()))
+            self.assertEqual(
+                route.resolved_argv[1:],
+                ("--serial", "FB-SERIAL", "getvar", "product"),
+            )
+
     def test_malformed_and_unknown_commands_are_bounded(self):
         router = CommandRouter()
         malformed = router.classify("adb '")

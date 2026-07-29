@@ -29,6 +29,7 @@ class CommandRunner:
                 timeout=timeout,
                 cwd=cwd,
                 creationflags=self._creation_flags(),
+                shell=False,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
@@ -69,6 +70,7 @@ class CommandRunner:
             errors="replace",
             bufsize=1,
             creationflags=self._creation_flags(),
+            shell=False,
         )
 
         if process.stdout is not None:

@@ -50,6 +50,17 @@ class HostToolResolverTests(unittest.TestCase):
             )
             self.assertEqual(resolver.resolve("frida-ps"), str(tool.resolve()))
 
+    def test_windows_fastboot_executable_resolution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tool = Path(directory) / "fastboot.exe"
+            tool.touch()
+            resolver = HostToolResolver(
+                which=lambda _name: None,
+                interpreter=Path(directory) / "python.exe",
+                platform_name="nt",
+            )
+            self.assertEqual(resolver.resolve("fastboot"), str(tool.resolve()))
+
     def test_configured_path_overrides_path_and_preserves_spaces(self):
         with tempfile.TemporaryDirectory(prefix="sus adb ") as directory:
             configured = Path(directory) / "frida ps"
