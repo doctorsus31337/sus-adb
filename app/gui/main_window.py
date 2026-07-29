@@ -14,7 +14,11 @@ import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
-from app.gui.customtkinter_compat import install_scroll_target_guard, safe_focus
+from app.gui.customtkinter_compat import (
+    DeterministicTabview,
+    install_scroll_target_guard,
+    safe_focus,
+)
 install_scroll_target_guard(ctk.CTkScrollableFrame)
 
 from app.core.command_runner import CommandRunner
@@ -447,7 +451,7 @@ class SusADBWindow(ctk.CTk):
         body.grid(row=2, column=0, sticky="nsew", padx=20, pady=(4, 7))
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(0, weight=1)
-        self.workspace = ctk.CTkTabview(
+        self.workspace = DeterministicTabview(
             body,
             fg_color=self.theme["panel"],
             segmented_button_fg_color=self.theme["panel_alt"],

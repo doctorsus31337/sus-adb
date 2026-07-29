@@ -380,8 +380,8 @@ class ScopedScrollableFrame(ctk.CTkScrollableFrame if ctk is not None else objec
         super().destroy()
 
 class DeterministicTabview(ctk.CTkTabview if ctk is not None else object):
-    """Select programmatic tabs without CTk's stale delayed forget callback."""
-    def set(self,name):
+    """Select tabs synchronously without CTk's stale delayed forget callback."""
+    def _select_synchronously(self,name,*,invoke_command=False):
         if name not in self._tab_dict:
             raise ValueError(f"CTkTabview has no tab named '{name}'")
         previous=self._tab_dict.get(self._current_name)
@@ -390,6 +390,12 @@ class DeterministicTabview(ctk.CTkTabview if ctk is not None else object):
         self._current_name=name
         self._segmented_button.set(name)
         self._set_grid_current_tab()
+        if invoke_command and self._command is not None:
+            self._command()
+    def set(self,name):
+        self._select_synchronously(name)
+    def _segmented_button_callback(self,selected_name):
+        self._select_synchronously(selected_name,invoke_command=True)
 
 def install_scroll_target_guard(scrollable_class=None):
     """Guard CTk's global wheel validator; preserve all valid-widget behavior."""

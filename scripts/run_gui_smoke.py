@@ -110,7 +110,7 @@ def main():
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
   official=app.plugin_manager.official();assert len(official)==6;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
-  console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
+  app.navigate_workspace("Console");console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
   app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();assert no_question_help(sessions)
   for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
    sessions.geometry(f"{width}x{height}+0+0");sessions.update_idletasks();assert sessions.winfo_width()==width and sessions.winfo_height()==height;clipped=[(widget.cget("text"),widget.winfo_width()) for widget in descendants(sessions) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped() and not button_text_fits(widget)];assert not clipped,clipped
