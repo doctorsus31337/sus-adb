@@ -3,16 +3,49 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import customtkinter as ctk
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-from app.core.command_palette import PaletteCommand
-from app.core.host_state import DeviceState, HostStateSnapshot
-from app.gui.main_window import SusADBWindow
-from app.plugins.contribution_registry import Contribution
+
+@contextmanager
+def isolated_palette_environment(temporary_root):
+    temporary_root = Path(temporary_root)
+    working_directory = temporary_root / "application working directory"
+    configuration_directory = temporary_root / "configuration"
+    working_directory.mkdir(parents=True)
+    configuration_directory.mkdir(parents=True)
+    original_working_directory = Path.cwd()
+    had_xdg_config_home = "XDG_CONFIG_HOME" in os.environ
+    original_xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    try:
+        os.environ["XDG_CONFIG_HOME"] = str(configuration_directory)
+        os.chdir(working_directory)
+        yield working_directory, configuration_directory
+    finally:
+        os.chdir(original_working_directory)
+        if had_xdg_config_home:
+            os.environ["XDG_CONFIG_HOME"] = original_xdg_config_home
+        else:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+
+
+def pump_until(app, condition, timeout=2.0):
+    deadline = time.monotonic() + max(0.01, float(timeout))
+    while time.monotonic() < deadline:
+        app.update()
+        if condition():
+            return True
+    app.update_idletasks()
+    return bool(condition())
 
 
 def descendants(widget):
@@ -61,9 +94,13 @@ def geometry_measurement(palette, width, height):
     )
 
 
-def main():
-    SusADBWindow.startup_check = lambda self: None
-    app = SusADBWindow()
+def _exercise(app):
+    import customtkinter as ctk
+
+    from app.core.command_palette import PaletteCommand
+    from app.core.host_state import DeviceState, HostStateSnapshot
+    from app.plugins.contribution_registry import Contribution
+
     app.geometry("1200x760+0+0")
     app.update_idletasks()
     assert app.command_palette is None
@@ -129,10 +166,20 @@ def main():
     ctk.set_widget_scaling(1.0)
 
     app.set_interface_mode("advanced")
-    app.after(30, app.quit)
-    app.mainloop()
+    assert pump_until(
+        app,
+        lambda: (
+            app.host_state.snapshot().interface_mode == "advanced"
+            and palette.mode_label.cget("text") == "Advanced mode"
+        ),
+    )
     assert app.command_palette is palette
     assert palette.mode_label.cget("text") == "Advanced mode"
+    published = app.host_state.snapshot()
+    assert isinstance(published, HostStateSnapshot)
+    assert published.interface_mode == "advanced"
+    assert published.lifecycle == "interface-mode-changed"
+    assert published.generation > 0
     app.host_state.publish(
         HostStateSnapshot(
             selected_device=DeviceState(
@@ -142,8 +189,10 @@ def main():
             interface_mode="advanced",
         )
     )
-    app.after(30, app.quit)
-    app.mainloop()
+    assert pump_until(
+        app,
+        lambda: app.host_state.snapshot().selected_serial == "fixture-serial",
+    )
     query(palette, "Instrumentation")
     assert "fixture-serial" in palette.matches[0].command.technical_context
     assert app.command_palette is palette
@@ -259,7 +308,62 @@ def main():
         for value in app.theme.values() if isinstance(value, str)
     )
     assert not any(worker.is_alive() for worker in app._background_workers)
-    app.shutdown()
+    assert app.host_state.subscription_count("command-palette") == 0
+    return measurements
+
+
+def main():
+    original_working_directory = Path.cwd()
+    had_xdg_config_home = "XDG_CONFIG_HOME" in os.environ
+    original_xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    temporary_path = None
+    app = None
+    measurements = ()
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_path = Path(directory)
+            with isolated_palette_environment(temporary_path):
+                import customtkinter as ctk
+                from app.gui.main_window import SusADBWindow
+
+                SusADBWindow.startup_check = lambda self: None
+                app = SusADBWindow()
+                try:
+                    app.set_interface_mode("guided")
+                    assert app.interface_mode == "guided"
+                    assert pump_until(
+                        app,
+                        lambda: (
+                            app.host_state.snapshot().interface_mode == "guided"
+                        ),
+                    )
+                    assert (
+                        app.host_state.snapshot().interface_mode == "guided"
+                    )
+                    measurements = _exercise(app)
+                finally:
+                    if app is not None:
+                        try:
+                            exists = bool(app.winfo_exists())
+                        except Exception:
+                            exists = False
+                        if exists:
+                            app.shutdown()
+                assert app.host_state.subscription_count("command-palette") == 0
+                assert not any(
+                    worker.is_alive() for worker in app._background_workers
+                )
+                ctk.set_widget_scaling(1.0)
+        assert temporary_path is not None and not temporary_path.exists()
+        assert Path.cwd() == original_working_directory
+        assert ("XDG_CONFIG_HOME" in os.environ) == had_xdg_config_home
+        assert os.environ.get("XDG_CONFIG_HOME") == original_xdg_config_home
+    finally:
+        os.chdir(original_working_directory)
+        if had_xdg_config_home:
+            os.environ["XDG_CONFIG_HOME"] = original_xdg_config_home
+        else:
+            os.environ.pop("XDG_CONFIG_HOME", None)
     print(
         "command-palette-smoke=PASS "
         f"measurements={measurements} "
