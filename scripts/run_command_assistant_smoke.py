@@ -20,7 +20,7 @@ from app.core.command_completion import (
     CommandCompletionService,
 )
 from app.core.command_registry import CommandSpec
-from app.core.command_router import CommandClassification
+from app.core.command_router import CommandClassification, CommandRouter
 from app.gui.main_window import SusADBWindow
 
 
@@ -316,6 +316,67 @@ def main():
         app.update_idletasks()
         assert bar.result.suggestions[0].command_text.startswith(expected)
 
+    platform_queries = (
+        ("f", lambda items: any(item.command_text.startswith("fastboot") for item in items)),
+        ("fast", lambda items: all(item.command_text.startswith("fastboot") for item in items)),
+        ("fastboot", lambda items: any(item.command_text == "fastboot devices" for item in items)),
+        ("fastboot ", lambda items: any(item.command_text == "fastboot devices -l" for item in items)),
+        ("fastboot d", lambda items: tuple(item.command_text for item in items) == ("fastboot devices", "fastboot devices -l")),
+        ("fastboot -s", lambda items: tuple(item.command_text for item in items) == ("fastboot -s ",)),
+        ("fastboot -s SERIAL get", lambda items: all(item.command_text.startswith("fastboot -s SERIAL getvar") for item in items)),
+        ("fastboot -s SERIAL getvar", lambda items: any(item.command_text.endswith("current-slot") for item in items)),
+        ("adb v", lambda items: items[0].command_text == "adb version"),
+        ("adb m", lambda items: items[0].command_text == "adb mdns services"),
+        ("adb con", lambda items: items[0].command_text == "adb connect "),
+        ("adb dis", lambda items: items[0].command_text == "adb disconnect"),
+        ("adb reconnect", lambda items: any(item.command_text == "adb reconnect device" for item in items)),
+    )
+    platform_query_results = []
+    for query, assertion in platform_queries:
+        bar._set_entry(query)
+        bar._refresh()
+        app.update_idletasks()
+        assert bar.suggestions_open, query
+        assert assertion(bar.result.suggestions), (
+            query, tuple(item.command_text for item in bar.result.suggestions)
+        )
+        assert all(item.description for item in bar.result.suggestions)
+        assert all(item.impact for item in bar.result.suggestions)
+        assert not any(
+            blocked in item.command_text
+            for item in bar.result.suggestions
+            for blocked in ("fastboot flash", "fastboot erase", "fastboot reboot", "fastboot oem")
+        )
+        platform_query_results.append(
+            (query, tuple(item.command_text for item in bar.result.suggestions))
+        )
+        bar.hide_suggestions()
+
+    bar._set_entry("fastboot -s ")
+    bar.context_provider = lambda: CommandCompletionContext(
+        selected_serial="ADB-MUST-NOT-BE-USED", selected_device_state="device"
+    )
+    bar._refresh()
+    assert all(
+        "ADB-MUST-NOT-BE-USED" not in item.command_text
+        for item in bar.result.suggestions
+    )
+    bar.accept_index(0)
+    assert bar.entry.get() == "fastboot -s "
+    assert executed == []
+    bar.context_provider = CommandCompletionContext
+
+    bar._set_entry("fastboot devices")
+    bar._refresh()
+    assert bar.result.mode.value == "related"
+    assert {
+        item.display_syntax for item in bar.result.suggestions
+    } >= {
+        "fastboot -s <fastboot-serial> getvar product",
+        "fastboot -s <fastboot-serial> getvar current-slot",
+    }
+    bar.hide_suggestions()
+
     bar._set_entry("adb start-server")
     bar._refresh()
     app.update_idletasks()
@@ -423,6 +484,24 @@ def main():
             bar.hide_suggestions()
             app.update_idletasks()
             assert not bar.suggestion_panel.winfo_ismapped()
+            bar.completion_service = CommandCompletionService()
+            bar._set_entry("fastboot -s SERIAL getvar")
+            bar._refresh()
+            app.update_idletasks()
+            assert bar.suggestions_open
+            assert any(
+                item.command_text.endswith("current-slot")
+                for item in bar.result.suggestions
+            )
+            assert any(
+                item.requires_fastboot_serial
+                for item in bar.result.suggestions
+            )
+            assert all(
+                button.winfo_width() <= bar.suggestion_scroller.canvas.winfo_width() + 2
+                for button in bar.suggestion_buttons
+            )
+            bar.hide_suggestions()
     ctk.set_widget_scaling(1.0)
 
     bar.completion_service = synthetic_service(1)
@@ -470,6 +549,87 @@ def main():
         for value in app.theme.values() if isinstance(value, str)
     )
 
+    class FakeResolver:
+        configured = {}
+        paths = {
+            "adb": "/fixture tools/adb",
+            "fastboot": "/fixture tools/fastboot",
+        }
+
+        def resolve(self, name):
+            return self.paths.get(name)
+
+        def cached(self, name):
+            return name in self.paths
+
+        @staticmethod
+        def missing_message(name, *_args):
+            return f"{name} fixture is unavailable"
+
+    class FakeRunner:
+        def __init__(self):
+            self.commands = []
+
+        def stream(self, command, on_line, **_kwargs):
+            self.commands.append(tuple(command))
+            on_line(
+                "fastboot getvar fixture from stderr"
+                if "fastboot" in command[0] else "adb connection fixture"
+            )
+            return 0
+
+    fake_resolver = FakeResolver()
+    fake_runner = FakeRunner()
+    app.host_tools = fake_resolver
+    app.command_router = CommandRouter(fake_resolver)
+    app.terminal.resolver = fake_resolver
+    app.terminal.router = app.command_router
+    app.terminal.runner = fake_runner
+    bar.execute_callback = app.execute_command
+
+    history_before_fake_execution = app.terminal.history.entries()
+    for command in (
+        "fastboot -s FB-SERIAL getvar product",
+        "adb connect fixture.example:5555",
+    ):
+        bar._set_entry(command)
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+    assert fake_runner.commands == [
+        (
+            "/fixture tools/fastboot", "-s", "FB-SERIAL",
+            "getvar", "product",
+        ),
+        ("/fixture tools/adb", "connect", "fixture.example:5555"),
+    ]
+    assert pump_until(
+        app,
+        lambda: (
+            "fastboot getvar fixture from stderr" in output.read()
+            and "adb connection fixture" in output.read()
+        ),
+    )
+    assert output.read().count("[✓] Complete") >= 2
+    assert app.terminal.history.entries()[-2:] == (
+        "fastboot -s FB-SERIAL getvar product",
+        "adb connect fixture.example:5555",
+    )
+
+    runner_count = len(fake_runner.commands)
+    bar._set_entry("fastboot flash boot boot.img")
+    bar.run()
+    app.update_idletasks()
+    assert len(fake_runner.commands) == runner_count
+    assert "fastboot flash boot boot.img" not in app.terminal.history.entries()
+    bar._set_entry("adb pair fixture.example:37123 123456")
+    bar.run()
+    app.update_idletasks()
+    assert len(fake_runner.commands) == runner_count
+    assert not any(
+        entry.startswith("adb pair") for entry in app.terminal.history.entries()
+    )
+    assert len(app.terminal.history.entries()) == len(history_before_fake_execution) + 2
+
     latencies = {count: latency(count) for count in (10, 50, 100, 500)}
     binding_count = bar.binding_count
     output_binding_count = output.binding_count
@@ -484,12 +644,14 @@ def main():
     print(
         "command-assistant-smoke=PASS "
         f"measurements={measurements} contexts={context_results} "
+        f"platform_queries={platform_query_results} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
         f"output_bindings_before_close={output_binding_count} "
         f"output_yview={initial_yview}->{touchpad_yview}->{page_yview} "
         "callbacks_after_close=0 bindings_after_close=0 output_bindings_after_close=0 "
         "readonly-copy-handoff-output-scroll-isolation-streaming-save-clear=PASS "
-        "keyboard-history-related-routing-wheel-compact-scaling-shutdown=PASS"
+        "keyboard-history-related-routing-wheel-compact-scaling-shutdown=PASS "
+        "fastboot-platform-tools-fake-execution-blocked-policy=PASS"
     )
     return 0
 

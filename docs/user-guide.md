@@ -22,3 +22,14 @@ Center, Sessions Center, Device Rescue, Frida/Objection Assistants, Learning
 Center, Context Help, Diagnostics, and Advanced Command Reference remain
 detached windows. Long operations run in background workers; missing optional
 tools reduce only their related workflows.
+
+The integrated Console supports bounded Android Platform-Tools discovery,
+connection-state commands, and a deliberately narrow Fastboot family:
+version/help, device discovery, and `getvar` with an operator-entered Fastboot
+serial. It never substitutes the selected ADB serial for a Fastboot transport.
+Flashing, wiping, locking/unlocking, rebooting, OEM, partition, image, and
+unknown Fastboot operations are rejected rather than handed to a terminal.
+Wireless ADB pairing is deferred to a dedicated future workflow so pairing
+codes and interactive secrets are not casually retained in Console history or
+transcripts. ADB root/remount/verity, transport-mode switching, sideload, and
+arbitrary shell expansion remain outside this milestone.

@@ -135,6 +135,19 @@ class TerminalManagerTests(unittest.TestCase):
         self.assertIs(options["stderr"], subprocess.STDOUT)
         self.assertFalse(options["shell"])
 
+    def test_adb_pairing_code_is_rejected_before_history(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        manager.execute("adb pair device.example:37123 123456")
+        self.assertEqual(manager.history.entries(), ())
+        self.assertFalse(runner.commands)
+        self.assertIn("pairing", " ".join(logs).casefold())
+
 
 if __name__ == "__main__":
     unittest.main()

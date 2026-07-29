@@ -316,8 +316,9 @@ class CommandBar(GothicFrame):
                 "Related" if suggestion.related else "",
                 "Interactive session" if suggestion.opens_session else "One-shot",
                 "Device" if suggestion.requires_device else "",
+                "Fastboot serial" if suggestion.requires_fastboot_serial else "",
                 "Target" if suggestion.uses_target else "",
-                "State-changing" if suggestion.impact == "State-changing" else "",
+                suggestion.impact if suggestion.impact != "Read-only" else "",
             ]
             badge_text = " · ".join(value for value in badges if value)
             button = ctk.CTkButton(

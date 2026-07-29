@@ -57,6 +57,7 @@ class CommandSuggestion:
     impact: str
     opens_session: bool
     requires_device: bool
+    requires_fastboot_serial: bool
     uses_target: bool
     placeholders: tuple[str, ...]
     related_command_ids: tuple[str, ...]
@@ -135,19 +136,25 @@ def _quote(value: str, platform: str) -> str:
     return shlex.quote(value)
 
 
-def _materialize(spec: CommandSpec, context: CommandCompletionContext) -> tuple[str, tuple[str, ...], int]:
+def _materialize(
+    spec: CommandSpec,
+    context: CommandCompletionContext,
+    supplied_tokens: tuple[str, ...] = (),
+) -> tuple[str, tuple[str, ...], int]:
     output: list[str] = []
     unresolved: list[str] = []
     cursor_offset = -1
     arguments = {argument.name: argument for argument in spec.arguments}
-    for token in _template_tokens(spec.command):
+    for index, token in enumerate(_template_tokens(spec.command)):
         if not _is_placeholder(token):
             output.append(token)
             continue
         name = token[1:-1]
         argument = arguments.get(name)
         value = ""
-        if argument and argument.context_key == "selected_target":
+        if index < len(supplied_tokens) and supplied_tokens[index]:
+            value = supplied_tokens[index]
+        elif argument and argument.context_key == "selected_target":
             value = context.selected_target
         elif argument and argument.context_key == "selected_serial":
             value = context.selected_serial
@@ -181,12 +188,20 @@ def _match_stage(spec: CommandSpec, query: str, query_tokens: tuple[str, ...]) -
         if (
             len(query_tokens) <= len(syntax_tokens)
             and all(
-                left.casefold() == right.casefold()
+                _is_placeholder(right)
+                or left.casefold() == right.casefold()
                 for left, right in zip(prior, syntax_tokens)
             )
-            and syntax_tokens[len(query_tokens) - 1].casefold().startswith(current)
+            and (
+                _is_placeholder(syntax_tokens[len(query_tokens) - 1])
+                or syntax_tokens[len(query_tokens) - 1].casefold().startswith(current)
+            )
         ):
-            return 0, len(syntax_tokens[len(query_tokens) - 1]) - len(current)
+            expected = syntax_tokens[len(query_tokens) - 1]
+            return (
+                0,
+                0 if _is_placeholder(expected) else len(expected) - len(current),
+            )
     if syntax.startswith(query):
         return 1, len(syntax) - len(query)
     if query.endswith(" ") and syntax.startswith(query.rstrip()):
@@ -234,7 +249,11 @@ class CommandCompletionService:
             ),
             None,
         )
-        if exact and exact.relationships:
+        if (
+            exact
+            and exact.relationships
+            and exact.command_id != "adb.reconnect"
+        ):
             related = tuple(
                 self._suggestion(
                     self._by_id[relationship.command_id], snapshot, parsed,
@@ -271,7 +290,14 @@ class CommandCompletionService:
         contextual = self._selected_serial_suggestion(query, snapshot, parsed)
         if contextual is not None:
             matches.append(contextual)
-        ordered = tuple(sorted(matches, key=lambda item: item.rank))
+        unique = []
+        seen_commands = set()
+        for item in sorted(matches, key=lambda value: value.rank):
+            if item.command_text in seen_commands:
+                continue
+            seen_commands.add(item.command_text)
+            unique.append(item)
+        ordered = tuple(unique)
         mode = CompletionMode.MANUAL if manual and not query else CompletionMode.PREFIX
         return CommandSuggestionResult(
             ordered[: self.visible_limit], len(ordered), mode,
@@ -280,7 +306,9 @@ class CommandCompletionService:
         )
 
     def _suggestion(self, spec, context, parsed, rank, reason):
-        command, unresolved, cursor_offset = _materialize(spec, context)
+        command, unresolved, cursor_offset = _materialize(
+            spec, context, parsed.tokens
+        )
         if spec.uses_target and context.selected_target and not unresolved:
             rank = (3, *rank)
             reason = "Current selected target"
@@ -296,7 +324,8 @@ class CommandCompletionService:
         return CommandSuggestion(
             spec.command_id, command, spec.command, description, spec.family,
             spec.category, spec.aliases, spec.classification, spec.impact,
-            spec.opens_session, spec.requires_device, spec.uses_target,
+            spec.opens_session, spec.requires_device,
+            spec.requires_fastboot_serial, spec.uses_target,
             unresolved, tuple(item.command_id for item in spec.relationships),
             (parsed.replacement_start, parsed.replacement_end), reason,
             tuple(rank) + (spec.command.casefold(), spec.command_id),
@@ -312,7 +341,7 @@ class CommandCompletionService:
         return CommandSuggestion(
             "context.selected-device", command, command.rstrip(),
             "Insert the current selected device serial", "ADB", "Context",
-            (), "one-shot", "Read-only", False, True, False, (),
+            (), "one-shot", "Read-only", False, True, False, False, (),
             (), (parsed.replacement_start, parsed.replacement_end),
             "Current selected device", (3, 0, command.casefold()),
             len(command),

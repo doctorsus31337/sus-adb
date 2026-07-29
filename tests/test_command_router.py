@@ -112,6 +112,56 @@ class CommandRouterTests(unittest.TestCase):
                 ("--serial", "FB-SERIAL", "getvar", "product"),
             )
 
+    def test_platform_tools_additions_are_explicitly_finite(self):
+        router = CommandRouter()
+        for command in (
+            "adb version",
+            "adb host-features",
+            "adb features",
+            "adb mdns services",
+            "adb connect 192.0.2.10:5555",
+            "adb connect device.example:5037",
+            "adb disconnect",
+            "adb disconnect device.example:5037",
+            "adb reconnect device",
+            "adb reconnect offline",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(
+                    router.classify(command).classification,
+                    CommandClassification.ONE_SHOT,
+                )
+
+    def test_adb_connection_endpoints_are_locally_validated(self):
+        router = CommandRouter()
+        for command in (
+            "adb connect missing-port",
+            "adb connect host:0",
+            "adb connect host:65536",
+            "adb connect 999.999.999.999:5555",
+            "adb connect https://host:5555",
+            "adb connect user@host:5555",
+            "adb connect host:5555/path",
+            "adb connect 'host name:5555'",
+            "adb connect host:5555 extra",
+            "adb disconnect host:abc",
+            "adb disconnect host:5555 extra",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(
+                    router.classify(command).classification,
+                    CommandClassification.UNSUPPORTED,
+                )
+
+    def test_adb_pair_is_deferred_and_never_routable(self):
+        route = CommandRouter().classify("adb pair host:37123 123456")
+        self.assertEqual(route.classification, CommandClassification.UNSUPPORTED)
+        self.assertIn("dedicated Wireless ADB pairing workflow", route.reason)
+
+    def test_unrelated_unknown_adb_behavior_is_not_changed(self):
+        route = CommandRouter().classify("adb legacy-unknown fixture")
+        self.assertEqual(route.classification, CommandClassification.ONE_SHOT)
+
     def test_malformed_and_unknown_commands_are_bounded(self):
         router = CommandRouter()
         malformed = router.classify("adb '")

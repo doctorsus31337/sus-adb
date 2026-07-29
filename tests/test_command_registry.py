@@ -26,6 +26,8 @@ class CommandRegistryTests(unittest.TestCase):
         self.assertIn("SUS COMPANION", grouped)
         self.assertIn("adb devices -l", commands)
         self.assertIn("adb devices -l", rendered)
+        self.assertIn("fastboot devices -l", commands)
+        self.assertIn("fastboot -s <fastboot-serial> getvar all", rendered)
 
     def test_guided_and_advanced_render_from_same_metadata(self):
         guided = CommandRegistry.render_text()
@@ -37,6 +39,31 @@ class CommandRegistryTests(unittest.TestCase):
         self.assertNotIn("Classification:", guided)
         self.assertIn("Classification: interactive", advanced)
         self.assertIn("Related: adb devices -l", advanced)
+        self.assertIn("the selected ADB serial is never reused", advanced)
+
+    def test_platform_tools_and_fastboot_inventory_is_complete(self):
+        commands = set(CommandRegistry.all_commands())
+        expected = {
+            "fastboot --version",
+            "fastboot help",
+            "fastboot devices",
+            "fastboot devices -l",
+            "fastboot -s <fastboot-serial> getvar <variable>",
+            "fastboot -s <fastboot-serial> getvar all",
+            "adb version",
+            "adb host-features",
+            "adb features",
+            "adb mdns services",
+            "adb connect <host>:<port>",
+            "adb disconnect",
+            "adb disconnect <host>:<port>",
+            "adb reconnect device",
+            "adb reconnect offline",
+        }
+        self.assertLessEqual(expected, commands)
+        rendered = CommandRegistry.render_text(advanced=True)
+        self.assertIn("FASTBOOT DISCOVERY", rendered)
+        self.assertIn("FASTBOOT BOOTLOADER INFO", rendered)
 
     def test_registry_classification_hints_match_router_for_concrete_commands(self):
         router = CommandRouter()

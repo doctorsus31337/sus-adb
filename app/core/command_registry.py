@@ -37,6 +37,7 @@ class CommandSpec:
     impact: str = "Read-only"
     opens_session: bool = False
     requires_device: bool = False
+    requires_fastboot_serial: bool = False
     uses_target: bool = False
     arguments: tuple[CommandArgumentSpec, ...] = ()
     relationships: tuple[CommandRelationship, ...] = ()
@@ -86,11 +87,79 @@ class CommandRegistry:
                 impact="Local state", arguments=(_arg("directory", "Working directory"),),
             ),
         ),
+        "ANDROID PLATFORM TOOLS": (
+            CommandSpec(
+                "adb version", "Show the installed Android Debug Bridge version",
+                "adb.version", "ADB", "Platform Tools",
+                relationships=(_rel("adb.host-features"), _rel("fastboot.version")),
+            ),
+            CommandSpec(
+                "adb host-features", "List features supported by the host ADB client",
+                "adb.host-features", "ADB", "Platform Tools",
+                relationships=(_rel("adb.features"), _rel("adb.version")),
+            ),
+            CommandSpec(
+                "adb features", "List combined host and connected-device ADB features",
+                "adb.features", "ADB", "Platform Tools",
+                relationships=(_rel("adb.host-features"), _rel("adb.devices.long")),
+            ),
+            CommandSpec(
+                "adb mdns services", "List locally advertised Wireless ADB services",
+                "adb.mdns.services", "ADB", "Wireless Discovery",
+                relationships=(_rel("adb.connect"), _rel("adb.disconnect.target")),
+            ),
+            CommandSpec(
+                "adb connect <host>:<port>",
+                "Connect ADB to an explicit host and numeric port",
+                "adb.connect", "ADB", "Connection", impact="Local connection state",
+                arguments=(
+                    _arg("host>:<port", "Host or IP plus port 1–65535"),
+                ),
+                relationships=(
+                    _rel("adb.disconnect.target"), _rel("adb.mdns.services"),
+                ),
+            ),
+            CommandSpec(
+                "adb disconnect", "Disconnect all host-managed TCP ADB transports",
+                "adb.disconnect", "ADB", "Connection",
+                impact="Local connection state",
+                relationships=(_rel("adb.connect"), _rel("adb.devices.long")),
+            ),
+            CommandSpec(
+                "adb disconnect <host>:<port>",
+                "Disconnect one explicit host and numeric port",
+                "adb.disconnect.target", "ADB", "Connection",
+                impact="Local connection state",
+                arguments=(
+                    _arg("host>:<port", "Host or IP plus port 1–65535"),
+                ),
+                relationships=(_rel("adb.connect"), _rel("adb.mdns.services")),
+            ),
+            CommandSpec(
+                "adb reconnect device", "Reconnect currently online ADB transports",
+                "adb.reconnect.device", "ADB", "Connection",
+                impact="Local connection state",
+                relationships=(
+                    _rel("adb.devices.long"), _rel("adb.reconnect.offline"),
+                ),
+            ),
+            CommandSpec(
+                "adb reconnect offline", "Reconnect only offline ADB transports",
+                "adb.reconnect.offline", "ADB", "Connection",
+                impact="Local connection state",
+                relationships=(
+                    _rel("adb.devices.long"), _rel("adb.reconnect.device"),
+                ),
+            ),
+        ),
         "ADB SERVER & DISCOVERY": (
             CommandSpec(
                 "adb devices", "List connected Android devices", "adb.devices",
                 "ADB", "Discovery", aliases=("device list",),
-                relationships=(_rel("adb.devices.long"), _rel("adb.shell")),
+                relationships=(
+                    _rel("adb.devices.long"), _rel("adb.shell"),
+                    _rel("adb.reboot.bootloader"), _rel("fastboot.devices"),
+                ),
             ),
             CommandSpec(
                 "adb devices -l", "List connected devices with transport details",
@@ -98,7 +167,7 @@ class CommandRegistry:
                 aliases=("device details", "long device list"),
                 relationships=(
                     _rel("adb.shell"), _rel("adb.get-state"), _rel("adb.reboot"),
-                    _rel("adb.logcat.dump"),
+                    _rel("adb.logcat.dump"), _rel("fastboot.devices"),
                 ),
             ),
             CommandSpec(
@@ -150,7 +219,8 @@ class CommandRegistry:
             CommandSpec(
                 "adb reboot bootloader", "Reboot the device into the bootloader",
                 "adb.reboot.bootloader", "ADB", "Device", impact="State-changing",
-                requires_device=True, relationships=(_rel("adb.reboot"),),
+                requires_device=True,
+                relationships=(_rel("adb.reboot"), _rel("fastboot.devices")),
             ),
             CommandSpec(
                 "adb logcat", "Open live Logcat in a dedicated session", "adb.logcat",
@@ -169,6 +239,107 @@ class CommandRegistry:
                 "ADB", "Logs", classification="interactive",
                 impact="State-changing", opens_session=True, requires_device=True,
                 relationships=(_rel("adb.logcat"), _rel("adb.logcat.dump")),
+            ),
+        ),
+        "FASTBOOT DISCOVERY": (
+            CommandSpec(
+                "fastboot --version", "Show the installed Fastboot version",
+                "fastboot.version", "Fastboot", "Discovery",
+                relationships=(_rel("fastboot.help"), _rel("fastboot.devices")),
+            ),
+            CommandSpec(
+                "fastboot help", "Show Fastboot's local command help",
+                "fastboot.help", "Fastboot", "Discovery",
+                relationships=(_rel("fastboot.version"), _rel("fastboot.devices")),
+            ),
+            CommandSpec(
+                "fastboot devices", "List devices visible to the Fastboot transport",
+                "fastboot.devices", "Fastboot", "Discovery",
+                relationships=(
+                    _rel("fastboot.devices.long"),
+                    _rel("fastboot.getvar.product"),
+                    _rel("fastboot.getvar.current-slot"),
+                ),
+            ),
+            CommandSpec(
+                "fastboot devices -l",
+                "List Fastboot devices with available transport details",
+                "fastboot.devices.long", "Fastboot", "Discovery",
+                relationships=(_rel("fastboot.devices"), _rel("adb.devices.long")),
+            ),
+        ),
+        "FASTBOOT BOOTLOADER INFO": (
+            CommandSpec(
+                "fastboot -s <fastboot-serial> getvar <variable>",
+                "Read one bounded bootloader variable from an explicit Fastboot serial",
+                "fastboot.getvar", "Fastboot", "Bootloader Info",
+                requires_fastboot_serial=True,
+                arguments=(
+                    _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                    _arg("variable", "One bootloader metadata variable"),
+                ),
+                relationships=(_rel("fastboot.devices"), _rel("fastboot.getvar.all")),
+            ),
+            CommandSpec(
+                "fastboot -s <fastboot-serial> getvar all",
+                "Request all bootloader variables from an explicit Fastboot serial",
+                "fastboot.getvar.all", "Fastboot", "Bootloader Info",
+                classification="streaming-but-finite",
+                requires_fastboot_serial=True,
+                arguments=(
+                    _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                ),
+                relationships=(_rel("fastboot.devices"), _rel("fastboot.getvar")),
+            ),
+            CommandSpec(
+                "fastboot -s <fastboot-serial> getvar product",
+                "Read the bootloader product identifier",
+                "fastboot.getvar.product", "Fastboot", "Bootloader Info",
+                requires_fastboot_serial=True, reference_only=True,
+                arguments=(
+                    _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                ),
+                relationships=(_rel("fastboot.getvar.current-slot"),),
+            ),
+            CommandSpec(
+                "fastboot -s <fastboot-serial> getvar current-slot",
+                "Read the current boot slot",
+                "fastboot.getvar.current-slot", "Fastboot", "Bootloader Info",
+                requires_fastboot_serial=True, reference_only=True,
+                arguments=(
+                    _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                ),
+                relationships=(_rel("fastboot.getvar.slot-count"),),
+            ),
+            CommandSpec(
+                "fastboot -s <fastboot-serial> getvar slot-count",
+                "Read the number of boot slots",
+                "fastboot.getvar.slot-count", "Fastboot", "Bootloader Info",
+                requires_fastboot_serial=True, reference_only=True,
+                arguments=(
+                    _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                ),
+                relationships=(_rel("fastboot.getvar.current-slot"),),
+            ),
+            *tuple(
+                CommandSpec(
+                    f"fastboot -s <fastboot-serial> getvar {variable}",
+                    description,
+                    f"fastboot.getvar.{variable}", "Fastboot", "Bootloader Info",
+                    requires_fastboot_serial=True, reference_only=True,
+                    arguments=(
+                        _arg("fastboot-serial", "Explicit Fastboot transport serial"),
+                    ),
+                    relationships=(_rel("fastboot.devices"),),
+                )
+                for variable, description in (
+                    ("serialno", "Read the bootloader-reported serial"),
+                    ("secure", "Read the secure-bootloader state"),
+                    ("unlocked", "Read the bootloader lock-state metadata"),
+                    ("version-bootloader", "Read the bootloader version"),
+                    ("version-baseband", "Read the baseband version"),
+                    ("max-download-size", "Read the maximum download size"),
+                )
             ),
         ),
         "ADB TRANSFER & PACKAGES": (
@@ -301,6 +472,11 @@ class CommandRegistry:
                         )
                     if spec.requires_device:
                         details.append("Context: Uses the explicit selected device")
+                    if spec.requires_fastboot_serial:
+                        details.append(
+                            "Context: Requires an operator-entered Fastboot serial; "
+                            "the selected ADB serial is never reused"
+                        )
                     if spec.uses_target:
                         details.append("Context: Can use the explicit selected target")
                     if spec.opens_session:

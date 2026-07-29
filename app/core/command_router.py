@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 import shlex
 from dataclasses import dataclass
 from enum import Enum
@@ -40,6 +42,10 @@ class CommandRoute:
 class CommandRouter:
     HOST_SHELLS = frozenset(("bash", "zsh", "sh", "fish", "pwsh", "powershell", "cmd"))
     VERSION_FLAGS = frozenset(("--help", "-h", "--version", "-V", "version"))
+    _ADB_ENDPOINT = re.compile(
+        r"(?=.{3,255}\Z)(?!-)(?!.*\.\.)"
+        r"(?:[A-Za-z0-9][A-Za-z0-9.-]*):([0-9]{1,5})\Z"
+    )
 
     def __init__(self, resolver=None, *, platform_name: str | None = None):
         self.resolver = resolver
@@ -136,6 +142,57 @@ class CommandRouter:
             break
         subcommand = argv[command_index].casefold() if command_index < len(argv) else ""
         trailing = argv[command_index + 1:]
+        if subcommand == "pair":
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                reason=(
+                    "ADB pairing is not supported in the integrated Console. "
+                    "A future dedicated Wireless ADB pairing workflow will protect "
+                    "interactive pairing codes from history and transcript capture."
+                ),
+            )
+        if subcommand in {"version", "host-features", "features"}:
+            if trailing:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=f"adb {subcommand} does not accept trailing arguments.",
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "mdns" and trailing == ("services",):
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "connect":
+            reason = self._adb_endpoint_reason(trailing)
+            if reason:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=reason,
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "disconnect":
+            reason = self._adb_endpoint_reason(trailing, optional=True)
+            if reason:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=reason,
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "reconnect" and trailing in {("device",), ("offline",)}:
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
         if subcommand == "shell" and not trailing:
             return CommandRoute(raw, argv, resolved, CommandClassification.INTERACTIVE, "adb-shell", serial=serial, reason="ADB Shell opens an interactive device session.")
         if subcommand == "logcat" and "-d" not in trailing:
@@ -143,6 +200,44 @@ class CommandRouter:
         if subcommand in {"pull", "push", "install", "install-multiple", "bugreport"} or subcommand == "logcat" and "-d" in trailing:
             return CommandRoute(raw, argv, resolved, CommandClassification.STREAMING_FINITE, serial=serial)
         return CommandRoute(raw, argv, resolved, CommandClassification.ONE_SHOT, serial=serial)
+
+    @classmethod
+    def _adb_endpoint_reason(cls, trailing, *, optional=False):
+        if not trailing and optional:
+            return ""
+        if len(trailing) != 1:
+            return "ADB connection commands require one explicit host:port endpoint."
+        endpoint = trailing[0]
+        if (
+            any(
+                ord(character) < 32
+                or character in ";&|`$<>(){}[]!*?~\\/@"
+                for character in endpoint
+            )
+            or "://" in endpoint
+            or any(character.isspace() for character in endpoint)
+        ):
+            return (
+                "ADB endpoint must not contain credentials, schemes, paths, "
+                "whitespace, or shell controls."
+            )
+        match = cls._ADB_ENDPOINT.fullmatch(endpoint)
+        if match is None:
+            return (
+                "ADB endpoint must be a bounded host or IPv4 address plus "
+                "numeric port."
+            )
+        host = endpoint.rsplit(":", 1)[0]
+        if all(character.isdigit() or character == "." for character in host):
+            try:
+                if ipaddress.ip_address(host).version != 4:
+                    raise ValueError
+            except ValueError:
+                return "ADB endpoint contains an invalid IPv4 address."
+        port = int(match.group(1))
+        if not 1 <= port <= 65535:
+            return "ADB endpoint port must be in the range 1–65535."
+        return ""
 
     @staticmethod
     def _objection(raw, argv, resolved):
