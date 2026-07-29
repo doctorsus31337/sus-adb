@@ -58,6 +58,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         launch_session_callback=None,
         open_folder_callback=None,
         help_callback=None,
+        editor_focus_callback=None,
         ui_dispatch=None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
@@ -69,6 +70,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.launch_session_callback = launch_session_callback
         self.open_folder_callback = open_folder_callback
         self.help_callback = help_callback
+        self.editor_focus_callback = editor_focus_callback
         self.dispatch = ui_dispatch or (
             lambda callback, *args: self.after(0, callback, *args)
         )
@@ -98,6 +100,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
 
     def _build_header(self):
         header = ctk.CTkFrame(self, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["gold_dark"], corner_radius=9)
+        self.header = header
         header.grid(row=0, column=0, sticky="ew", padx=6, pady=(5, 3))
         for index in range(7): header.grid_columnconfigure(index, weight=1)
         self.header_labels = {}
@@ -121,10 +124,24 @@ class ScriptStudioPanel(ctk.CTkFrame):
         )
 
     def _build_workspace(self):
-        self.workspace = ctk.CTkTabview(self, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["border"], segmented_button_fg_color=self.theme["panel_alt"], segmented_button_selected_color=self.theme["red"], segmented_button_selected_hover_color=self.theme["red_hover"], segmented_button_unselected_color=self.theme["panel_alt"], segmented_button_unselected_hover_color=self.theme["gold_dark"], text_color=self.theme["text"])
+        self.workspace = ctk.CTkTabview(self, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["border"], segmented_button_fg_color=self.theme["panel_alt"], segmented_button_selected_color=self.theme["red"], segmented_button_selected_hover_color=self.theme["red_hover"], segmented_button_unselected_color=self.theme["panel_alt"], segmented_button_unselected_hover_color=self.theme["gold_dark"], text_color=self.theme["text"], command=self._workspace_changed)
         self.workspace.grid(row=1, column=0, sticky="nsew", padx=6, pady=(3, 6))
         self.tabs = {name: self.workspace.add(name) for name in ("Library", "Editor", "Runtime", "Messages", "Profiles")}
         for tab in self.tabs.values(): tab.configure(fg_color=self.theme["bg"]); tab.grid_rowconfigure(0, weight=1); tab.grid_columnconfigure(0, weight=1)
+
+    def _select_workspace(self, name):
+        self.workspace.set(name)
+        self._workspace_changed()
+
+    def _workspace_changed(self):
+        editor_focused = self.workspace.get() == "Editor"
+        if editor_focused:
+            self.header.grid_remove()
+            self._layout_editor()
+        else:
+            self.header.grid()
+        if self.editor_focus_callback:
+            self.editor_focus_callback(editor_focused)
 
     def _panel(self, tab, title, *, show_title=True):
         frame = ctk.CTkFrame(tab, fg_color=self.theme["panel"], border_width=1, border_color=self.theme["border"], corner_radius=8); frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5); frame.grid_columnconfigure(0, weight=1)
@@ -151,7 +168,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.library_details = ReadOnlyTextView(split, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"], wrap="word"); self.library_details.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
-        for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Untrust", self.toggle_trust), ("Open Editor", lambda: self.workspace.set("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
+        for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Untrust", self.toggle_trust), ("Open Editor", lambda: self._select_workspace("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
 
     def _build_editor(self):
         frame = self._panel(
@@ -192,10 +209,10 @@ class ScriptStudioPanel(ctk.CTkFrame):
         )
         self.absolute_path_label.grid(row=1, column=0, sticky="ew", padx=3)
         self.absolute_path_label.grid_remove()
-        self.editor = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 13), border_width=1, border_color=self.theme["border"], wrap="none", scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.editor.grid(row=3, column=0, sticky="nsew", padx=10, pady=5); self.editor.bind("<<Modified>>", self._editor_modified); self.editor.bind("<KeyRelease>", self._cursor_update); self.editor.bind("<Control-a>", self._select_editor_all); self.editor.bind("<Control-A>", self._select_editor_all)
+        self.editor = ctk.CTkTextbox(frame, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], font=("Consolas", 13), border_width=1, border_color=self.theme["border"], wrap="none", scrollbar_button_color=self.theme["gold_dark"], scrollbar_button_hover_color=self.theme["red_hover"]); self.editor.grid(row=3, column=0, sticky="nsew", padx=10, pady=2); self.editor.bind("<<Modified>>", self._editor_modified); self.editor.bind("<KeyRelease>", self._cursor_update); self.editor.bind("<Control-a>", self._select_editor_all); self.editor.bind("<Control-A>", self._select_editor_all)
         self.operation_notice = ctk.CTkFrame(
             frame, fg_color=self.theme["panel_alt"], border_width=1,
-            border_color=self.theme["gold_dark"],
+            border_color=self.theme["gold_dark"], height=1,
         )
         self.operation_notice.grid(row=4, column=0, sticky="ew", padx=10, pady=(2, 4))
         self.operation_notice.grid_columnconfigure(1, weight=1)
@@ -203,19 +220,19 @@ class ScriptStudioPanel(ctk.CTkFrame):
             self.operation_notice, text="Saved", text_color=self.theme["success"],
             font=("Segoe UI", 11, "bold"),
         )
-        self.operation_badge.grid(row=0, column=0, sticky="w", padx=(9, 5), pady=5)
+        self.operation_badge.grid(row=0, column=0, sticky="w", padx=(9, 5), pady=2)
         self.operation_message = ctk.CTkLabel(
             self.operation_notice, text="Ready.", text_color=self.theme["gold"],
             justify="left", anchor="w",
         )
-        self.operation_message.grid(row=0, column=1, sticky="ew", padx=4, pady=5)
+        self.operation_message.grid(row=0, column=1, sticky="ew", padx=4, pady=2)
         self.cursor_label = ctk.CTkLabel(
             self.operation_notice,
             text="Line 1, Column 0",
             text_color=self.theme["muted"],
         )
         self.cursor_label.grid(
-            row=0, column=3, sticky="e", padx=(5, 9), pady=5
+            row=0, column=3, sticky="e", padx=(5, 9), pady=2
         )
         self.collapse_details_button = self._button(
             self.operation_notice,
@@ -230,22 +247,28 @@ class ScriptStudioPanel(ctk.CTkFrame):
             justify="left", anchor="w",
         )
         self.operation_context.grid(
-            row=0, column=2, sticky="e", padx=5, pady=5,
+            row=0, column=2, sticky="e", padx=5, pady=2,
         )
         self.operation_context.grid_remove()
+        self.operation_auxiliary = ctk.CTkFrame(
+            frame, fg_color="transparent", height=1,
+        )
+        self.operation_auxiliary.grid(
+            row=5, column=0, sticky="ew", padx=10, pady=(0, 3),
+        )
+        self.operation_auxiliary.grid_columnconfigure(0, weight=1)
         self.operation_progress = ctk.CTkProgressBar(
-            self.operation_notice, mode="indeterminate",
+            self.operation_auxiliary, mode="indeterminate",
             progress_color=self.theme["red"], fg_color=self.theme["border"],
         )
         self.operation_progress.grid(
-            row=3, column=0, columnspan=4, sticky="ew",
-            padx=9, pady=(0, 5),
+            row=1, column=0, sticky="ew", padx=1, pady=(0, 3),
         )
         self.operation_actions = ctk.CTkFrame(
-            self.operation_notice, fg_color="transparent"
+            self.operation_auxiliary, fg_color="transparent", height=1,
         )
         self.operation_actions.grid(
-            row=2, column=0, columnspan=4, sticky="ew", padx=5
+            row=0, column=0, sticky="ew",
         )
         self.jump_line_button = self._button(self.operation_actions, "Jump to Line", self.jump_to_error_line)
         self.copy_error_button = self._button(self.operation_actions, "Copy Error", self.copy_operation_error)
@@ -260,15 +283,16 @@ class ScriptStudioPanel(ctk.CTkFrame):
         for button in self.operation_action_buttons:
             button.grid_remove()
         self.operation_details = ReadOnlyTextView(
-            self.operation_notice, height=10, fg_color=self.theme["terminal_bg"],
+            self.operation_auxiliary, height=80, fg_color=self.theme["terminal_bg"],
             text_color=self.theme["terminal_text"], border_width=1,
             border_color=self.theme["border"], wrap="word",
         )
-        self.operation_details.grid(row=4, column=0, columnspan=4, sticky="ew", padx=9, pady=(0, 2))
+        self.operation_details.grid(row=2, column=0, sticky="ew", padx=1)
         self.operation_details.grid_remove()
         self.operation_progress.grid_remove()
+        self.operation_auxiliary.grid_remove()
         self.validation_notice = ctk.CTkFrame(frame, fg_color=self.theme["panel_alt"], border_width=1, border_color=self.theme["gold_dark"])
-        self.validation_notice.grid(row=5, column=0, sticky="ew", padx=10, pady=(2, 4)); self.validation_notice.grid_columnconfigure(0, weight=1)
+        self.validation_notice.grid(row=6, column=0, sticky="ew", padx=10, pady=(2, 4)); self.validation_notice.grid_columnconfigure(0, weight=1)
         self.validation_message = ctk.CTkLabel(self.validation_notice, text="", text_color=self.theme["gold"], justify="left", anchor="w", wraplength=820)
         self.validation_message.grid(row=0, column=0, sticky="ew", padx=9, pady=7)
         self.advisory_toggle = ctk.CTkCheckBox(
@@ -285,7 +309,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.validation_dismiss = self._button(self.validation_notice, "Dismiss", self.dismiss_validation, 0, 1)
         self.validation_notice.grid_remove()
         bottom = ctk.CTkFrame(frame, fg_color="transparent")
-        bottom.grid(row=6, column=0, sticky="ew", padx=7, pady=(0, 5))
+        bottom.grid(row=7, column=0, sticky="ew", padx=7, pady=(0, 5))
         bottom.grid_columnconfigure(0, weight=1)
         self.bottom_actions = bottom
         self.editor_action_buttons = []
@@ -317,49 +341,90 @@ class ScriptStudioPanel(ctk.CTkFrame):
             for button in buttons
         )
         rows = wrap_widths(available, widths)
-        columns = max((len(row) for row in rows), default=1)
         for column in range(len(buttons)):
             container.grid_columnconfigure(
-                column, weight=1 if column < columns else 0
+                column, weight=0
             )
         for row, indexes in enumerate(rows):
             for column, index in enumerate(indexes):
+                buttons[index].configure(
+                    width=max(1, widths[index]), height=26,
+                )
                 buttons[index].grid(
                     row=row,
                     column=column,
                     sticky="ew",
                     padx=3,
-                    pady=2,
+                    pady=1,
                 )
         return rows
 
     def _layout_editor(self, _event=None):
         if not hasattr(self, "path_actions"):
             return
+        if (
+            self.editor_focus_callback
+            and self.workspace.get() == "Editor"
+        ):
+            self.editor_focus_callback(True)
         available = max(1, self.editor_frame.winfo_width() - 24)
+        top = self.winfo_toplevel()
+        visible_available = (
+            top.winfo_width()
+            - (self.editor_frame.winfo_rootx() - top.winfo_rootx())
+            - 24
+        )
+        visible_available = min(
+            visible_available, top.winfo_width() - 100,
+        )
+        available = max(1, min(available, visible_available))
         logical_available = max(
             1, int(available / self._get_widget_scaling())
         )
-        path_widgets = (self.path_label, *self.path_action_buttons)
-        path_widths = (
-            min(logical_available, 260),
-            *(
-                estimated_button_width(button.cget("text"), 112)
-                for button in self.path_action_buttons
-            ),
+
+        def compact_button_width(button, minimum=54):
+            font = getattr(button, "_font", None)
+            text = str(button.cget("text"))
+            if font is None or not hasattr(font, "measure"):
+                return max(minimum, len(text) * 6 + 24)
+            measured = max(
+                font.measure(line) for line in text.splitlines()
+            ) + 18
+            return max(
+                minimum,
+                int(measured / self._get_widget_scaling() + 0.999),
+            )
+
+        path_widths = tuple(
+            compact_button_width(button)
+            for button in self.path_action_buttons
         )
         path_rows = self._place_wrapped_buttons(
             self.path_actions,
-            path_widgets,
+            self.path_action_buttons,
             logical_available,
-            112,
+            54,
             path_widths,
         )
+        self.path_label.configure(width=logical_available)
+        self.path_label.grid(
+            row=0, column=0, columnspan=len(self.path_action_buttons),
+            sticky="ew", padx=3, pady=(0, 1),
+        )
+        for row, indexes in enumerate(path_rows, start=1):
+            for column, index in enumerate(indexes):
+                self.path_action_buttons[index].grid(
+                    row=row, column=column, sticky="ew", padx=3, pady=1,
+                )
         bottom_rows = self._place_wrapped_buttons(
             self.bottom_actions,
             self.editor_action_buttons,
             logical_available,
-            94,
+            54,
+            tuple(
+                compact_button_width(button)
+                for button in self.editor_action_buttons
+            ),
         )
         visible_status = tuple(
             button for button in self.operation_action_buttons
@@ -372,6 +437,12 @@ class ScriptStudioPanel(ctk.CTkFrame):
             92,
         )
         frame_height = max(1, self.editor_frame.winfo_height())
+        if self._details_visible:
+            details_height = max(
+                30,
+                min(120, int(frame_height * 0.18 / self._get_widget_scaling())),
+            )
+            self.operation_details.configure(height=details_height)
         editor_minimum = max(
             50 if self._details_visible else 90,
             min(
@@ -892,7 +963,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         if not line:
             return
         index = f"{line}.0"
-        self.workspace.set("Editor")
+        self._select_workspace("Editor")
         self.editor.mark_set("insert", index)
         self.editor.tag_remove("sel", "1.0", "end")
         self.editor.tag_add("sel", index, f"{line}.end")
@@ -925,7 +996,21 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.operation_actions.grid_remove()
         self.cursor_label.grid_remove()
         self.collapse_details_button.grid()
+        self._sync_operation_auxiliary()
         self._layout_editor()
+
+    def _sync_operation_auxiliary(self):
+        if any(
+            widget.winfo_manager()
+            for widget in (
+                self.operation_actions,
+                self.operation_progress,
+                self.operation_details,
+            )
+        ):
+            self.operation_auxiliary.grid()
+        else:
+            self.operation_auxiliary.grid_remove()
 
     def _target_text(self):
         return (
@@ -1070,6 +1155,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
             self.technical_button.configure(text="Technical Details")
             self.collapse_details_button.grid_remove()
             self.cursor_label.grid()
+        self._sync_operation_auxiliary()
         self._sync_badge()
         self._layout_editor()
 
