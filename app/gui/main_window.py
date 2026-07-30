@@ -871,7 +871,10 @@ class SusADBWindow(ctk.CTk):
             platform=os.name,
             tool_availability=tuple(
                 (name, self.host_tools.cached(name))
-                for name in ("adb", "frida", "frida-ps", "frida-trace", "objection")
+                for name in (
+                    "adb", "fastboot", "frida", "frida-ps", "frida-trace",
+                    "objection",
+                )
             ),
             cwd=self.terminal.cwd,
         )

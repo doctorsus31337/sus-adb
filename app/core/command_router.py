@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 import shlex
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from app.core.fastboot_command import FastbootCommandPolicy
 from app.core.command_registry import CommandRegistry
 
 
@@ -27,6 +31,7 @@ class CommandRoute:
     classification: CommandClassification
     session_type: str = ""
     serial: str = ""
+    fastboot_serial: str = ""
     target: str = ""
     reason: str = ""
 
@@ -38,6 +43,16 @@ class CommandRoute:
 class CommandRouter:
     HOST_SHELLS = frozenset(("bash", "zsh", "sh", "fish", "pwsh", "powershell", "cmd"))
     VERSION_FLAGS = frozenset(("--help", "-h", "--version", "-V", "version"))
+    _ADB_ENDPOINT = re.compile(
+        r"(?=.{3,255}\Z)(?!-)(?!.*\.\.)"
+        r"(?:[A-Za-z0-9][A-Za-z0-9.-]*):([0-9]{1,5})\Z"
+    )
+    _TYPOGRAPHY_MESSAGE = (
+        "The command contains non-ASCII punctuation or spacing. Retype it "
+        "using ordinary ASCII hyphens and spaces (for example: "
+        "fastboot --version)."
+    )
+    _TYPOGRAPHIC_MINUS = frozenset(("\N{MINUS SIGN}", "\N{FULLWIDTH HYPHEN-MINUS}"))
 
     def __init__(self, resolver=None, *, platform_name: str | None = None):
         self.resolver = resolver
@@ -54,19 +69,28 @@ class CommandRouter:
         return name[:-4] if name.endswith(".exe") else name
 
     def classify(self, command: str) -> CommandRoute:
-        raw = command.strip()
+        source = str(command)
+        typography_reason = self.unsupported_typography_reason(source)
+        raw = source.strip()
+        if typography_reason:
+            return CommandRoute(
+                raw, (), (), CommandClassification.UNSUPPORTED,
+                reason=typography_reason,
+            )
         try:
             argv = tuple(shlex.split(raw, posix=self.platform_name != "nt"))
         except ValueError as exc:
             return CommandRoute(raw, (), (), CommandClassification.UNSUPPORTED, reason=f"Could not parse command: {exc}")
         if not argv:
             return CommandRoute(raw, (), (), CommandClassification.UNSUPPORTED, reason="No command was provided.")
+        name = self._name(argv[0])
         resolved = argv
         if self.resolver is not None:
-            executable = self.resolver.resolve(argv[0])
+            executable = self.resolver.resolve(name)
             if executable:
                 resolved = (executable, *argv[1:])
-        name = self._name(argv[0])
+        if name == "fastboot":
+            return self._fastboot(raw, argv, resolved)
         if name == "adb":
             return self._adb(raw, argv, resolved)
         if name == "objection":
@@ -98,6 +122,35 @@ class CommandRouter:
             reason="This command is not in the supported command registry. Use a dedicated terminal for unclassified commands.",
         )
 
+    @classmethod
+    def unsupported_typography_reason(cls, command: str) -> str:
+        """Reject invisible separators and lookalike command punctuation."""
+        for character in str(command):
+            if ord(character) <= 127:
+                continue
+            category = unicodedata.category(character)
+            if (
+                character.isspace()
+                or category in {"Cf", "Pd"}
+                or character in cls._TYPOGRAPHIC_MINUS
+            ):
+                return cls._TYPOGRAPHY_MESSAGE
+        return ""
+
+    @staticmethod
+    def _fastboot(raw, argv, resolved):
+        parsed = FastbootCommandPolicy.parse(argv)
+        if not parsed.allowed:
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                reason=parsed.reason,
+            )
+        return CommandRoute(
+            raw, argv, resolved, CommandClassification.ONE_SHOT,
+            fastboot_serial=parsed.serial,
+            reason="Fastboot command matches the reviewed read-only grammar.",
+        )
+
     def _adb(self, raw, argv, resolved):
         command_index = 1
         serial = ""
@@ -118,6 +171,57 @@ class CommandRouter:
             break
         subcommand = argv[command_index].casefold() if command_index < len(argv) else ""
         trailing = argv[command_index + 1:]
+        if subcommand == "pair":
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                reason=(
+                    "ADB pairing is not supported in the integrated Console. "
+                    "A future dedicated Wireless ADB pairing workflow will protect "
+                    "interactive pairing codes from history and transcript capture."
+                ),
+            )
+        if subcommand in {"version", "host-features", "features"}:
+            if trailing:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=f"adb {subcommand} does not accept trailing arguments.",
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "mdns" and trailing == ("services",):
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "connect":
+            reason = self._adb_endpoint_reason(trailing)
+            if reason:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=reason,
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "disconnect":
+            reason = self._adb_endpoint_reason(trailing, optional=True)
+            if reason:
+                return CommandRoute(
+                    raw, argv, resolved, CommandClassification.UNSUPPORTED,
+                    reason=reason,
+                )
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
+        if subcommand == "reconnect" and trailing in {("device",), ("offline",)}:
+            return CommandRoute(
+                raw, argv, resolved, CommandClassification.ONE_SHOT,
+                serial=serial,
+            )
         if subcommand == "shell" and not trailing:
             return CommandRoute(raw, argv, resolved, CommandClassification.INTERACTIVE, "adb-shell", serial=serial, reason="ADB Shell opens an interactive device session.")
         if subcommand == "logcat" and "-d" not in trailing:
@@ -125,6 +229,44 @@ class CommandRouter:
         if subcommand in {"pull", "push", "install", "install-multiple", "bugreport"} or subcommand == "logcat" and "-d" in trailing:
             return CommandRoute(raw, argv, resolved, CommandClassification.STREAMING_FINITE, serial=serial)
         return CommandRoute(raw, argv, resolved, CommandClassification.ONE_SHOT, serial=serial)
+
+    @classmethod
+    def _adb_endpoint_reason(cls, trailing, *, optional=False):
+        if not trailing and optional:
+            return ""
+        if len(trailing) != 1:
+            return "ADB connection commands require one explicit host:port endpoint."
+        endpoint = trailing[0]
+        if (
+            any(
+                ord(character) < 32
+                or character in ";&|`$<>(){}[]!*?~\\/@"
+                for character in endpoint
+            )
+            or "://" in endpoint
+            or any(character.isspace() for character in endpoint)
+        ):
+            return (
+                "ADB endpoint must not contain credentials, schemes, paths, "
+                "whitespace, or shell controls."
+            )
+        match = cls._ADB_ENDPOINT.fullmatch(endpoint)
+        if match is None:
+            return (
+                "ADB endpoint must be a bounded host or IPv4 address plus "
+                "numeric port."
+            )
+        host = endpoint.rsplit(":", 1)[0]
+        if all(character.isdigit() or character == "." for character in host):
+            try:
+                if ipaddress.ip_address(host).version != 4:
+                    raise ValueError
+            except ValueError:
+                return "ADB endpoint contains an invalid IPv4 address."
+        port = int(match.group(1))
+        if not 1 <= port <= 65535:
+            return "ADB endpoint port must be in the range 1–65535."
+        return ""
 
     @staticmethod
     def _objection(raw, argv, resolved):

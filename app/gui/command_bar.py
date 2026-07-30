@@ -62,8 +62,10 @@ class CommandSuggestionScroller(ctk.CTkFrame):
         self.window_id = self.canvas.create_window(
             0, 0, window=self.content, anchor="nw"
         )
+        self.canvas._parent_frame = parent
         self.router = ScopedScrollRouter(
-            self, self.canvas, owner=parent, keyboard=False, scroll_units=42,
+            self.canvas, self.canvas, owner=self.winfo_toplevel(),
+            keyboard=False, scroll_units=42,
             visible=lambda: bool(self.winfo_ismapped()),
         )
         self.canvas.bind("<Configure>", self._canvas_configured, add="+")
@@ -316,8 +318,9 @@ class CommandBar(GothicFrame):
                 "Related" if suggestion.related else "",
                 "Interactive session" if suggestion.opens_session else "One-shot",
                 "Device" if suggestion.requires_device else "",
+                "Fastboot serial" if suggestion.requires_fastboot_serial else "",
                 "Target" if suggestion.uses_target else "",
-                "State-changing" if suggestion.impact == "State-changing" else "",
+                suggestion.impact if suggestion.impact != "Read-only" else "",
             ]
             badge_text = " · ".join(value for value in badges if value)
             button = ctk.CTkButton(

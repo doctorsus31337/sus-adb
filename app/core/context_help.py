@@ -87,9 +87,16 @@ TOPICS = (
     _topic(
         "console", "Console",
         "Run bounded one-shot commands and review their output.",
-        "Enter a finite ADB or diagnostic command, then choose Run.",
-        terminology=("ADB", "one-shot command", "interactive session"),
-        common_errors=("Interactive commands are redirected to Sessions Center.", "A busy message means a finite command is still running."),
+        "Enter a finite ADB, read-only Fastboot, or diagnostic command, then choose Run.",
+        terminology=("ADB", "Fastboot", "one-shot command", "interactive session"),
+        common_errors=(
+            "Interactive commands are redirected to Sessions Center.",
+            "A busy message means a finite command is still running.",
+            "Fastboot device metadata requires an operator-entered Fastboot "
+            "serial; the selected ADB serial is never reused.",
+            "ADB pairing is deferred to a future dedicated Wireless ADB "
+            "workflow so pairing codes are not captured casually.",
+        ),
         example="adb devices",
         related=("Sessions Center", "Advanced Command Reference"),
     ),
@@ -353,6 +360,13 @@ TOPICS = (
 
 GLOSSARY = (
     GlossaryEntry("ADB", "Android Debug Bridge, the host tool used for authorized device communication.", ("device",)),
+    GlossaryEntry(
+        "Fastboot",
+        "Android Platform-Tools transport for bootloader communication. The "
+        "integrated Console permits only discovery and explicitly serial-bound "
+        "getvar metadata.",
+        ("ADB", "bootloader"),
+    ),
     GlossaryEntry("package", "Android's stable application identifier, such as org.example.app.", ("APK", "process")),
     GlossaryEntry("process", "A running operating-system instance of an application or service.", ("PID", "package")),
     GlossaryEntry("PID", "Process ID: Android's temporary numeric identifier for a running process.", ("process",)),

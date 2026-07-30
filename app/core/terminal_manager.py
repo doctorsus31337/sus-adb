@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import os
-import shlex
 import threading
 from collections.abc import Callable
 
 from app.core.command_registry import CommandRegistry
-from app.core.command_router import CommandClassification,CommandRouter
+from app.core.command_router import CommandClassification,CommandRoute,CommandRouter
 from app.core.command_runner import CommandRunner
 from app.core.history_manager import HistoryManager
 from app.core.host_tool_resolver import HostToolResolver
@@ -37,39 +36,47 @@ class TerminalManager:
         self._active = False
 
     def execute(self, command: str) -> None:
+        typography_reason = self.router.unsupported_typography_reason(command)
+        if typography_reason:
+            self.log(f"[ERROR] {typography_reason}")
+            return
         command = command.strip()
         if not command:
             return
 
-        self.history.add(command)
         lowered = command.casefold()
 
         if lowered in {"clear", "cls"}:
+            self.history.add(command)
             if self.clear_callback is not None:
                 self.clear_callback()
             return
 
         if lowered == "help":
+            self.history.add(command)
             self.log(CommandRegistry.render_text())
             return
 
         if lowered == "stop":
+            self.history.add(command)
             self.log("[INFO] Process cancellation will be added in the next backend milestone.")
             return
 
         if lowered.startswith("cd "):
+            self.history.add(command)
             self._change_directory(command[3:].strip())
             return
 
         route = self.router.classify(command)
+        if route.classification in {CommandClassification.UNSUPPORTED,CommandClassification.AMBIGUOUS}:
+            self.log(f"[ERROR] {route.reason}")
+            return
+        self.history.add(command)
         if route.classification is CommandClassification.INTERACTIVE:
             if self.interactive_callback is not None:
                 self.interactive_callback(route)
             else:
                 self.log("This command opens an interactive session. Use Sessions Center.")
-            return
-        if route.classification in {CommandClassification.UNSUPPORTED,CommandClassification.AMBIGUOUS}:
-            self.log(f"[ERROR] {route.reason}")
             return
 
         with self._active_lock:
@@ -78,19 +85,28 @@ class TerminalManager:
                 return
             self._active = True
 
-        threading.Thread(target=self._run, args=(command,), daemon=True).start()
+        threading.Thread(target=self._run, args=(route,), daemon=True).start()
 
-    def _run(self, command: str) -> None:
-        self.log(f"\n{self.PROMPT}{command}\n")
+    def _run(self, command: str | CommandRoute) -> None:
+        route = (
+            command if isinstance(command, CommandRoute)
+            else self.router.classify(command)
+        )
+        command_text = route.raw
+        self.log(f"\n{self.PROMPT}{command_text}\n")
         try:
-            argv = tuple(shlex.split(command, posix=os.name != "nt"))
+            argv = route.resolved_argv
             if not argv:
                 return
-            resolved = self.resolver.resolve(argv[0])
+            name = self.router._name(route.argv[0])
+            resolved = self.resolver.resolve(name)
             if resolved:
-                argv = (resolved, *argv[1:])
-            elif argv[0] in self.resolver.configured or argv[0] in {"frida", "frida-ps", "frida-trace", "objection"}:
-                self.log(f"[ERROR] {self.resolver.missing_message(argv[0])}")
+                argv = (resolved, *route.argv[1:])
+            elif (
+                name in self.router.registry_executables
+                or name in {"adb", "fastboot", "frida", "frida-ps", "frida-trace", "objection"}
+            ):
+                self.log(f"[ERROR] {self.resolver.missing_message(name)}")
                 return
             returncode = self.runner.stream(argv, self._write_line, cwd=self.cwd)
             self.log("")

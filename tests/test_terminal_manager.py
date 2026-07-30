@@ -1,7 +1,12 @@
+import io
+import subprocess
 import tempfile
+import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
+from app.core.command_runner import CommandRunner
 from app.core.host_tool_resolver import HostToolResolver
 from app.core.command_router import CommandRouter
 from app.core.terminal_manager import TerminalManager
@@ -60,6 +65,138 @@ class TerminalManagerTests(unittest.TestCase):
         self.assertEqual(routes[0].serial, "SERIAL")
         self.assertFalse(manager._active)
         self.assertEqual(runner.commands, [])
+
+    def test_fastboot_uses_validated_route_argv_and_preserves_output(self):
+        with tempfile.TemporaryDirectory(prefix="fastboot tools ") as directory:
+            executable = Path(directory) / "fastboot"
+            executable.touch()
+            resolver = HostToolResolver(
+                {"fastboot": str(executable)}, which=lambda _name: None
+            )
+            logs = []
+            manager = TerminalManager(logs.append, resolver=resolver)
+            runner = Runner()
+            manager.runner = runner
+            route = manager.router.classify(
+                "fastboot -s FB-SERIAL getvar product"
+            )
+            manager._run(route)
+            self.assertEqual(
+                runner.commands,
+                [
+                    (
+                        str(executable.resolve()), "-s", "FB-SERIAL",
+                        "getvar", "product",
+                    )
+                ],
+            )
+            self.assertIn("ok", logs)
+
+    def test_blocked_fastboot_never_runs_or_enters_history(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        manager.execute("fastboot flash boot boot.img")
+        self.assertFalse(runner.commands)
+        self.assertEqual(manager.history.entries(), ())
+        self.assertIn("not supported", " ".join(logs))
+
+    def test_missing_fastboot_is_actionable_and_not_executed(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        manager._run("fastboot devices")
+        self.assertFalse(runner.commands)
+        self.assertIn("configure its executable path", " ".join(logs).lower())
+
+    def test_fastboot_version_executes_with_exact_structured_argv(self):
+        with tempfile.TemporaryDirectory(prefix="fastboot version ") as directory:
+            executable = Path(directory) / "fastboot"
+            executable.touch()
+            resolver = HostToolResolver(
+                {"fastboot": str(executable)}, which=lambda _name: None
+            )
+            logs = []
+            manager = TerminalManager(logs.append, resolver=resolver)
+            runner = Runner()
+            manager.runner = runner
+            manager.execute("fastboot --version")
+            for _index in range(1000):
+                if not manager._active:
+                    break
+                time.sleep(0.001)
+            self.assertFalse(manager._active)
+            self.assertEqual(
+                runner.commands,
+                [(str(executable.resolve()), "--version")],
+            )
+            self.assertEqual(manager.history.entries(), ("fastboot --version",))
+            self.assertIn("ok", logs)
+
+    def test_unsupported_typography_never_runs_or_enters_history(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        for command in (
+            "fastboot\u00a0--version",
+            "fastboot \u2013\u2013version",
+            "fastboot \u2011\u2011version",
+            "fastboot\u200b --version",
+        ):
+            with self.subTest(command=repr(command)):
+                manager.execute(command)
+        self.assertFalse(runner.commands)
+        self.assertEqual(manager.history.entries(), ())
+        self.assertEqual(
+            sum("non-ASCII punctuation" in value for value in logs), 4
+        )
+        self.assertFalse(
+            any("supported command registry" in value for value in logs)
+        )
+
+    def test_command_runner_stream_is_structured_shell_false_and_merges_stderr(self):
+        process = mock.Mock()
+        process.stdout = io.StringIO("getvar result from merged stderr\n")
+        process.wait.return_value = 0
+        lines = []
+        with mock.patch(
+            "app.core.command_runner.subprocess.Popen", return_value=process
+        ) as popen:
+            returncode = CommandRunner().stream(
+                ("/tools with spaces/fastboot", "-s", "FB", "getvar", "product"),
+                lines.append,
+            )
+        self.assertEqual(returncode, 0)
+        self.assertEqual(lines, ["getvar result from merged stderr"])
+        arguments, options = popen.call_args
+        self.assertEqual(arguments[0][0], "/tools with spaces/fastboot")
+        self.assertIs(options["stderr"], subprocess.STDOUT)
+        self.assertFalse(options["shell"])
+
+    def test_adb_pairing_code_is_rejected_before_history(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        manager.execute("adb pair device.example:37123 123456")
+        self.assertEqual(manager.history.entries(), ())
+        self.assertFalse(runner.commands)
+        self.assertIn("pairing", " ".join(logs).casefold())
 
 
 if __name__ == "__main__":

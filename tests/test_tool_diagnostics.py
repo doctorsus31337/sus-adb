@@ -41,6 +41,13 @@ class ToolDiagnosticsTests(unittest.TestCase):
         ToolDiagnostics(runner, which=lambda name: f"/tools/{name}").check("objection")
         self.assertEqual(runner.commands, [("/tools/objection", "version")])
 
+    def test_fastboot_uses_bounded_version_flag(self):
+        runner = FakeRunner()
+        ToolDiagnostics(runner, which=lambda name: f"/tools/{name}").check(
+            "fastboot"
+        )
+        self.assertEqual(runner.commands, [("/tools/fastboot", "--version")])
+
 
 if __name__ == "__main__":
     unittest.main()

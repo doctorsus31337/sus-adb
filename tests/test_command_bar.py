@@ -43,6 +43,16 @@ class CommandBarContractTests(unittest.TestCase):
             source.index("self.execute_callback(command)", source.index("def run(")),
         )
 
+    def test_suggestion_wheel_router_uses_the_owning_toplevel(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        scroller = source.split(
+            "class CommandSuggestionScroller", 1
+        )[1].split("class CommandBar", 1)[0]
+        self.assertIn("owner=self.winfo_toplevel()", scroller)
+        self.assertIn("self.canvas._parent_frame = parent", scroller)
+        self.assertNotIn("owner=parent", scroller)
+        self.assertNotIn("bind_all(", scroller)
+
     def test_keyboard_contract_is_instance_scoped(self):
         source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
         for sequence in (
@@ -80,6 +90,7 @@ class CommandBarContractTests(unittest.TestCase):
         self.assertIn("history=self.terminal.history", source)
         self.assertIn("self.host_state.snapshot()", source)
         self.assertIn("self.host_tools.cached(name)", source)
+        self.assertIn('"adb", "fastboot", "frida"', source)
         self.assertIn("self.terminal.execute(command)", source)
         self.assertIn("self.command_bar.close()", source)
         context = source.split("def _command_completion_context", 1)[1].split(
@@ -103,6 +114,13 @@ class CommandBarContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("CommandRegistry.render_text(advanced=True)", source)
+
+    def test_fastboot_serial_has_a_distinct_assistant_badge(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '"Fastboot serial" if suggestion.requires_fastboot_serial else ""',
+            source,
+        )
 
 
 if __name__ == "__main__":

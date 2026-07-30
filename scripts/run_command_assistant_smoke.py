@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import shlex
 import time
 import threading
 from pathlib import Path
@@ -20,7 +21,8 @@ from app.core.command_completion import (
     CommandCompletionService,
 )
 from app.core.command_registry import CommandSpec
-from app.core.command_router import CommandClassification
+from app.core.command_router import CommandClassification, CommandRouter
+from app.gui.customtkinter_compat import ScopedScrollRouter, wheel_scroll_units
 from app.gui.main_window import SusADBWindow
 
 
@@ -70,7 +72,22 @@ def latency(count):
 
 def main():
     SusADBWindow.startup_check = lambda self: None
-    app = SusADBWindow()
+    suggestion_wheel_callbacks = []
+    original_wheel = ScopedScrollRouter._wheel
+
+    def counted_wheel(router, event):
+        if router.scroll_units == 42:
+            suggestion_wheel_callbacks.append((
+                router,
+                getattr(event, "widget", None),
+                getattr(event, "num", None),
+                getattr(event, "delta", 0),
+                wheel_scroll_units(event, lines=router.scroll_units),
+            ))
+        return original_wheel(router, event)
+
+    with mock.patch.object(ScopedScrollRouter, "_wheel", counted_wheel):
+        app = SusADBWindow()
     app.geometry("1100x700+0+0")
     app.navigate_workspace("Console")
     app.update_idletasks()
@@ -316,6 +333,67 @@ def main():
         app.update_idletasks()
         assert bar.result.suggestions[0].command_text.startswith(expected)
 
+    platform_queries = (
+        ("f", lambda items: any(item.command_text.startswith("fastboot") for item in items)),
+        ("fast", lambda items: all(item.command_text.startswith("fastboot") for item in items)),
+        ("fastboot", lambda items: any(item.command_text == "fastboot devices" for item in items)),
+        ("fastboot ", lambda items: any(item.command_text == "fastboot devices -l" for item in items)),
+        ("fastboot d", lambda items: tuple(item.command_text for item in items) == ("fastboot devices", "fastboot devices -l")),
+        ("fastboot -s", lambda items: tuple(item.command_text for item in items) == ("fastboot -s ",)),
+        ("fastboot -s SERIAL get", lambda items: all(item.command_text.startswith("fastboot -s SERIAL getvar") for item in items)),
+        ("fastboot -s SERIAL getvar", lambda items: any(item.command_text.endswith("current-slot") for item in items)),
+        ("adb v", lambda items: items[0].command_text == "adb version"),
+        ("adb m", lambda items: items[0].command_text == "adb mdns services"),
+        ("adb con", lambda items: items[0].command_text == "adb connect "),
+        ("adb dis", lambda items: items[0].command_text == "adb disconnect"),
+        ("adb reconnect", lambda items: any(item.command_text == "adb reconnect device" for item in items)),
+    )
+    platform_query_results = []
+    for query, assertion in platform_queries:
+        bar._set_entry(query)
+        bar._refresh()
+        app.update_idletasks()
+        assert bar.suggestions_open, query
+        assert assertion(bar.result.suggestions), (
+            query, tuple(item.command_text for item in bar.result.suggestions)
+        )
+        assert all(item.description for item in bar.result.suggestions)
+        assert all(item.impact for item in bar.result.suggestions)
+        assert not any(
+            blocked in item.command_text
+            for item in bar.result.suggestions
+            for blocked in ("fastboot flash", "fastboot erase", "fastboot reboot", "fastboot oem")
+        )
+        platform_query_results.append(
+            (query, tuple(item.command_text for item in bar.result.suggestions))
+        )
+        bar.hide_suggestions()
+
+    bar._set_entry("fastboot -s ")
+    bar.context_provider = lambda: CommandCompletionContext(
+        selected_serial="ADB-MUST-NOT-BE-USED", selected_device_state="device"
+    )
+    bar._refresh()
+    assert all(
+        "ADB-MUST-NOT-BE-USED" not in item.command_text
+        for item in bar.result.suggestions
+    )
+    bar.accept_index(0)
+    assert bar.entry.get() == "fastboot -s "
+    assert executed == []
+    bar.context_provider = CommandCompletionContext
+
+    bar._set_entry("fastboot devices")
+    bar._refresh()
+    assert bar.result.mode.value == "related"
+    assert {
+        item.display_syntax for item in bar.result.suggestions
+    } >= {
+        "fastboot -s <fastboot-serial> getvar product",
+        "fastboot -s <fastboot-serial> getvar current-slot",
+    }
+    bar.hide_suggestions()
+
     bar._set_entry("adb start-server")
     bar._refresh()
     app.update_idletasks()
@@ -423,6 +501,24 @@ def main():
             bar.hide_suggestions()
             app.update_idletasks()
             assert not bar.suggestion_panel.winfo_ismapped()
+            bar.completion_service = CommandCompletionService()
+            bar._set_entry("fastboot -s SERIAL getvar")
+            bar._refresh()
+            app.update_idletasks()
+            assert bar.suggestions_open
+            assert any(
+                item.command_text.endswith("current-slot")
+                for item in bar.result.suggestions
+            )
+            assert any(
+                item.requires_fastboot_serial
+                for item in bar.result.suggestions
+            )
+            assert all(
+                button.winfo_width() <= bar.suggestion_scroller.canvas.winfo_width() + 2
+                for button in bar.suggestion_buttons
+            )
+            bar.hide_suggestions()
     ctk.set_widget_scaling(1.0)
 
     bar.completion_service = synthetic_service(1)
@@ -440,22 +536,222 @@ def main():
     bar._set_entry("adb")
     bar._refresh()
     app.update_idletasks()
+    suggestion_router = bar.suggestion_scroller.router
+    suggestion_canvas = bar.suggestion_scroller.canvas
+    binding_ids = tuple(
+        value[2] for value in suggestion_router.bindings._bindings
+    )
+    binding_count_before_rerender = suggestion_router.count
+    assert suggestion_router._owner() is app
+    assert len(binding_ids) == len(set(binding_ids))
+    bar._render_suggestions()
+    app.update_idletasks()
+    assert suggestion_router.count == binding_count_before_rerender
+    assert tuple(
+        value[2] for value in suggestion_router.bindings._bindings
+    ) == binding_ids
+
+    def dispatch_wheel(origin, sequence, *, delta=None, start=0):
+        suggestion_canvas.yview_moveto(start)
+        app.update()
+        before_view = suggestion_canvas.yview()
+        options = {"x": 1, "y": 1}
+        if delta is not None:
+            options["delta"] = delta
+        origin.event_generate(sequence, **options)
+        app.update_idletasks()
+        return before_view, suggestion_canvas.yview()
+
+    first_button = bar.suggestion_buttons[0]
+    final_button = bar.suggestion_buttons[-1]
+    suggestion_origins = (
+        ("panel-background", bar.suggestion_panel),
+        ("viewport-background", bar.suggestion_scroller),
+        ("canvas", suggestion_canvas),
+        ("content", bar.suggestion_scroller.content),
+        ("first-button", first_button),
+        ("first-button-canvas", first_button._canvas),
+        ("first-button-label", first_button._text_label),
+        ("final-button", final_button),
+        ("final-button-canvas", final_button._canvas),
+        ("final-button-label", final_button._text_label),
+        ("scrollbar", bar.suggestion_scroller.scrollbar),
+    )
+    wheel_measurements = []
+    for origin_name, origin in suggestion_origins:
+        before_view, after_view = dispatch_wheel(origin, "<Button-5>")
+        assert after_view[0] > before_view[0], (origin_name, before_view, after_view)
+        wheel_measurements.append((
+            origin_name, origin.__class__.__name__, str(origin),
+            origin.bindtags(), suggestion_router._inside(origin),
+            before_view, after_view,
+        ))
+
+    for origin_name, origin in suggestion_origins:
+        before_view, after_view = dispatch_wheel(
+            origin, "<Button-4>", start=1
+        )
+        assert after_view[0] < before_view[0], (origin_name, before_view, after_view)
+
+    for delta, direction in ((120, -1), (-120, 1), (1, -1), (-1, 1)):
+        before_view, after_view = dispatch_wheel(
+            first_button._text_label,
+            "<MouseWheel>",
+            delta=delta,
+            start=1 if direction < 0 else 0,
+        )
+        assert (
+            after_view[0] < before_view[0]
+            if direction < 0 else after_view[0] > before_view[0]
+        ), (delta, before_view, after_view)
+
+    def settled_scroll_state(start):
+        # Keep the Xvfb pointer away from suggestion cards so scrolling content
+        # beneath it cannot synthesize unrelated <Enter> selection changes.
+        entry_inner.event_generate("<Motion>", x=1, y=1, warp=True)
+        app.update()
+        app.update_idletasks()
+        suggestion_canvas.yview_moveto(start)
+        app.update()
+        app.update_idletasks()
+        return (
+            float(suggestion_canvas.canvasy(0)),
+            str(suggestion_canvas.cget("scrollregion")),
+            suggestion_canvas.bbox("all"),
+            suggestion_canvas.winfo_height(),
+            bar.suggestion_scroller.content.winfo_reqheight(),
+            bar.suggestion_scroller.content.winfo_height(),
+        )
+
+    def assert_one_wheel_event(sequence, expected_units, *, delta=None):
+        before = settled_scroll_state(1 if expected_units < 0 else 0)
+        suggestion_wheel_callbacks.clear()
+        options = {"x": 1, "y": 1}
+        if delta is not None:
+            options["delta"] = delta
+        original_target_scroll = suggestion_canvas.yview_scroll
+        with mock.patch.object(
+            suggestion_canvas,
+            "yview_scroll",
+            wraps=original_target_scroll,
+        ) as target_scroll:
+            first_button._text_label.event_generate(sequence, **options)
+            immediate = (
+                float(suggestion_canvas.canvasy(0)),
+                str(suggestion_canvas.cget("scrollregion")),
+                suggestion_canvas.bbox("all"),
+                suggestion_canvas.winfo_height(),
+                bar.suggestion_scroller.content.winfo_reqheight(),
+                bar.suggestion_scroller.content.winfo_height(),
+            )
+            assert len(suggestion_wheel_callbacks) == 1, (
+                sequence, delta, suggestion_wheel_callbacks
+            )
+            callback = suggestion_wheel_callbacks[0]
+            assert callback[0] is suggestion_router
+            assert callback[1] is first_button._text_label
+            assert callback[4] == expected_units, callback
+            assert target_scroll.call_args_list == [
+                mock.call(expected_units, "units")
+            ], target_scroll.call_args_list
+            app.update()
+            app.update_idletasks()
+            pumped = (
+                float(suggestion_canvas.canvasy(0)),
+                str(suggestion_canvas.cget("scrollregion")),
+                suggestion_canvas.bbox("all"),
+                suggestion_canvas.winfo_height(),
+                bar.suggestion_scroller.content.winfo_reqheight(),
+                bar.suggestion_scroller.content.winfo_height(),
+            )
+            assert len(suggestion_wheel_callbacks) == 1
+            assert target_scroll.call_count == 1
+        absolute_movement = immediate[0] - before[0]
+        assert abs(absolute_movement - expected_units) <= 1, (
+            sequence, delta, before, immediate, absolute_movement
+        )
+        assert absolute_movement * expected_units > 0
+        assert immediate[1:] == before[1:], (before, immediate)
+        assert pumped == immediate, (immediate, pumped)
+        return (
+            sequence,
+            delta,
+            expected_units,
+            before[0],
+            immediate[0],
+            pumped[0],
+            absolute_movement,
+        )
+
+    wheel_contracts = [
+        assert_one_wheel_event("<MouseWheel>", 42, delta=-120),
+        assert_one_wheel_event("<MouseWheel>", -42, delta=120),
+        assert_one_wheel_event("<MouseWheel>", 42, delta=-1),
+        assert_one_wheel_event("<MouseWheel>", -42, delta=1),
+        assert_one_wheel_event("<Button-4>", -42),
+        assert_one_wheel_event("<Button-5>", 42),
+    ]
+
+    suggestion_canvas.yview_moveto(0)
+    for _index in range(20):
+        final_button._canvas.event_generate("<Button-5>", x=1, y=1)
+        app.update_idletasks()
+    assert suggestion_canvas.yview()[1] >= 0.9999
+    for _index in range(20):
+        first_button._canvas.event_generate("<Button-4>", x=1, y=1)
+        app.update_idletasks()
+    assert suggestion_canvas.yview()[0] <= 0.0001
+
+    suggestion_canvas.yview_moveto(0)
+    bar.suggestion_scroller.scrollbar._clicked(
+        SimpleNamespace(y=bar.suggestion_scroller.scrollbar.winfo_height() // 2)
+    )
+    app.update()
+    assert suggestion_canvas.yview()[0] > 0
+
     output_yview_before_suggestions = output_inner.yview()
-    before = bar.suggestion_scroller.canvas.yview()
-    bar.suggestion_scroller.router._wheel(
-        SimpleNamespace(widget=bar.suggestion_buttons[-1], delta=-120, num=None)
-    )
-    assert bar.suggestion_scroller.canvas.yview() != before
+    before = suggestion_canvas.yview()
+    final_button._canvas.event_generate("<Button-5>", x=1, y=1)
+    app.update()
+    assert suggestion_canvas.yview() != before
     assert output_inner.yview() == output_yview_before_suggestions
-    suggestion_yview = bar.suggestion_scroller.canvas.yview()
-    output.scroll_router._wheel(
-        SimpleNamespace(widget=output_inner, delta=120, num=None)
-    )
-    assert bar.suggestion_scroller.canvas.yview() == suggestion_yview
-    assert bar.suggestion_scroller.router._wheel(
+    suggestion_yview = suggestion_canvas.yview()
+    for index in range(80):
+        output.append(f"scroll isolation fixture {index}\n")
+    app.update_idletasks()
+    output_inner.yview_moveto(.35)
+    output_before_own_wheel = output_inner.yview()
+    output_inner.event_generate("<MouseWheel>", x=1, y=1, delta=-120)
+    app.update_idletasks()
+    assert output_inner.yview() != output_before_own_wheel
+    assert suggestion_canvas.yview() == suggestion_yview
+    assert suggestion_router._wheel(
         SimpleNamespace(widget=".native.dialog", delta=-120, num=None)
     ) is None
 
+    suggestion_yview = suggestion_canvas.yview()
+    entry_inner.event_generate("<MouseWheel>", x=1, y=1, delta=-120)
+    app.update_idletasks()
+    assert suggestion_canvas.yview() == suggestion_yview
+
+    bar.hide_suggestions()
+    hidden_yview = suggestion_canvas.yview()
+    first_button._canvas.event_generate("<Button-5>", x=1, y=1)
+    app.update_idletasks()
+    assert suggestion_canvas.yview() == hidden_yview
+    bar._set_entry("adb")
+    bar._refresh()
+    app.update_idletasks()
+    assert bar.suggestions_open
+    assert suggestion_router.count == binding_count_before_rerender
+    suggestion_canvas.yview_moveto(0)
+    app.update()
+    reopened_before = suggestion_canvas.yview()
+    bar.suggestion_buttons[0]._text_label.event_generate(
+        "<Button-5>", x=1, y=1
+    )
+    app.update_idletasks()
+    assert suggestion_canvas.yview() != reopened_before
     bar.hide_suggestions()
     bar.completion_service = CommandCompletionService()
     bar._set_entry("adb")
@@ -469,6 +765,187 @@ def main():
         str(value).casefold().startswith("blue")
         for value in app.theme.values() if isinstance(value, str)
     )
+
+    class FakeResolver:
+        configured = {}
+        paths = {
+            "adb": "/fixture tools/adb",
+            "fastboot": "/fixture tools/fastboot",
+        }
+
+        def resolve(self, name):
+            return self.paths.get(name)
+
+        def cached(self, name):
+            return name in self.paths
+
+        @staticmethod
+        def missing_message(name, *_args):
+            return f"{name} fixture is unavailable"
+
+    class FakeRunner:
+        def __init__(self):
+            self.commands = []
+
+        def stream(self, command, on_line, **_kwargs):
+            self.commands.append(tuple(command))
+            on_line(
+                "fastboot getvar fixture from stderr"
+                if "fastboot" in command[0] else "adb connection fixture"
+            )
+            return 0
+
+    fake_resolver = FakeResolver()
+    fake_runner = FakeRunner()
+    app.host_tools = fake_resolver
+    app.command_router = CommandRouter(fake_resolver)
+    app.terminal.resolver = fake_resolver
+    app.terminal.router = app.command_router
+    app.terminal.runner = fake_runner
+    bar.execute_callback = app.execute_command
+
+    history_before_fake_execution = app.terminal.history.entries()
+    fastboot_execution_evidence = []
+
+    def execute_with_evidence(command):
+        route = app.terminal.router.classify(command)
+        fastboot_execution_evidence.append({
+            "repr": repr(command),
+            "codepoints": tuple(f"U+{ord(value):04X}" for value in command),
+            "split": tuple(shlex.split(command)),
+            "router_name": app.command_router._name(route.argv[0]),
+            "classification": route.classification.value,
+            "argv": route.argv,
+            "resolved_argv": route.resolved_argv,
+            "registry_member": command in {
+                spec.command for spec in app.command_completion._specs
+            },
+            "resolved_fastboot": app.host_tools.resolve("fastboot"),
+            "history_before": app.terminal.history.entries(),
+            "runner_before": len(fake_runner.commands),
+        })
+        app.execute_command(command)
+
+    bar.execute_callback = execute_with_evidence
+    entry_inner = getattr(bar.entry, "_entry", bar.entry)
+    history_add = app.terminal.history.add
+    with mock.patch.object(
+        app.terminal.history, "add", wraps=history_add
+    ) as add_history:
+        bar._set_entry("")
+        for value in b"fastboot --version":
+            bar.entry.insert("end", chr(value))
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+
+        app.clipboard_clear()
+        app.clipboard_append("fastboot --version")
+        entry_inner.focus_set()
+        entry_inner.event_generate("<<Paste>>")
+        app.update()
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+
+        bar._set_entry("fast")
+        bar._refresh()
+        app.update_idletasks()
+        version_index = next(
+            index for index, item in enumerate(bar.result.suggestions)
+            if item.command_text == "fastboot --version"
+        )
+        bar.accept_index(version_index)
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+        assert [call.args[0] for call in add_history.call_args_list] == [
+            "fastboot --version",
+            "fastboot --version",
+            "fastboot --version",
+        ]
+
+    assert len(fastboot_execution_evidence) == 3
+    for index, evidence in enumerate(fastboot_execution_evidence, 1):
+        evidence["history_after"] = app.terminal.history.entries()
+        evidence["runner_after"] = index
+        assert evidence["repr"] == "'fastboot --version'"
+        assert evidence["split"] == ("fastboot", "--version")
+        assert evidence["router_name"] == "fastboot"
+        assert evidence["classification"] == "one-shot"
+        assert evidence["argv"] == ("fastboot", "--version")
+        assert evidence["resolved_argv"] == (
+            "/fixture tools/fastboot", "--version"
+        )
+        assert evidence["registry_member"]
+        assert evidence["resolved_fastboot"] == "/fixture tools/fastboot"
+    assert fake_runner.commands == [
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+    ]
+    assert "supported command registry" not in output.read()
+
+    bar.execute_callback = app.execute_command
+    history_before_typography = app.terminal.history.entries()
+    runner_before_typography = len(fake_runner.commands)
+    for command in (
+        "fastboot\u00a0--version",
+        "fastboot \u2013\u2013version",
+        "fastboot \u2011\u2011version",
+        "fastboot\u200b --version",
+    ):
+        bar._set_entry(command)
+        bar.run()
+        app.update_idletasks()
+    assert len(fake_runner.commands) == runner_before_typography
+    assert app.terminal.history.entries() == history_before_typography
+    assert output.read().count("non-ASCII punctuation or spacing") >= 4
+
+    for command in (
+        "fastboot -s FB-SERIAL getvar product",
+        "adb connect fixture.example:5555",
+    ):
+        bar._set_entry(command)
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+    assert fake_runner.commands == [
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+        (
+            "/fixture tools/fastboot", "-s", "FB-SERIAL",
+            "getvar", "product",
+        ),
+        ("/fixture tools/adb", "connect", "fixture.example:5555"),
+    ]
+    assert pump_until(
+        app,
+        lambda: (
+            "fastboot getvar fixture from stderr" in output.read()
+            and "adb connection fixture" in output.read()
+        ),
+    )
+    assert output.read().count("[✓] Complete") >= 2
+    assert app.terminal.history.entries()[-2:] == (
+        "fastboot -s FB-SERIAL getvar product",
+        "adb connect fixture.example:5555",
+    )
+
+    runner_count = len(fake_runner.commands)
+    bar._set_entry("fastboot flash boot boot.img")
+    bar.run()
+    app.update_idletasks()
+    assert len(fake_runner.commands) == runner_count
+    assert "fastboot flash boot boot.img" not in app.terminal.history.entries()
+    bar._set_entry("adb pair fixture.example:37123 123456")
+    bar.run()
+    app.update_idletasks()
+    assert len(fake_runner.commands) == runner_count
+    assert not any(
+        entry.startswith("adb pair") for entry in app.terminal.history.entries()
+    )
+    assert len(app.terminal.history.entries()) == len(history_before_fake_execution) + 3
 
     latencies = {count: latency(count) for count in (10, 50, 100, 500)}
     binding_count = bar.binding_count
@@ -484,12 +961,18 @@ def main():
     print(
         "command-assistant-smoke=PASS "
         f"measurements={measurements} contexts={context_results} "
+        f"platform_queries={platform_query_results} "
+        f"fastboot_execution_evidence={fastboot_execution_evidence} "
+        f"wheel_measurements={wheel_measurements} "
+        f"wheel_contracts={wheel_contracts} "
+        f"suggestion_binding_ids={binding_ids} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
         f"output_bindings_before_close={output_binding_count} "
         f"output_yview={initial_yview}->{touchpad_yview}->{page_yview} "
         "callbacks_after_close=0 bindings_after_close=0 output_bindings_after_close=0 "
         "readonly-copy-handoff-output-scroll-isolation-streaming-save-clear=PASS "
-        "keyboard-history-related-routing-wheel-compact-scaling-shutdown=PASS"
+        "keyboard-history-related-routing-wheel-compact-scaling-shutdown=PASS "
+        "fastboot-platform-tools-fake-execution-blocked-policy=PASS"
     )
     return 0
 

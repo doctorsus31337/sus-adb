@@ -181,6 +181,93 @@ class CommandCompletionTests(unittest.TestCase):
             all(item.command_text.startswith(result.common_prefix) for item in result.suggestions)
         )
 
+    def test_fastboot_prefixes_offer_only_reviewed_registry_commands(self):
+        for query in ("f", "fast", "fastboot", "fastboot "):
+            with self.subTest(query=query):
+                commands = self.commands(query)
+                self.assertTrue(commands)
+                fastboot_commands = tuple(
+                    value for value in commands if value.startswith("fastboot")
+                )
+                self.assertTrue(fastboot_commands)
+                self.assertFalse(
+                    any(
+                        blocked in value
+                        for value in fastboot_commands
+                        for blocked in (" flash", " erase", " reboot", " oem")
+                    )
+                )
+
+    def test_fastboot_serial_is_operator_supplied_and_never_uses_adb_context(self):
+        context = CommandCompletionContext(
+            selected_serial="ADB-SERIAL", selected_device_state="device"
+        )
+        unresolved = self.service.suggest("fastboot -s ", context)
+        self.assertTrue(unresolved.suggestions)
+        self.assertTrue(
+            all(
+                item.command_text == "fastboot -s "
+                for item in unresolved.suggestions
+            )
+        )
+        self.assertFalse(
+            any(
+                "ADB-SERIAL" in item.command_text
+                for item in unresolved.suggestions
+            )
+        )
+        retained = self.commands("fastboot -s FB-SERIAL get", context)
+        self.assertTrue(retained)
+        self.assertTrue(
+            all(
+                value.startswith("fastboot -s FB-SERIAL getvar")
+                for value in retained
+            )
+        )
+
+    def test_common_fastboot_getvar_variables_are_contextual_suggestions(self):
+        service = CommandCompletionService(visible_limit=12)
+        commands = tuple(
+            item.command_text
+            for item in service.suggest(
+                "fastboot -s FB-SERIAL getvar"
+            ).suggestions
+        )
+        for variable in (
+            "product", "serialno", "current-slot", "slot-count", "secure",
+            "unlocked", "version-bootloader", "version-baseband",
+            "max-download-size",
+        ):
+            self.assertIn(
+                f"fastboot -s FB-SERIAL getvar {variable}", commands
+            )
+
+    def test_platform_tools_additions_complete_contextually(self):
+        expected = {
+            "adb v": "adb version",
+            "adb m": "adb mdns services",
+            "adb con": "adb connect ",
+            "adb dis": "adb disconnect",
+            "adb reconnect d": "adb reconnect device",
+            "adb reconnect o": "adb reconnect offline",
+        }
+        for query, command in expected.items():
+            with self.subTest(query=query):
+                self.assertTrue(
+                    any(
+                        value.startswith(command)
+                        for value in self.commands(query)
+                    )
+                )
+
+    def test_fastboot_tool_availability_is_cached_context_only(self):
+        context = CommandCompletionContext(
+            tool_availability=(("fastboot", False),)
+        )
+        result = self.service.suggest("fastboot d", context)
+        self.assertTrue(result.suggestions)
+        self.assertIn("Tool unavailable", result.suggestions[0].description)
+
 
 if __name__ == "__main__":
     unittest.main()
