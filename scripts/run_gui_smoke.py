@@ -108,7 +108,7 @@ def main():
   help_menu=top.nametowidget(top.entrycget(cascades[labels.index("Help")],"menu"));help_labels=[help_menu.entrycget(i,"label") for i in range(help_menu.index("end")+1) if help_menu.type(i)=="command"];assert "Advanced Command Reference" not in help_labels
   assert not hasattr(app,"action_panel");assert not any(getattr(widget,"cget",lambda _key:"")("text")=="Quick Tools" for widget in descendants(app) if "text" in getattr(widget,"keys",lambda:())())
   addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
-  official=app.plugin_manager.official();assert len(official)==6;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
+  official=app.plugin_manager.official();assert len(official)==7;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
   app.navigate_workspace("Console");console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
   app.command_bar.open_session_button.invoke();app.update_idletasks();sessions=app.sessions_center;assert sessions is app.open_sessions_center();assert sessions.routed_plan.session_type.value=="adb-shell";assert not app.interactive_sessions.list();assert no_question_help(sessions)
@@ -130,13 +130,13 @@ def main():
    app.pentest_workspace.session=None;app.pentest_workspace.refresh_all()
    assert app.pentest_workspace.session is None
    assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
-   app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==6
+   app.pentest_workspace.open_plugins();assert app.pentest_workspace._built_sections=={"Plugins"};app.pentest_workspace.plugin_panel.tabs.set("Official Catalog");app.update_idletasks();assert len(app.pentest_workspace.plugin_panel.official_cards.winfo_children())==7
    expected_sections=("Dashboard","Scope","ADB Explorer","Runtime Explorer","Network","Storage","APK Lab","Findings","Reports","Plugins","Timeline","Evidence","Notes","Changes");assert tuple(button.cget("text") for button in app.pentest_workspace.navigation.buttons)==expected_sections;assert all(button_text_fits(button) for button in app.pentest_workspace.navigation.buttons)
    app.pentest_workspace.workspace.set("Dashboard");app.pentest_workspace._section_selected();app.update_idletasks();dashboard_buttons=[widget for widget in descendants(app.pentest_workspace.tabs["Dashboard"]) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped()];pentest_buttons=[*app.pentest_workspace.navigation.buttons,*dashboard_buttons];scroll=app.pentest_workspace.dashboard_scroll;viewport_bottom=min(scroll.winfo_rooty()+scroll.winfo_height(),app.pentest_workspace.winfo_rooty()+app.pentest_workspace.winfo_height(),app.status_bar.winfo_rooty());visible_buttons=[*app.pentest_workspace.navigation.buttons,*[widget for widget in dashboard_buttons if widget.winfo_rooty()>=scroll.winfo_rooty() and widget.winfo_rooty()+widget.winfo_height()<=viewport_bottom]];assert pentest_buttons and all(button_text_fits(button) for button in pentest_buttons);assert all(widget.winfo_rooty()+widget.winfo_height()<=app.status_bar.winfo_rooty() for widget in visible_buttons)
    assert app.pentest_workspace.warning.cget("text")=="Authorization must be explicitly confirmed."
   center=app.open_addons_center();assert app.open_addons_center() is center;assert no_question_help(center)
   for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
-   center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==6;assert len({card.plugin_id for card in center.cards.values()})==6
+   center.geometry(f"{width}x{height}+0+0");center.update_idletasks();assert len(center.cards)==7;assert len({card.plugin_id for card in center.cards.values()})==7
    text=" ".join(w.cget("text") for w in center.winfo_children() if hasattr(w,"cget") and "text" in w.keys());assert "Quick Tools" not in text and "Authorization must" not in text
   skeleton=next(item for item in official if item.manifest.plugin_id=="susadb.skeleton-module");sid=skeleton.manifest.plugin_id;assert center.cards[sid].actions==("Details","Export Template…","Install")
   validator=getattr(center.card_area,"_check_if_valid_scroll",getattr(center.card_area,"check_if_master_is_canvas",None));assert validator is not None;assert validator(center.cards[sid]);assert not validator(".native.file.dialog")
@@ -157,7 +157,7 @@ def main():
    assert app.plugin_manager.enable(item.manifest.plugin_id).ok
    assert not app.plugin_registry.by_plugin(item.manifest.plugin_id)
    assert app.plugin_manager.load(item.manifest.plugin_id).ok
-  app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==6
+  app.update_idletasks();panels=app.plugin_registry.list("pentest-panel");assert len(panels)==7
   courses=app.learning_service.courses();assert len(courses)==2 and {len(course.lessons) for course in courses}=={14,15};learning=app.open_learning_center("instrumentation-overview");assert app.open_learning_center() is learning;assert "Instrumentation Overview" in learning.recommendation.cget("text")
   learning.select_course(next(course for course in courses if course.course_id=="frida-foundations"));lesson=learning.current_lesson;learning.toggle_complete();learning.toggle_bookmark();progress=app.learning_service.course_progress("frida-foundations");assert lesson.lesson_id in progress.completed and lesson.lesson_id in progress.bookmarks;assert no_question_help(learning)
   for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
@@ -179,7 +179,7 @@ def main():
    for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
     assistant_window.geometry(f"{width}x{height}+0+0");assistant_window.update_idletasks();assert assistant_window.winfo_width()==width and assistant_window.winfo_height()==height;assert all(button_text_fits(widget) for widget in descendants(assistant_window) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped())
   app.addon_window_host.close(assistant_ids[0]);assert not app.addon_window_host.is_open(assistant_ids[0]) and app.addon_window_host.is_open(assistant_ids[1]);app.addon_window_host.close(assistant_ids[1])
-  app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==5
+  app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.index("end")==6
   skeleton_panel=next(v for v in panels if v.plugin_id==sid);skeleton_window=app.open_addon_window(skeleton_panel.contribution_id);assert skeleton_window is app.open_addon_window(skeleton_panel.contribution_id);center.refresh();assert center.cards[sid].actions==("Details","Export Template…","Focus","Unload")
   first_panel=panels[0];window=app.open_addon_window(first_panel.contribution_id);assert window is app.open_addon_window(first_panel.contribution_id);window.update_idletasks();app.addon_window_host.close(first_panel.contribution_id);assert app.plugin_manager.loader.statuses[first_panel.plugin_id].state.value=="active"
   window=app.open_addon_window(first_panel.contribution_id);assert window;app.plugin_manager.unload(first_panel.plugin_id);app.update_idletasks();assert not app.addon_window_host.is_open(first_panel.contribution_id)
@@ -202,6 +202,6 @@ def main():
   assert not any(worker.is_alive() for worker in app._background_workers)
   first.destroy();diagnostics.destroy();crash.destroy()
   app.shutdown()
- print(f"gui-smoke=PASS main=1200x760,1400x860 home=1200x760,1400x860,1600x900 scaling=125%,150% geometry={home_geometry} scaled={scaling_results} splash=600x360,720x430 compact-windows=900x650,980x650,1180x780,1400x860 addons-rescue-assistants-help-sessions-learning=PASS lazy-workspaces=PASS cards=6 wheel-guard-export-scroll-shutdown=PASS")
+ print(f"gui-smoke=PASS main=1200x760,1400x860 home=1200x760,1400x860,1600x900 scaling=125%,150% geometry={home_geometry} scaled={scaling_results} splash=600x360,720x430 compact-windows=900x650,980x650,1180x780,1400x860 addons-rescue-assistants-help-sessions-learning=PASS lazy-workspaces=PASS official-cards=7 wheel-guard-export-scroll-shutdown=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

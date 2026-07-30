@@ -1,0 +1,42 @@
+{
+  "plugin_id": "susadb.logcat-investigator",
+  "name": "Logcat Investigator",
+  "version": "0.1.0",
+  "description": "Bounded, privacy-sensitive live Android Logcat viewing through a host-owned capture workspace.",
+  "author": "SUS-ADB",
+  "license": "MIT",
+  "minimum_sus_adb_version": "1.0.0",
+  "supported_platforms": ["linux", "windows"],
+  "entry_point": "plugin.py:Plugin",
+  "plugin_api_version": "1.1",
+  "requested_capabilities": [
+    "read-selected-device",
+    "read-device-logs"
+  ],
+  "optional_dependencies": [],
+  "required_external_tools": ["adb"],
+  "contributed_components": [
+    {
+      "contribution_id": "logcat-investigator.panel",
+      "contribution_type": "pentest-panel",
+      "title": "Logcat Investigator",
+      "factory": "panel_spec",
+      "metadata": {
+        "ui_mode": "window",
+        "singleton": true,
+        "device_selector": true,
+        "workspace_kind": "logcat-investigator",
+        "default_width": 1180,
+        "default_height": 780,
+        "minimum_width": 900,
+        "minimum_height": 650
+      }
+    }
+  ],
+  "addon_ui": {
+    "ui_mode": "window"
+  },
+  "trust_state": "untrusted",
+  "enabled": false,
+  "caution_text": "Device logs may contain identifiers, paths, messages, tokens, account information, and application data. Capture is explicit, bounded, selected-device-only, and cleared when the host window closes."
+}

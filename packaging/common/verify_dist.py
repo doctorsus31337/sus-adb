@@ -16,7 +16,7 @@ BRANDING_REQUIRED=(
 EXCLUDED=("flutter_popup_bypass.js","flutter_popup_bypass.meta.json")
 EXAMPLE_ASSETS=("plugins/examples/hello_plugin/assets/hello_observer.js","plugins/examples/hello_plugin/assets/hello_observer.meta.json")
 BLOCKED_PARTS=("__pycache__",".pytest_cache")
-OFFICIAL_IDS=("susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module","susadb.frida-tutorial","susadb.objection-tutorial")
+OFFICIAL_IDS=("susadb.device-rescue-recovery","susadb.rootability-advisor","susadb.webview-security-inspector","susadb.skeleton-module","susadb.frida-tutorial","susadb.objection-tutorial","susadb.logcat-investigator")
 OFFICIAL_CAPABILITIES={
  "susadb.device-rescue-recovery":("read-selected-device","run-adb-readonly","access-active-case","append-timeline","create-evidence","contribute-report-section"),
  "susadb.rootability-advisor":("read-selected-device","read-selected-target","run-adb-readonly","access-active-case","append-timeline","create-findings","contribute-report-section"),
@@ -24,6 +24,7 @@ OFFICIAL_CAPABILITIES={
  "susadb.skeleton-module":(),
  "susadb.frida-tutorial":("read-selected-device","read-selected-target"),
  "susadb.objection-tutorial":("read-selected-device","read-selected-target"),
+ "susadb.logcat-investigator":("read-selected-device","read-device-logs"),
 }
 def frida_runtime_errors(resource_root,platform_name):
  metadata=tuple(resource_root.glob("frida-*.dist-info/METADATA"))

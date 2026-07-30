@@ -18,6 +18,7 @@ OFFICIAL_PLUGIN_IDS = (
     "susadb.device-rescue-recovery", "susadb.rootability-advisor",
     "susadb.webview-security-inspector", "susadb.skeleton-module",
     "susadb.frida-tutorial", "susadb.objection-tutorial",
+    "susadb.logcat-investigator",
 )
 
 

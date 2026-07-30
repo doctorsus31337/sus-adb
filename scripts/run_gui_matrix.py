@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,11 +29,15 @@ RUNNERS = (
     "run_guided_help_smoke.py",
     "run_branding_smoke.py",
     "run_pentest_plugin_manager_smoke.py",
+    "run_logcat_investigator_smoke.py",
 )
 
 
 def main():
     results = []
+    xvfb = shutil.which("xvfb-run")
+    if not xvfb:
+        raise SystemExit("xvfb-run is required for isolated GUI acceptance.")
     for runner in RUNNERS:
         temporary_path = None
         with tempfile.TemporaryDirectory(
@@ -47,7 +52,14 @@ def main():
             environment["XDG_CONFIG_HOME"] = str(configuration_directory)
             environment["PYTHONPATH"] = str(ROOT)
             completed = subprocess.run(
-                [sys.executable, str(ROOT / "scripts" / runner)],
+                [
+                    xvfb,
+                    "-a",
+                    "-s",
+                    "-screen 0 1920x1200x24",
+                    sys.executable,
+                    str(ROOT / "scripts" / runner),
+                ],
                 cwd=working_directory,
                 env=environment,
                 text=True,
