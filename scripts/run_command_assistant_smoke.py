@@ -22,6 +22,7 @@ from app.core.command_completion import (
 )
 from app.core.command_registry import CommandSpec
 from app.core.command_router import CommandClassification, CommandRouter
+from app.gui.customtkinter_compat import ScopedScrollRouter, wheel_scroll_units
 from app.gui.main_window import SusADBWindow
 
 
@@ -71,7 +72,22 @@ def latency(count):
 
 def main():
     SusADBWindow.startup_check = lambda self: None
-    app = SusADBWindow()
+    suggestion_wheel_callbacks = []
+    original_wheel = ScopedScrollRouter._wheel
+
+    def counted_wheel(router, event):
+        if router.scroll_units == 42:
+            suggestion_wheel_callbacks.append((
+                router,
+                getattr(event, "widget", None),
+                getattr(event, "num", None),
+                getattr(event, "delta", 0),
+                wheel_scroll_units(event, lines=router.scroll_units),
+            ))
+        return original_wheel(router, event)
+
+    with mock.patch.object(ScopedScrollRouter, "_wheel", counted_wheel):
+        app = SusADBWindow()
     app.geometry("1100x700+0+0")
     app.navigate_workspace("Console")
     app.update_idletasks()
@@ -589,21 +605,92 @@ def main():
             if direction < 0 else after_view[0] > before_view[0]
         ), (delta, before_view, after_view)
 
-    suggestion_canvas.yview_moveto(0)
-    app.update()
-    first_button._text_label.event_generate(
-        "<MouseWheel>", x=1, y=1, delta=-120
-    )
-    app.update_idletasks()
-    one_event_view = suggestion_canvas.yview()
-    suggestion_canvas.yview_moveto(0)
-    suggestion_canvas.yview_scroll(42, "units")
-    app.update()
-    expected_one_event_view = suggestion_canvas.yview()
-    assert all(
-        abs(left - right) < 0.000001
-        for left, right in zip(one_event_view, expected_one_event_view)
-    ), (one_event_view, expected_one_event_view)
+    def settled_scroll_state(start):
+        # Keep the Xvfb pointer away from suggestion cards so scrolling content
+        # beneath it cannot synthesize unrelated <Enter> selection changes.
+        entry_inner.event_generate("<Motion>", x=1, y=1, warp=True)
+        app.update()
+        app.update_idletasks()
+        suggestion_canvas.yview_moveto(start)
+        app.update()
+        app.update_idletasks()
+        return (
+            float(suggestion_canvas.canvasy(0)),
+            str(suggestion_canvas.cget("scrollregion")),
+            suggestion_canvas.bbox("all"),
+            suggestion_canvas.winfo_height(),
+            bar.suggestion_scroller.content.winfo_reqheight(),
+            bar.suggestion_scroller.content.winfo_height(),
+        )
+
+    def assert_one_wheel_event(sequence, expected_units, *, delta=None):
+        before = settled_scroll_state(1 if expected_units < 0 else 0)
+        suggestion_wheel_callbacks.clear()
+        options = {"x": 1, "y": 1}
+        if delta is not None:
+            options["delta"] = delta
+        original_target_scroll = suggestion_canvas.yview_scroll
+        with mock.patch.object(
+            suggestion_canvas,
+            "yview_scroll",
+            wraps=original_target_scroll,
+        ) as target_scroll:
+            first_button._text_label.event_generate(sequence, **options)
+            immediate = (
+                float(suggestion_canvas.canvasy(0)),
+                str(suggestion_canvas.cget("scrollregion")),
+                suggestion_canvas.bbox("all"),
+                suggestion_canvas.winfo_height(),
+                bar.suggestion_scroller.content.winfo_reqheight(),
+                bar.suggestion_scroller.content.winfo_height(),
+            )
+            assert len(suggestion_wheel_callbacks) == 1, (
+                sequence, delta, suggestion_wheel_callbacks
+            )
+            callback = suggestion_wheel_callbacks[0]
+            assert callback[0] is suggestion_router
+            assert callback[1] is first_button._text_label
+            assert callback[4] == expected_units, callback
+            assert target_scroll.call_args_list == [
+                mock.call(expected_units, "units")
+            ], target_scroll.call_args_list
+            app.update()
+            app.update_idletasks()
+            pumped = (
+                float(suggestion_canvas.canvasy(0)),
+                str(suggestion_canvas.cget("scrollregion")),
+                suggestion_canvas.bbox("all"),
+                suggestion_canvas.winfo_height(),
+                bar.suggestion_scroller.content.winfo_reqheight(),
+                bar.suggestion_scroller.content.winfo_height(),
+            )
+            assert len(suggestion_wheel_callbacks) == 1
+            assert target_scroll.call_count == 1
+        absolute_movement = immediate[0] - before[0]
+        assert abs(absolute_movement - expected_units) <= 1, (
+            sequence, delta, before, immediate, absolute_movement
+        )
+        assert absolute_movement * expected_units > 0
+        assert immediate[1:] == before[1:], (before, immediate)
+        assert pumped == immediate, (immediate, pumped)
+        return (
+            sequence,
+            delta,
+            expected_units,
+            before[0],
+            immediate[0],
+            pumped[0],
+            absolute_movement,
+        )
+
+    wheel_contracts = [
+        assert_one_wheel_event("<MouseWheel>", 42, delta=-120),
+        assert_one_wheel_event("<MouseWheel>", -42, delta=120),
+        assert_one_wheel_event("<MouseWheel>", 42, delta=-1),
+        assert_one_wheel_event("<MouseWheel>", -42, delta=1),
+        assert_one_wheel_event("<Button-4>", -42),
+        assert_one_wheel_event("<Button-5>", 42),
+    ]
 
     suggestion_canvas.yview_moveto(0)
     for _index in range(20):
@@ -877,6 +964,7 @@ def main():
         f"platform_queries={platform_query_results} "
         f"fastboot_execution_evidence={fastboot_execution_evidence} "
         f"wheel_measurements={wheel_measurements} "
+        f"wheel_contracts={wheel_contracts} "
         f"suggestion_binding_ids={binding_ids} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
         f"output_bindings_before_close={output_binding_count} "
