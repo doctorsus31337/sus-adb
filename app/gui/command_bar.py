@@ -62,8 +62,10 @@ class CommandSuggestionScroller(ctk.CTkFrame):
         self.window_id = self.canvas.create_window(
             0, 0, window=self.content, anchor="nw"
         )
+        self.canvas._parent_frame = parent
         self.router = ScopedScrollRouter(
-            self, self.canvas, owner=parent, keyboard=False, scroll_units=42,
+            self.canvas, self.canvas, owner=self.winfo_toplevel(),
+            keyboard=False, scroll_units=42,
             visible=lambda: bool(self.winfo_ismapped()),
         )
         self.canvas.bind("<Configure>", self._canvas_configured, add="+")

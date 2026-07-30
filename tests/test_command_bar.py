@@ -43,6 +43,16 @@ class CommandBarContractTests(unittest.TestCase):
             source.index("self.execute_callback(command)", source.index("def run(")),
         )
 
+    def test_suggestion_wheel_router_uses_the_owning_toplevel(self):
+        source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
+        scroller = source.split(
+            "class CommandSuggestionScroller", 1
+        )[1].split("class CommandBar", 1)[0]
+        self.assertIn("owner=self.winfo_toplevel()", scroller)
+        self.assertIn("self.canvas._parent_frame = parent", scroller)
+        self.assertNotIn("owner=parent", scroller)
+        self.assertNotIn("bind_all(", scroller)
+
     def test_keyboard_contract_is_instance_scoped(self):
         source = (ROOT / "app/gui/command_bar.py").read_text(encoding="utf-8")
         for sequence in (

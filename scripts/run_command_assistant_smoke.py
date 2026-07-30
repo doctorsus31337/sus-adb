@@ -520,22 +520,151 @@ def main():
     bar._set_entry("adb")
     bar._refresh()
     app.update_idletasks()
+    suggestion_router = bar.suggestion_scroller.router
+    suggestion_canvas = bar.suggestion_scroller.canvas
+    binding_ids = tuple(
+        value[2] for value in suggestion_router.bindings._bindings
+    )
+    binding_count_before_rerender = suggestion_router.count
+    assert suggestion_router._owner() is app
+    assert len(binding_ids) == len(set(binding_ids))
+    bar._render_suggestions()
+    app.update_idletasks()
+    assert suggestion_router.count == binding_count_before_rerender
+    assert tuple(
+        value[2] for value in suggestion_router.bindings._bindings
+    ) == binding_ids
+
+    def dispatch_wheel(origin, sequence, *, delta=None, start=0):
+        suggestion_canvas.yview_moveto(start)
+        app.update()
+        before_view = suggestion_canvas.yview()
+        options = {"x": 1, "y": 1}
+        if delta is not None:
+            options["delta"] = delta
+        origin.event_generate(sequence, **options)
+        app.update_idletasks()
+        return before_view, suggestion_canvas.yview()
+
+    first_button = bar.suggestion_buttons[0]
+    final_button = bar.suggestion_buttons[-1]
+    suggestion_origins = (
+        ("panel-background", bar.suggestion_panel),
+        ("viewport-background", bar.suggestion_scroller),
+        ("canvas", suggestion_canvas),
+        ("content", bar.suggestion_scroller.content),
+        ("first-button", first_button),
+        ("first-button-canvas", first_button._canvas),
+        ("first-button-label", first_button._text_label),
+        ("final-button", final_button),
+        ("final-button-canvas", final_button._canvas),
+        ("final-button-label", final_button._text_label),
+        ("scrollbar", bar.suggestion_scroller.scrollbar),
+    )
+    wheel_measurements = []
+    for origin_name, origin in suggestion_origins:
+        before_view, after_view = dispatch_wheel(origin, "<Button-5>")
+        assert after_view[0] > before_view[0], (origin_name, before_view, after_view)
+        wheel_measurements.append((
+            origin_name, origin.__class__.__name__, str(origin),
+            origin.bindtags(), suggestion_router._inside(origin),
+            before_view, after_view,
+        ))
+
+    for origin_name, origin in suggestion_origins:
+        before_view, after_view = dispatch_wheel(
+            origin, "<Button-4>", start=1
+        )
+        assert after_view[0] < before_view[0], (origin_name, before_view, after_view)
+
+    for delta, direction in ((120, -1), (-120, 1), (1, -1), (-1, 1)):
+        before_view, after_view = dispatch_wheel(
+            first_button._text_label,
+            "<MouseWheel>",
+            delta=delta,
+            start=1 if direction < 0 else 0,
+        )
+        assert (
+            after_view[0] < before_view[0]
+            if direction < 0 else after_view[0] > before_view[0]
+        ), (delta, before_view, after_view)
+
+    suggestion_canvas.yview_moveto(0)
+    app.update()
+    first_button._text_label.event_generate(
+        "<MouseWheel>", x=1, y=1, delta=-120
+    )
+    app.update_idletasks()
+    one_event_view = suggestion_canvas.yview()
+    suggestion_canvas.yview_moveto(0)
+    suggestion_canvas.yview_scroll(42, "units")
+    app.update()
+    expected_one_event_view = suggestion_canvas.yview()
+    assert all(
+        abs(left - right) < 0.000001
+        for left, right in zip(one_event_view, expected_one_event_view)
+    ), (one_event_view, expected_one_event_view)
+
+    suggestion_canvas.yview_moveto(0)
+    for _index in range(20):
+        final_button._canvas.event_generate("<Button-5>", x=1, y=1)
+        app.update_idletasks()
+    assert suggestion_canvas.yview()[1] >= 0.9999
+    for _index in range(20):
+        first_button._canvas.event_generate("<Button-4>", x=1, y=1)
+        app.update_idletasks()
+    assert suggestion_canvas.yview()[0] <= 0.0001
+
+    suggestion_canvas.yview_moveto(0)
+    bar.suggestion_scroller.scrollbar._clicked(
+        SimpleNamespace(y=bar.suggestion_scroller.scrollbar.winfo_height() // 2)
+    )
+    app.update()
+    assert suggestion_canvas.yview()[0] > 0
+
     output_yview_before_suggestions = output_inner.yview()
-    before = bar.suggestion_scroller.canvas.yview()
-    bar.suggestion_scroller.router._wheel(
-        SimpleNamespace(widget=bar.suggestion_buttons[-1], delta=-120, num=None)
-    )
-    assert bar.suggestion_scroller.canvas.yview() != before
+    before = suggestion_canvas.yview()
+    final_button._canvas.event_generate("<Button-5>", x=1, y=1)
+    app.update()
+    assert suggestion_canvas.yview() != before
     assert output_inner.yview() == output_yview_before_suggestions
-    suggestion_yview = bar.suggestion_scroller.canvas.yview()
-    output.scroll_router._wheel(
-        SimpleNamespace(widget=output_inner, delta=120, num=None)
-    )
-    assert bar.suggestion_scroller.canvas.yview() == suggestion_yview
-    assert bar.suggestion_scroller.router._wheel(
+    suggestion_yview = suggestion_canvas.yview()
+    for index in range(80):
+        output.append(f"scroll isolation fixture {index}\n")
+    app.update_idletasks()
+    output_inner.yview_moveto(.35)
+    output_before_own_wheel = output_inner.yview()
+    output_inner.event_generate("<MouseWheel>", x=1, y=1, delta=-120)
+    app.update_idletasks()
+    assert output_inner.yview() != output_before_own_wheel
+    assert suggestion_canvas.yview() == suggestion_yview
+    assert suggestion_router._wheel(
         SimpleNamespace(widget=".native.dialog", delta=-120, num=None)
     ) is None
 
+    suggestion_yview = suggestion_canvas.yview()
+    entry_inner.event_generate("<MouseWheel>", x=1, y=1, delta=-120)
+    app.update_idletasks()
+    assert suggestion_canvas.yview() == suggestion_yview
+
+    bar.hide_suggestions()
+    hidden_yview = suggestion_canvas.yview()
+    first_button._canvas.event_generate("<Button-5>", x=1, y=1)
+    app.update_idletasks()
+    assert suggestion_canvas.yview() == hidden_yview
+    bar._set_entry("adb")
+    bar._refresh()
+    app.update_idletasks()
+    assert bar.suggestions_open
+    assert suggestion_router.count == binding_count_before_rerender
+    suggestion_canvas.yview_moveto(0)
+    app.update()
+    reopened_before = suggestion_canvas.yview()
+    bar.suggestion_buttons[0]._text_label.event_generate(
+        "<Button-5>", x=1, y=1
+    )
+    app.update_idletasks()
+    assert suggestion_canvas.yview() != reopened_before
     bar.hide_suggestions()
     bar.completion_service = CommandCompletionService()
     bar._set_entry("adb")
@@ -747,6 +876,8 @@ def main():
         f"measurements={measurements} contexts={context_results} "
         f"platform_queries={platform_query_results} "
         f"fastboot_execution_evidence={fastboot_execution_evidence} "
+        f"wheel_measurements={wheel_measurements} "
+        f"suggestion_binding_ids={binding_ids} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
         f"output_bindings_before_close={output_binding_count} "
         f"output_yview={initial_yview}->{touchpad_yview}->{page_yview} "
