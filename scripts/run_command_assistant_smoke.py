@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import shlex
 import time
 import threading
 from pathlib import Path
@@ -588,6 +589,103 @@ def main():
     bar.execute_callback = app.execute_command
 
     history_before_fake_execution = app.terminal.history.entries()
+    fastboot_execution_evidence = []
+
+    def execute_with_evidence(command):
+        route = app.terminal.router.classify(command)
+        fastboot_execution_evidence.append({
+            "repr": repr(command),
+            "codepoints": tuple(f"U+{ord(value):04X}" for value in command),
+            "split": tuple(shlex.split(command)),
+            "router_name": app.command_router._name(route.argv[0]),
+            "classification": route.classification.value,
+            "argv": route.argv,
+            "resolved_argv": route.resolved_argv,
+            "registry_member": command in {
+                spec.command for spec in app.command_completion._specs
+            },
+            "resolved_fastboot": app.host_tools.resolve("fastboot"),
+            "history_before": app.terminal.history.entries(),
+            "runner_before": len(fake_runner.commands),
+        })
+        app.execute_command(command)
+
+    bar.execute_callback = execute_with_evidence
+    entry_inner = getattr(bar.entry, "_entry", bar.entry)
+    history_add = app.terminal.history.add
+    with mock.patch.object(
+        app.terminal.history, "add", wraps=history_add
+    ) as add_history:
+        bar._set_entry("")
+        for value in b"fastboot --version":
+            bar.entry.insert("end", chr(value))
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+
+        app.clipboard_clear()
+        app.clipboard_append("fastboot --version")
+        entry_inner.focus_set()
+        entry_inner.event_generate("<<Paste>>")
+        app.update()
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+
+        bar._set_entry("fast")
+        bar._refresh()
+        app.update_idletasks()
+        version_index = next(
+            index for index, item in enumerate(bar.result.suggestions)
+            if item.command_text == "fastboot --version"
+        )
+        bar.accept_index(version_index)
+        assert bar.entry.get().encode("ascii") == b"fastboot --version"
+        bar.run()
+        assert pump_until(app, lambda: not app.terminal._active)
+        assert [call.args[0] for call in add_history.call_args_list] == [
+            "fastboot --version",
+            "fastboot --version",
+            "fastboot --version",
+        ]
+
+    assert len(fastboot_execution_evidence) == 3
+    for index, evidence in enumerate(fastboot_execution_evidence, 1):
+        evidence["history_after"] = app.terminal.history.entries()
+        evidence["runner_after"] = index
+        assert evidence["repr"] == "'fastboot --version'"
+        assert evidence["split"] == ("fastboot", "--version")
+        assert evidence["router_name"] == "fastboot"
+        assert evidence["classification"] == "one-shot"
+        assert evidence["argv"] == ("fastboot", "--version")
+        assert evidence["resolved_argv"] == (
+            "/fixture tools/fastboot", "--version"
+        )
+        assert evidence["registry_member"]
+        assert evidence["resolved_fastboot"] == "/fixture tools/fastboot"
+    assert fake_runner.commands == [
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+    ]
+    assert "supported command registry" not in output.read()
+
+    bar.execute_callback = app.execute_command
+    history_before_typography = app.terminal.history.entries()
+    runner_before_typography = len(fake_runner.commands)
+    for command in (
+        "fastboot\u00a0--version",
+        "fastboot \u2013\u2013version",
+        "fastboot \u2011\u2011version",
+        "fastboot\u200b --version",
+    ):
+        bar._set_entry(command)
+        bar.run()
+        app.update_idletasks()
+    assert len(fake_runner.commands) == runner_before_typography
+    assert app.terminal.history.entries() == history_before_typography
+    assert output.read().count("non-ASCII punctuation or spacing") >= 4
+
     for command in (
         "fastboot -s FB-SERIAL getvar product",
         "adb connect fixture.example:5555",
@@ -596,6 +694,9 @@ def main():
         bar.run()
         assert pump_until(app, lambda: not app.terminal._active)
     assert fake_runner.commands == [
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
+        ("/fixture tools/fastboot", "--version"),
         (
             "/fixture tools/fastboot", "-s", "FB-SERIAL",
             "getvar", "product",
@@ -628,7 +729,7 @@ def main():
     assert not any(
         entry.startswith("adb pair") for entry in app.terminal.history.entries()
     )
-    assert len(app.terminal.history.entries()) == len(history_before_fake_execution) + 2
+    assert len(app.terminal.history.entries()) == len(history_before_fake_execution) + 3
 
     latencies = {count: latency(count) for count in (10, 50, 100, 500)}
     binding_count = bar.binding_count
@@ -645,6 +746,7 @@ def main():
         "command-assistant-smoke=PASS "
         f"measurements={measurements} contexts={context_results} "
         f"platform_queries={platform_query_results} "
+        f"fastboot_execution_evidence={fastboot_execution_evidence} "
         f"latency_ms={latencies} bindings_before_close={binding_count} "
         f"output_bindings_before_close={output_binding_count} "
         f"output_yview={initial_yview}->{touchpad_yview}->{page_yview} "

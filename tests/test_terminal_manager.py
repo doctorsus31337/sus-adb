@@ -1,6 +1,7 @@
 import io
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -115,6 +116,55 @@ class TerminalManagerTests(unittest.TestCase):
         manager._run("fastboot devices")
         self.assertFalse(runner.commands)
         self.assertIn("configure its executable path", " ".join(logs).lower())
+
+    def test_fastboot_version_executes_with_exact_structured_argv(self):
+        with tempfile.TemporaryDirectory(prefix="fastboot version ") as directory:
+            executable = Path(directory) / "fastboot"
+            executable.touch()
+            resolver = HostToolResolver(
+                {"fastboot": str(executable)}, which=lambda _name: None
+            )
+            logs = []
+            manager = TerminalManager(logs.append, resolver=resolver)
+            runner = Runner()
+            manager.runner = runner
+            manager.execute("fastboot --version")
+            for _index in range(1000):
+                if not manager._active:
+                    break
+                time.sleep(0.001)
+            self.assertFalse(manager._active)
+            self.assertEqual(
+                runner.commands,
+                [(str(executable.resolve()), "--version")],
+            )
+            self.assertEqual(manager.history.entries(), ("fastboot --version",))
+            self.assertIn("ok", logs)
+
+    def test_unsupported_typography_never_runs_or_enters_history(self):
+        logs = []
+        manager = TerminalManager(
+            logs.append,
+            resolver=HostToolResolver(which=lambda _name: None, packaged=True),
+        )
+        runner = Runner()
+        manager.runner = runner
+        for command in (
+            "fastboot\u00a0--version",
+            "fastboot \u2013\u2013version",
+            "fastboot \u2011\u2011version",
+            "fastboot\u200b --version",
+        ):
+            with self.subTest(command=repr(command)):
+                manager.execute(command)
+        self.assertFalse(runner.commands)
+        self.assertEqual(manager.history.entries(), ())
+        self.assertEqual(
+            sum("non-ASCII punctuation" in value for value in logs), 4
+        )
+        self.assertFalse(
+            any("supported command registry" in value for value in logs)
+        )
 
     def test_command_runner_stream_is_structured_shell_false_and_merges_stderr(self):
         process = mock.Mock()

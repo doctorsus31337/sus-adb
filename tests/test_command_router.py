@@ -86,6 +86,30 @@ class CommandRouterTests(unittest.TestCase):
                 self.assertEqual(route.classification, CommandClassification.UNSUPPORTED)
                 self.assertIn("not supported", route.reason)
 
+    def test_command_typography_is_rejected_before_registry_fallback(self):
+        router = CommandRouter()
+        for command in (
+            "fastboot\u00a0--version",
+            "fastboot \u2013\u2013version",
+            "fastboot \u2014\u2014version",
+            "fastboot \u2011\u2011version",
+            "fastboot\u200b --version",
+            "fastboot \u2212\u2212version",
+        ):
+            with self.subTest(command=repr(command)):
+                route = router.classify(command)
+                self.assertEqual(
+                    route.classification, CommandClassification.UNSUPPORTED
+                )
+                self.assertIn("non-ASCII punctuation", route.reason)
+                self.assertIn("fastboot --version", route.reason)
+                self.assertNotIn("supported command registry", route.reason)
+
+    def test_exact_ascii_fastboot_version_remains_one_shot(self):
+        route = CommandRouter().classify("fastboot --version")
+        self.assertEqual(route.classification, CommandClassification.ONE_SHOT)
+        self.assertEqual(route.argv, ("fastboot", "--version"))
+
     def test_fastboot_serial_has_distinct_route_context(self):
         route = CommandRouter().classify(
             "fastboot --serial FB-SERIAL getvar current-slot"

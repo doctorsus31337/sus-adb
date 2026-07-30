@@ -36,6 +36,10 @@ class TerminalManager:
         self._active = False
 
     def execute(self, command: str) -> None:
+        typography_reason = self.router.unsupported_typography_reason(command)
+        if typography_reason:
+            self.log(f"[ERROR] {typography_reason}")
+            return
         command = command.strip()
         if not command:
             return

@@ -6,6 +6,7 @@ import ipaddress
 import os
 import re
 import shlex
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -46,6 +47,12 @@ class CommandRouter:
         r"(?=.{3,255}\Z)(?!-)(?!.*\.\.)"
         r"(?:[A-Za-z0-9][A-Za-z0-9.-]*):([0-9]{1,5})\Z"
     )
+    _TYPOGRAPHY_MESSAGE = (
+        "The command contains non-ASCII punctuation or spacing. Retype it "
+        "using ordinary ASCII hyphens and spaces (for example: "
+        "fastboot --version)."
+    )
+    _TYPOGRAPHIC_MINUS = frozenset(("\N{MINUS SIGN}", "\N{FULLWIDTH HYPHEN-MINUS}"))
 
     def __init__(self, resolver=None, *, platform_name: str | None = None):
         self.resolver = resolver
@@ -62,7 +69,14 @@ class CommandRouter:
         return name[:-4] if name.endswith(".exe") else name
 
     def classify(self, command: str) -> CommandRoute:
-        raw = command.strip()
+        source = str(command)
+        typography_reason = self.unsupported_typography_reason(source)
+        raw = source.strip()
+        if typography_reason:
+            return CommandRoute(
+                raw, (), (), CommandClassification.UNSUPPORTED,
+                reason=typography_reason,
+            )
         try:
             argv = tuple(shlex.split(raw, posix=self.platform_name != "nt"))
         except ValueError as exc:
@@ -107,6 +121,21 @@ class CommandRouter:
             raw, argv, resolved, CommandClassification.AMBIGUOUS,
             reason="This command is not in the supported command registry. Use a dedicated terminal for unclassified commands.",
         )
+
+    @classmethod
+    def unsupported_typography_reason(cls, command: str) -> str:
+        """Reject invisible separators and lookalike command punctuation."""
+        for character in str(command):
+            if ord(character) <= 127:
+                continue
+            category = unicodedata.category(character)
+            if (
+                character.isspace()
+                or category in {"Cf", "Pd"}
+                or character in cls._TYPOGRAPHIC_MINUS
+            ):
+                return cls._TYPOGRAPHY_MESSAGE
+        return ""
 
     @staticmethod
     def _fastboot(raw, argv, resolved):
