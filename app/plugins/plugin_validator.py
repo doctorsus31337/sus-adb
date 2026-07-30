@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path,PurePosixPath
 from app.plugins.plugin_api import PLUGIN_API_VERSION,SUPPORTED_PLUGIN_API_VERSIONS
-from app.plugins.plugin_capabilities import CAPABILITIES,HIGH_IMPACT
+from app.plugins.plugin_capabilities import CAPABILITIES,CAPABILITY_CAUTIONS,HIGH_IMPACT
 from app.plugins.plugin_manifest import CONTRIBUTION_TYPES
 @dataclass(frozen=True,slots=True)
 class PluginValidation:
@@ -25,6 +25,7 @@ class PluginValidator:
         bad_types=sorted({c.contribution_type for c in m.contributed_components}-set(CONTRIBUTION_TYPES))
         if bad_types:errors.append("Unsupported contribution types: "+", ".join(bad_types))
         for c in sorted(set(m.requested_capabilities)&HIGH_IMPACT):cautions.append(f"{c} requires explicit high-impact approval and active scope where applicable.")
+        for c in sorted(set(m.requested_capabilities)&set(CAPABILITY_CAUTIONS)):cautions.append(CAPABILITY_CAUTIONS[c])
         declared={entry,"manifest.json"}|{str(c.metadata.get("path","")).replace("\\","/") for c in m.contributed_components}
         undeclared=[f for f in files if f.endswith((".py",".pyc",".pyd",".so",".dll",".dylib")) and f not in declared]
         if undeclared:warnings.append("Undeclared executable/native files: "+", ".join(sorted(undeclared)))
