@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.modules.logcat.analysis_service import LogcatAnalysisService
 from app.modules.logcat.models import (
     DEFAULT_CAPACITY,
     MAX_CAPACITY,
@@ -67,6 +68,7 @@ class LogcatCaptureService:
         batch_interval: float = 0.075,
         stop_timeout: float = 2.0,
         parser: ThreadtimeParser | None = None,
+        analysis_service: LogcatAnalysisService | None = None,
     ):
         if not MIN_CAPACITY <= int(capacity) <= MAX_CAPACITY:
             raise ValueError(
@@ -79,6 +81,7 @@ class LogcatCaptureService:
         self.batch_interval = max(0.02, float(batch_interval))
         self.stop_timeout = max(0.05, float(stop_timeout))
         self.parser = parser or ThreadtimeParser()
+        self.analysis_service = analysis_service or LogcatAnalysisService()
         self._records = deque(maxlen=self.capacity)
         self._lock = threading.RLock()
         self._subscribers: dict[int, Callable[[LogcatCaptureSnapshot], None]] = {}
@@ -160,6 +163,7 @@ class LogcatCaptureService:
 
     def _publish(self) -> None:
         snapshot = self.snapshot()
+        self.analysis_service.consume_capture_snapshot(snapshot)
         with self._lock:
             callbacks = tuple(self._subscribers.values())
         for callback in callbacks:
@@ -198,6 +202,7 @@ class LogcatCaptureService:
                     False, self.snapshot(), "ADB is unavailable; capture cannot start."
                 )
             self._records.clear()
+            self.analysis_service.clear()
             self._dropped = 0
             self._sequence = 0
             self._capture_serial = copied_serial
@@ -386,6 +391,7 @@ class LogcatCaptureService:
             self._status = (
                 "View and host memory cleared; Android Logcat was not cleared."
             )
+        self.analysis_service.clear()
         self._request_publish()
         return self.snapshot()
 
@@ -447,6 +453,8 @@ class LogcatCaptureService:
             if not self._closed:
                 self._state = LogcatCaptureState.STOPPED
                 self._status = "Capture stopped."
+            records = tuple(self._records)
+        self.analysis_service.flush(records)
         self._publish()
         return LogcatServiceResult(True, self.snapshot(), argv=self.argv)
 
@@ -467,6 +475,7 @@ class LogcatCaptureService:
             self._state = LogcatCaptureState.CLOSED
             callbacks = tuple(self._subscribers.values())
             self._subscribers.clear()
+        self.analysis_service.close()
         snapshot = self.snapshot()
         for callback in callbacks:
             self.dispatcher(self._deliver, callback, snapshot)
