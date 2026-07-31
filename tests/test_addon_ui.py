@@ -16,11 +16,11 @@ class T(unittest.TestCase):
   self.assertEqual(resolve_ui_mode("embedded"),AddonUIMode.EMBEDDED);self.assertEqual(resolve_ui_mode("bad"),AddonUIMode.WINDOW)
   self.assertEqual(clamp_addon_geometry("bad",1200,800,spec),"1000x700+100+50")
   self.assertEqual(clamp_addon_geometry("1000x700+5000+5000",1200,800,spec),"1000x700+200+100")
- def test_six_independent_cards_and_no_discovery_transition(self):
+ def test_seven_independent_cards_and_no_discovery_transition(self):
   with tempfile.TemporaryDirectory() as d:
    manager=self.manager(d);items=manager.official();cards=[card_spec(item,manager) for item in items]
-   self.assertEqual(len(cards),6);self.assertEqual(len({v.plugin_id for v in cards}),6);self.assertTrue(all(v.lifecycle_status=="Available" for v in cards));self.assertFalse(manager.list());self.assertFalse(manager.registry.list())
-   modes={v.plugin_id:v.preferred_mode.value for v in cards};self.assertEqual(modes["susadb.device-rescue-recovery"],"window");self.assertEqual(modes["susadb.rootability-advisor"],"hybrid");self.assertEqual(modes["susadb.webview-security-inspector"],"hybrid");self.assertEqual(modes["susadb.skeleton-module"],"window")
+   self.assertEqual(len(cards),7);self.assertEqual(len({v.plugin_id for v in cards}),7);self.assertTrue(all(v.lifecycle_status=="Available" for v in cards));self.assertFalse(manager.list());self.assertFalse(manager.registry.list())
+   modes={v.plugin_id:v.preferred_mode.value for v in cards};self.assertEqual(modes["susadb.device-rescue-recovery"],"window");self.assertEqual(modes["susadb.rootability-advisor"],"hybrid");self.assertEqual(modes["susadb.webview-security-inspector"],"hybrid");self.assertEqual(modes["susadb.skeleton-module"],"window");self.assertEqual(modes["susadb.logcat-investigator"],"window")
  def test_lifecycle_is_not_chained(self):
   with tempfile.TemporaryDirectory() as d:
    manager=self.manager(d);item=manager.official()[0];pid=item.manifest.plugin_id

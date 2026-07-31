@@ -214,8 +214,8 @@ def main():
         center=AddonsCenter(root,theme,manager,WindowHost())
         center.deiconify()
         pump(root)
-        assert len(center.cards)==6
-        assert len(set(center.cards))==6
+        assert len(center.cards)==7
+        assert len(set(center.cards))==7
         for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
             reach_bottom(center,width,height,"official")
 
@@ -273,11 +273,11 @@ def main():
         pump(root)
         assert center.visible_plugin_ids==(first_id,)
         assert canvas.yview()[0]<0.01 and canvas.yview()[1]>0.99
-        assert len(center.cards)==6
+        assert len(center.cards)==7
         center.search.delete(0,"end")
         center.refresh()
         pump(root)
-        assert len(center.visible_plugin_ids)==6
+        assert len(center.visible_plugin_ids)==7
         center.search.insert(0,"no matching addon fixture")
         center.refresh()
         pump(root)
@@ -317,7 +317,7 @@ def main():
         pump(root)
         assert reopened_router.count==0
 
-        for count in (1,4,6,12,30):
+        for count in (1,4,6,7,12,30):
             fake=FakeManager(count)
             synthetic=AddonsCenter(root,theme,fake,WindowHost())
             synthetic.deiconify()
@@ -366,7 +366,7 @@ def main():
     print(
         "addons-center-smoke=PASS "
         "sizes=900x650,980x650,1180x780,1400x860 "
-        "scales=125%,150% cards=1,4,6,12,30 "
+        "scales=125%,150% cards=1,4,6,7,12,30 "
         f"measurements={measurements} "
         "wheel=windows,touchpad,linux-x11 keyboard=up-down-page-home-end "
         "filter-lifecycle-focus-reopen-native-dialog-shutdown=PASS"

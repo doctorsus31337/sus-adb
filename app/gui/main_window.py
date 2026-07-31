@@ -304,6 +304,14 @@ class SusADBWindow(ctk.CTk):
                     lambda parent:self._build_contextual_assistant(parent,"objection"),
                     "read-selected-device",
                 ),
+                "logcat-investigator":HostWorkspaceBinding(
+                    self._build_logcat_investigator_workspace,
+                    "read-device-logs",True,("read-selected-device",),
+                ),
+                "logcat-investigator.panel":HostWorkspaceBinding(
+                    self._build_logcat_investigator_workspace,
+                    "read-device-logs",True,("read-selected-device",),
+                ),
             },
             start_background=self._start_background,
             ui_dispatch=self.call_on_ui,
@@ -366,6 +374,19 @@ class SusADBWindow(ctk.CTk):
             open_learning=self.open_learning_center,
             open_help=self.open_context_help,
             ui_dispatch=self.call_on_ui,
+        )
+
+    def _build_logcat_investigator_workspace(self,parent):
+        from app.gui.logcat_investigator_panel import LogcatInvestigatorPanel
+        from app.modules.logcat import LogcatCaptureService
+        service=LogcatCaptureService(
+            self.devices.adb.adb_path or "",
+            dispatcher=self.call_on_ui,
+        )
+        return LogcatInvestigatorPanel(
+            parent,self.theme,service,
+            ui_dispatch=self.call_on_ui,
+            start_background=self._start_background,
         )
 
     def open_assistant_session(self,section):

@@ -10,6 +10,18 @@ class HostWorkspaceBinding:
     factory: object
     required_capability: str = ""
     device_selector: bool = False
+    required_capabilities: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        required = tuple(
+            dict.fromkeys(
+                (
+                    *((self.required_capability,) if self.required_capability else ()),
+                    *self.required_capabilities,
+                )
+            )
+        )
+        object.__setattr__(self, "required_capabilities", required)
 
 
 def normalize_host_workspace_bindings(values):
@@ -33,13 +45,15 @@ def resolve_host_workspace(
     binding = bindings.get(workspace_kind) or bindings.get(contribution_id)
     if binding is None:
         return None, ""
-    if (
-        binding.required_capability
-        and binding.required_capability not in set(approved_capabilities)
-    ):
+    missing = tuple(
+        capability
+        for capability in binding.required_capabilities
+        if capability not in set(approved_capabilities)
+    )
+    if missing:
         return (
             None,
-            "Host workspace requires approved capability: "
-            f"{binding.required_capability}",
+            "Host workspace requires approved capabilities: "
+            f"{', '.join(missing)}",
         )
     return binding, ""

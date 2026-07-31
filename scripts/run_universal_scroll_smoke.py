@@ -60,7 +60,7 @@ def main():
         pump(app)
 
         originals=tuple(app.plugin_manager.official())
-        assert len(originals)==6
+        assert len(originals)==7
 
         def catalog(size):
             values=[]
