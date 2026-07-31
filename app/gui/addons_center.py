@@ -234,6 +234,7 @@ class AddonCard(ctk.CTkFrame):
         self.spec=None
         self.buttons={}
         self.actions=()
+        self.button_bindings=[]
         self.callbacks=PendingCallbackOwner(self)
         self.grid_columnconfigure(0,weight=1)
         self.name_label=ctk.CTkLabel(
@@ -271,17 +272,51 @@ class AddonCard(ctk.CTkFrame):
     def _bar_configured(self,_event):
         self.callbacks.schedule_idle(self._layout_actions)
 
-    def _focus_in(self,event,button):
-        button.configure(border_color=self.theme["gold"])
-        self.focus_callback(getattr(event,"widget",button))
+    @staticmethod
+    def _owned_button_event(event,button):
+        return (
+            getattr(event,"widget",None) is button
+            and widget_exists(button)
+            and bool(button.winfo_ismapped())
+        )
 
-    def _focus_out(self,_event,button):
+    def _focus_in(self,event,button):
+        if not self._owned_button_event(event,button):return None
+        button.configure(border_color=self.theme["gold"])
+        self.focus_callback(button)
+        return None
+
+    def _focus_out(self,event,button):
+        if getattr(event,"widget",None) is not button:return None
         if widget_exists(button):
             button.configure(border_color=self.theme["gold_dark"])
+        return None
 
-    def _invoke_focused(self,_event,button):
-        if widget_exists(button):button.invoke()
+    def _invoke_focused(self,event,button):
+        if (
+            not self._owned_button_event(event,button)
+            or getattr(event,"keysym","") not in {"Return","space"}
+            or not focused_within(button)
+        ):
+            return None
+        button.invoke()
         return "break"
+
+    def _bind_button(self,button,sequence,callback):
+        binding_id=tk.Frame.bind(button,sequence,callback,add="+")
+        if binding_id:
+            self.button_bindings.append((button,sequence,binding_id))
+
+    def _unbind_buttons(self):
+        for button,sequence,binding_id in tuple(self.button_bindings):
+            if widget_exists(button):
+                try:tk.Frame.unbind(button,sequence,binding_id)
+                except tk.TclError:pass
+        self.button_bindings.clear()
+
+    @property
+    def binding_count(self):
+        return len(self.button_bindings)
 
     def _layout_actions(self):
         if not widget_exists(self.bar):return
@@ -329,7 +364,11 @@ class AddonCard(ctk.CTkFrame):
         for name,button in self.buttons.items():
             if name not in wanted:
                 if focused_within(button):
-                    safe_focus(self.buttons.get("Details") or self)
+                    target=self.buttons.get("Details")
+                    if widget_exists(target):
+                        tk.Frame.focus_set(target)
+                    else:
+                        safe_focus(self)
                 button.grid_remove()
         for name in wanted:
             button=self.buttons.get(name)
@@ -351,23 +390,23 @@ class AddonCard(ctk.CTkFrame):
                         action,self.plugin_id
                     ),
                 )
-                button.bind(
+                self._bind_button(
+                    button,
                     "<FocusIn>",
                     lambda event,target=button:self._focus_in(event,target),
-                    add="+",
                 )
-                button.bind(
+                self._bind_button(
+                    button,
                     "<FocusOut>",
                     lambda event,target=button:self._focus_out(event,target),
-                    add="+",
                 )
                 for sequence in ("<Return>","<space>"):
-                    button.bind(
+                    self._bind_button(
+                        button,
                         sequence,
                         lambda event,target=button:self._invoke_focused(
                             event,target
                         ),
-                        add="+",
                     )
                 tk.Frame.configure(button,takefocus=True)
                 if hasattr(button,"_canvas"):
@@ -378,6 +417,7 @@ class AddonCard(ctk.CTkFrame):
 
     def destroy(self):
         self.callbacks.cancel_all()
+        self._unbind_buttons()
         super().destroy()
 
 

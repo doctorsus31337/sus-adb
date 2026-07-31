@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -118,6 +119,35 @@ def main():
         assert card.spec.update_available
         assert "Load" in card.actions and "Review Update" in card.actions
         assert "Install Update" not in card.actions
+        keyboard_actions=[]
+        original_action=card.action_callback
+        card.action_callback=lambda action,plugin_id:keyboard_actions.append(
+            (action,plugin_id)
+        )
+        details_button=card.buttons["Details"]
+        review_update_button=card.buttons["Review Update"]
+        tk.Frame.focus_force(details_button)
+        pump(root)
+        assert details_button.focus_get() is details_button
+        assert details_button.cget("border_color")==center.theme["gold"]
+        details_button.event_generate("<Return>")
+        pump(root)
+        assert keyboard_actions==[("Details",target_id)]
+        details_button.event_generate("<space>")
+        pump(root)
+        assert keyboard_actions==[
+            ("Details",target_id),
+            ("Details",target_id),
+        ]
+        tk.Frame.focus_force(review_update_button)
+        pump(root)
+        assert review_update_button.focus_get() is review_update_button
+        assert details_button.cget("border_color")==center.theme["gold_dark"]
+        assert review_update_button.cget("border_color")==center.theme["gold"]
+        center.search.focus_force()
+        pump(root)
+        assert review_update_button.cget("border_color")==center.theme["gold_dark"]
+        card.action_callback=original_action
 
         for width,height in ((900,650),(980,650),(1180,780),(1400,860)):
             center.geometry(f"{width}x{height}+0+0")
@@ -213,7 +243,21 @@ def main():
         assert not trust.verify(target_id,item.package_digest)
         assert not manager.registry.by_plugin(target_id)
         assert center.search.get()==search_value
+        hidden_actions=[]
+        card.action_callback=lambda action,plugin_id:hidden_actions.append(
+            (action,plugin_id)
+        )
+        assert not review_button.winfo_ismapped()
+        assert card._invoke_focused(
+            SimpleNamespace(widget=review_button,keysym="Return"),
+            review_button,
+        ) is None
+        assert not hidden_actions
+        card.action_callback=original_action
         center.close();pump(root)
+        assert stable_card.binding_count==0
+        assert not stable_card.callbacks._pending
+        assert not review_button.winfo_exists()
         center=AddonsCenter(root,get_theme(),manager,host)
         center.deiconify();pump(root)
         card=center.cards[target_id]
@@ -260,7 +304,10 @@ def main():
         no_blue(center)
         assert not errors,errors
 
+        final_card=center.cards[target_id]
         center.close();pump(root)
+        assert final_card.binding_count==0
+        assert not final_card.callbacks._pending
         reopened=AddonsCenter(root,get_theme(),manager,host)
         reopened.deiconify();pump(root)
         assert reopened.cards[target_id].spec.version=="1.1.0"
@@ -279,7 +326,9 @@ def main():
         "addons-update-smoke=PASS "
         "sizes=900x650,980x650,1180x780,1400x860 "
         f"states={sorted(observed_states)} measurements={measurements} "
-        "review-close-mark-install-unload-rollback-retry-no-restart-filter-scroll-focus-shutdown=PASS"
+        "review-close-mark-install-unload-rollback-retry-no-restart-filter-scroll-focus-shutdown=PASS "
+        "return-space-exactly-once-hidden-destroyed-safe=PASS "
+        "callbacks=0 bindings=0 workers=0"
     )
     return 0
 

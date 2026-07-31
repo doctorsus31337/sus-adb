@@ -68,3 +68,12 @@ class T(unittest.TestCase):
   self.assertIn("card.update_spec(spec)",source)
   self.assertIn("if plugin_id not in specs:",source)
   self.assertIn("self.callbacks.cancel_all()",source)
+ def test_addon_card_keyboard_bindings_use_the_focusable_outer_button(self):
+  source=(ROOT/"app/gui/addons_center.py").read_text(encoding="utf-8")
+  self.assertIn("tk.Frame.bind(button,sequence,callback,add=\"+\")",source)
+  self.assertIn("tk.Frame.unbind(button,sequence,binding_id)",source)
+  self.assertIn('getattr(event,"widget",None) is button',source)
+  self.assertIn('getattr(event,"keysym","") not in {"Return","space"}',source)
+  self.assertIn("or not focused_within(button)",source)
+  self.assertIn("tk.Frame.focus_set(target)",source)
+  self.assertNotIn('button.bind(\\n                    "<FocusIn>"',source)
