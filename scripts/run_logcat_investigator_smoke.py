@@ -244,7 +244,7 @@ def main():
                 and panel.pause_button.cget("text") == "Resume View"
             ),
         )
-        assert "capture continues in memory" in panel.footer.cget("text")
+        assert "capture and analysis continue in memory" in panel.footer.cget("text")
         feed_range(100, 1_000)
         assert pump_until(app, lambda: service.snapshot().buffered_count == 1_000)
         pump(app)

@@ -30,6 +30,7 @@ RUNNERS = (
     "run_branding_smoke.py",
     "run_pentest_plugin_manager_smoke.py",
     "run_logcat_investigator_smoke.py",
+    "run_logcat_investigator_analysis_smoke.py",
 )
 
 
