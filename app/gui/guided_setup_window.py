@@ -23,6 +23,18 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         "Review Plan",
         "Open Confirmed Workflow",
     )
+    STEP_GUIDANCE = (
+        "Choose the authorized Android device in the device dock. Confirm its serial; this guide never substitutes another device.",
+        "Confirm the selected serial is online and authorized. Resolve an offline or unauthorized ADB state before continuing.",
+        "Run device readiness diagnostics to identify architecture, existing root, a running Frida Server, Gadget, emulator, or debuggable-app routes.",
+        "Run Host diagnostics and require the Frida and frida-ps executables to complete their bounded version checks successfully.",
+        "Use the diagnosed evidence to choose one available route. ADB-only scanning needs no Frida route; runtime observation does.",
+        "Open Targets → Installed Applications and select Scan Installed Apps. The ADB result renders progressively; filters remain available while rows appear.",
+        "Select the exact package or running process. Frida selectors differ: -p attaches a numeric PID, -N attaches an application by identifier, -F attaches the frontmost application, and -f spawns the named program/package.",
+        "Choose attach for an already-running target or spawn to observe startup. For frida-trace, -i includes native functions matching a glob and -j includes Java methods matching a Java-method pattern.",
+        "Review the route, blockers, warnings, selected serial, target, and every proposed destination below. Nothing executes from this review.",
+        "Open only the reviewed destination, verify its command preview, and explicitly confirm any launch, attach, spawn, trace, or script load there.",
+    )
 
     def __init__(
         self,
@@ -42,6 +54,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         self.on_close = on_close
         self.step = 0
         self.plan = None
+        self.state = None
         self.title(f"{METADATA.application_name} — Guided Instrumentation Setup")
         self.configure(fg_color=theme["bg"])
         self.minsize(900, 650)
@@ -164,8 +177,41 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         widget.replace(text)
 
     def refresh(self):
-        self.plan = self.engine.plan(self.goal.get(), self.state_provider())
+        self.state = self.state_provider()
+        self.plan = self.engine.plan(self.goal.get(), self.state)
         self.render()
+
+    @classmethod
+    def step_body(cls, step: int, plan, state) -> str:
+        lines = [cls.STEP_GUIDANCE[step]]
+        if step == 0:
+            lines.extend(("", f"Current serial: {state.selected_serial or 'None selected'}"))
+        elif step == 1:
+            lines.extend(("", f"Current ADB state: {state.adb_state}"))
+        elif step == 3:
+            lines.extend(("", f"Host Frida ready: {'Yes' if state.host_frida_available else 'No'}"))
+        elif step == 4:
+            lines.extend(("", f"Available route: {plan.route.value}"))
+        elif step == 5:
+            lines.extend(("", f"Installed-app scan complete: {'Yes' if state.installed_apps_scanned else 'No'}"))
+        elif step == 6:
+            selected = state.selected_package or state.selected_target or "None selected"
+            lines.extend(("", f"Current target: {selected}"))
+        elif step == 8:
+            if plan.blockers:
+                lines.extend(("", "Blockers:", *(f"• {item}" for item in plan.blockers)))
+            if plan.warnings:
+                lines.extend(("", "Warnings:", *(f"• {item}" for item in plan.warnings)))
+            lines.extend(("", "Verified next actions:"))
+            lines.extend(
+                f"{index}. {action.label}\n   {action.explanation}\n   Destination: {action.destination}"
+                for index, action in enumerate(plan.actions, 1)
+            )
+        elif step == 9:
+            destination = plan.actions[-1].destination if plan.actions else "No destination is available until blockers are resolved."
+            lines.extend(("", f"Reviewed destination: {destination}"))
+        lines.extend(("", "Safety boundary: this guide performs no device or instrumentation action."))
+        return "\n".join(lines)
 
     def render(self):
         for index, button in enumerate(self.step_buttons):
@@ -182,31 +228,7 @@ class GuidedSetupWindow(ctk.CTkToplevel):
         step_name = self.STEPS[self.step]
         self.heading.configure(text=f"Step {self.step + 1}: {step_name}")
         plan = self.plan
-        lines = [
-            plan.summary,
-            "",
-            f"Route: {plan.route.value}",
-            f"Automatic execution: {'Yes' if plan.executes_automatically else 'No'}",
-        ]
-        if plan.blockers:
-            lines.extend(("", "Blockers:", *(f"• {item}" for item in plan.blockers)))
-        if plan.warnings:
-            lines.extend(("", "Warnings:", *(f"• {item}" for item in plan.warnings)))
-        lines.extend(("", "Verified next actions:"))
-        for index, action in enumerate(plan.actions, 1):
-            lines.append(
-                f"{index}. {action.label}\n"
-                f"   {action.explanation}\n"
-                f"   Destination: {action.destination}"
-            )
-        lines.extend(
-            (
-                "",
-                "This guide does not root, unlock, flash, upload, start Frida, "
-                "patch or install an APK, attach, spawn, or load a script.",
-            )
-        )
-        self._set_text(self.details, "\n".join(lines))
+        self._set_text(self.details, self.step_body(self.step, plan, self.state))
         self.open_button.configure(
             state=(
                 "normal"

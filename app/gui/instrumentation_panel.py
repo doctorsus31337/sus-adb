@@ -30,6 +30,8 @@ from app.gui.instrumentation_reference_window import InstrumentationReferenceWin
 
 
 class InstrumentationPanel(ctk.CTkFrame):
+    INSTALLED_RENDER_BATCH_SIZE = 20
+
     def __init__(
         self,
         parent,
@@ -79,6 +81,11 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._last_diagnosis: FridaDiagnosis | None = None
         self._action_buttons: list[ctk.CTkButton] = []
         self._busy = False
+        self._installed_render_generation = 0
+        self._installed_render_after = None
+        self._installed_render_old_widgets = []
+        self._installed_render_pending = ()
+        self._installed_render_index = 0
         self.reference_window: InstrumentationReferenceWindow | None = None
 
         self.grid_rowconfigure(1, weight=1)
@@ -595,6 +602,8 @@ class InstrumentationPanel(ctk.CTkFrame):
             details = tool.executable_path or "Missing"
             if tool.version:
                 details += f" — {tool.version}"
+            if tool.error:
+                details += f" — {tool.error}"
             label.configure(text=details, text_color=self.theme["success"] if tool.installed else self.theme["error"])
             lines.append(f"{tool.display_name}: {details}")
             if tool.error:
@@ -765,8 +774,9 @@ class InstrumentationPanel(ctk.CTkFrame):
             self._append_results("Installed applications stale", reason)
 
     def _render_installed_apps(self):
-        for widget in self.installed_list.winfo_children():
-            widget.destroy()
+        self._cancel_installed_render()
+        generation = self._installed_render_generation
+        self._installed_render_old_widgets = list(self.installed_list.winfo_children())
         kind = self.installed_type.get()
         visible = filter_installed_apps(
             self.installed_apps,
@@ -797,39 +807,101 @@ class InstrumentationPanel(ctk.CTkFrame):
                 text=f"{len(visible)} application{'s' if len(visible) != 1 else ''}"
             )
         if state:
+            self._installed_render_pending = ()
+        else:
+            self._installed_render_pending = tuple(visible)
+            self.installed_count.configure(text=f"Rendering 0 of {len(visible)} applications")
+        self._installed_render_index = 0
+        self._installed_render_after = self.after(
+            0, self._render_installed_batch, generation, state
+        )
+
+    def _cancel_installed_render(self):
+        self._installed_render_generation += 1
+        callback = self._installed_render_after
+        self._installed_render_after = None
+        if callback is not None:
+            try:
+                self.after_cancel(callback)
+            except Exception:
+                pass
+
+    def _render_installed_batch(self, generation: int, empty_state: str):
+        if generation != self._installed_render_generation:
+            return
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+        self._installed_render_after = None
+        batch_size = self.INSTALLED_RENDER_BATCH_SIZE
+        old_batch = self._installed_render_old_widgets[:batch_size]
+        del self._installed_render_old_widgets[:batch_size]
+        for widget in old_batch:
+            try:
+                widget.destroy()
+            except Exception:
+                pass
+        if self._installed_render_old_widgets:
+            self._installed_render_after = self.after(
+                1, self._render_installed_batch, generation, empty_state
+            )
+            return
+        if empty_state:
             ctk.CTkLabel(
-                self.installed_list, text=state, text_color=self.theme["muted"],
+                self.installed_list, text=empty_state, text_color=self.theme["muted"],
                 wraplength=760, justify="left",
             ).grid(row=0, column=0, sticky="ew", padx=10, pady=18)
             return
-        for row_index, app in enumerate(visible):
-            row = ctk.CTkFrame(
-                self.installed_list, fg_color=self.theme["panel_alt"],
-                border_width=1, border_color=self.theme["border"], corner_radius=7,
+        start = self._installed_render_index
+        end = min(start + batch_size, len(self._installed_render_pending))
+        for row_index in range(start, end):
+            self._create_installed_app_row(row_index, self._installed_render_pending[row_index])
+        self._installed_render_index = end
+        total = len(self._installed_render_pending)
+        if end < total:
+            self.installed_count.configure(text=f"Rendering {end} of {total} applications")
+            self._installed_render_after = self.after(
+                1, self._render_installed_batch, generation, empty_state
             )
-            row.grid(row=row_index, column=0, sticky="ew", padx=3, pady=3)
-            row.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(
-                row, text=app.display_label, text_color=self.theme["gold"],
-                font=("Segoe UI", 13, "bold"), anchor="w", justify="left",
-            ).grid(row=0, column=0, sticky="ew", padx=10, pady=(7, 1))
-            facts = (
-                f"{'System' if app.system else 'User'} · "
-                f"{'Enabled' if app.enabled is not False else 'Disabled'} · "
-                f"{'Launchable' if app.launchable else 'Not launchable'} · "
-                f"{'Running' if app.running else 'Not running'}"
+        else:
+            self.installed_count.configure(
+                text=f"{total} application{'s' if total != 1 else ''}"
             )
-            ctk.CTkLabel(
-                row, text=facts, text_color=self.theme["text"],
-                font=("Consolas", 11), anchor="w",
-            ).grid(row=1, column=0, sticky="ew", padx=10, pady=(1, 7))
-            ctk.CTkButton(
-                row, text="Select App",
-                command=lambda item=app: self._select_installed_app(item),
-                fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
-                text_color=self.theme["text"], border_width=1,
-                border_color=self.theme["gold_dark"], width=105,
-            ).grid(row=0, column=1, rowspan=2, sticky="e", padx=9, pady=6)
+
+    def _create_installed_app_row(self, row_index, app):
+        row = ctk.CTkFrame(
+            self.installed_list, fg_color=self.theme["panel_alt"],
+            border_width=1, border_color=self.theme["border"], corner_radius=7,
+        )
+        row.grid(row=row_index, column=0, sticky="ew", padx=3, pady=3)
+        row.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            row, text=app.display_label, text_color=self.theme["gold"],
+            font=("Segoe UI", 13, "bold"), anchor="w", justify="left",
+        ).grid(row=0, column=0, sticky="ew", padx=10, pady=(7, 1))
+        facts = (
+            f"{'System' if app.system else 'User'} · "
+            f"{'Enabled' if app.enabled is not False else 'Disabled'} · "
+            f"{'Launchable' if app.launchable else 'Not launchable'} · "
+            f"{'Running' if app.running else 'Not running'}"
+        )
+        ctk.CTkLabel(
+            row, text=facts, text_color=self.theme["text"],
+            font=("Consolas", 11), anchor="w",
+        ).grid(row=1, column=0, sticky="ew", padx=10, pady=(1, 7))
+        ctk.CTkButton(
+            row, text="Select App",
+            command=lambda item=app: self._select_installed_app(item),
+            fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
+            text_color=self.theme["text"], border_width=1,
+            border_color=self.theme["gold_dark"], width=105,
+        ).grid(row=0, column=1, rowspan=2, sticky="e", padx=9, pady=6)
+
+    def destroy(self):
+        self._cancel_installed_render()
+        super().destroy()
 
     def _select_installed_app(self, app):
         target = FridaTarget(

@@ -18,6 +18,7 @@ class ToolDiagnostic:
     version: str | None = None
     error: str | None = None
     command_result: CommandResult | None = None
+    status: str = "missing"
 
 
 class ToolDiagnostics:
@@ -58,20 +59,24 @@ class ToolDiagnostics:
                 installed=False,
                 error=result.error,
                 command_result=result,
+                status="missing",
             )
 
         result = self.runner.run((path, *version_args), timeout=10)
         if result.ok:
             self.resolver.record_validated(name, path)
         version = self._version_text(result) if result.ok else None
+        status = "healthy" if result.ok else "timed_out" if result.timed_out else "broken"
+        error = None if result.ok else self._health_error(display_name, result)
         return ToolDiagnostic(
             name=name,
             display_name=display_name,
             executable_path=path,
-            installed=True,
+            installed=result.ok,
             version=version,
-            error=None if result.ok else (result.output or "Version check failed."),
+            error=error,
             command_result=result,
+            status=status,
         )
 
     def diagnose_all(self) -> dict[str, ToolDiagnostic]:
@@ -81,3 +86,13 @@ class ToolDiagnostics:
     def _version_text(result: CommandResult) -> str | None:
         output = result.stdout or result.stderr
         return output.splitlines()[0].strip() if output.strip() else None
+
+    @staticmethod
+    def _health_error(display_name: str, result: CommandResult) -> str:
+        if result.timed_out:
+            return f"{display_name} health check timed out; verify the selected executable and its environment."
+        lines = [line.strip() for line in result.output.splitlines() if line.strip()]
+        detail = lines[-1] if lines else f"exit status {result.returncode}"
+        if len(detail) > 240:
+            detail = detail[:237] + "..."
+        return f"{display_name} is present but its health check failed: {detail}"
