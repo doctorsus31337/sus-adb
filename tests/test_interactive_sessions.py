@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.core.command_result import CommandResult
 from app.core.command_router import CommandRouter
@@ -11,6 +13,7 @@ from app.core.interactive_sessions import (
     InteractiveSessionState,
     InteractiveSessionType,
 )
+from app.core.instrumentation_launch import InstrumentationLaunchDescriptor
 from app.core.objection_session_recovery import ObjectionSessionRecovery
 
 
@@ -72,16 +75,54 @@ class Terminal:
 class Objection:
     objection_path = "/opt/tools/objection"
 
-    def build_attach_command(self, target, transport, serial):
-        return (self.objection_path, "-S", transport, "-n", target, "start")
+    def __init__(self):
+        self.readiness_calls = []
 
-    def build_spawn_command(self, target, transport, serial):
-        return (self.objection_path, "-S", transport, "-n", target, "-s", "start")
+    def build_attach_command(self, target, transport, serial, *, host, port):
+        if transport == "usb":
+            return (self.objection_path, "-S", serial, "-n", target, "start")
+        return (
+            self.objection_path, "-N", "-h", host, "-P", str(port),
+            "-n", target, "start",
+        )
+
+    def build_spawn_command(self, target, transport, serial, *, host, port):
+        command = list(self.build_attach_command(target, transport, serial, host=host, port=port))
+        command.insert(-1, "-s")
+        return tuple(command)
+
+    def readiness(self, serial, target, transport, **options):
+        self.readiness_calls.append((serial, target, transport, options))
+        return SimpleNamespace(errors=(), ready=True)
 
 
 class FridaSessions:
     frida_path = "/opt/tools/frida"
     frida_trace_path = "/opt/tools/frida-trace"
+
+    def __init__(self):
+        self.readiness_calls = []
+
+    def build_attach_command(self, target, *, endpoint):
+        return (self.frida_path, "-H", endpoint, "-N", target.application_identifier)
+
+    def build_spawn_command(self, target, *, endpoint):
+        return (self.frida_path, "-H", endpoint, "-f", target.application_identifier)
+
+    def build_pid_command(self, target, *, endpoint):
+        return (self.frida_path, "-H", endpoint, "-p", str(target.pid))
+
+    def build_trace_command(self, target, _pattern, *, mode, endpoint):
+        flag, value = {
+            "attach": ("-N", target.application_identifier),
+            "spawn": ("-f", target.application_identifier),
+            "pid": ("-p", str(target.pid)),
+        }[mode]
+        return (self.frida_trace_path, "-H", endpoint, flag, value)
+
+    def readiness(self, serial, target, **options):
+        self.readiness_calls.append((serial, target, options))
+        return SimpleNamespace(errors=(), ready=True)
 
 
 class RecoveryFrida:
@@ -180,7 +221,7 @@ class InteractiveSessionTests(unittest.TestCase):
         router = CommandRouter(Resolver())
         objection = manager.plan_from_route(
             router.classify(
-                "objection -S socket -n org.example.fixture -s start"
+                "objection -N -h 10.0.0.2 -P 27042 -n org.example.fixture -s start"
             ),
             "SERIAL",
             self.target(),
@@ -194,6 +235,7 @@ class InteractiveSessionTests(unittest.TestCase):
         )
         self.assertTrue(objection.ready)
         self.assertEqual(objection.attach_mode, "spawn")
+        self.assertEqual(objection.descriptor.network_host, "10.0.0.2")
         self.assertIn("--runtime", frida.command)
         self.assertEqual(frida.command[0], "/opt/tools/frida")
 
@@ -286,6 +328,106 @@ class InteractiveSessionTests(unittest.TestCase):
         self.assertEqual(report.repeat_count, 20)
         self.assertLessEqual(len(record.diagnostics), 12)
         self.assertIn("Technical Details:", manager.diagnostics(record.session_id))
+
+    def test_canonical_objection_routes_preview_execution_and_immutable_descriptor(self):
+        manager, terminal, _selected = self.manager()
+        usb = manager.build_objection(
+            "SERIAL", "org.example.fixture", transport="usb"
+        )
+        self.assertEqual(
+            usb.command,
+            (
+                "/opt/tools/objection", "-S", "SERIAL", "-n",
+                "org.example.fixture", "start",
+            ),
+        )
+        self.assertNotIn("usb", usb.command)
+        launched = manager.launch(usb)
+        self.assertTrue(launched.ok)
+        self.assertEqual(terminal.commands[-1][0], usb.command)
+        descriptor = launched.record.descriptor
+        manager.build_objection(
+            "OTHER", "org.example.changed", transport="network",
+            host="10.0.0.8", port=28042,
+        )
+        self.assertEqual(descriptor.usb_serial, "SERIAL")
+        self.assertEqual(descriptor.target, "org.example.fixture")
+
+    def test_network_objection_descriptor_and_spawn_validation(self):
+        manager, _terminal, _selected = self.manager()
+        network = manager.build_objection(
+            "SERIAL", "org.example.fixture", spawn=True,
+            transport="network", host="10.0.0.8", port="28042",
+        )
+        self.assertTrue(network.ready)
+        self.assertEqual(
+            network.command[1:6], ("-N", "-h", "10.0.0.8", "-P", "28042")
+        )
+        self.assertEqual(network.descriptor.network_host, "10.0.0.8")
+        self.assertEqual(network.descriptor.network_port, 28042)
+        self.assertFalse(
+            manager.build_objection("SERIAL", "1234", spawn=True, transport="usb").ready
+        )
+        self.assertFalse(
+            manager.build_objection("", "org.example.fixture", transport="usb").ready
+        )
+
+    def test_reconnect_rebuilds_backend_specific_plan_and_preserves_routes(self):
+        manager, terminal, _selected = self.manager()
+        plans = (
+            manager.build_objection(
+                "SERIAL", "org.example.fixture", transport="usb"
+            ),
+            manager.build_frida("SERIAL", self.target(), mode="attach"),
+            manager.build_frida(
+                "SERIAL", self.target(), mode="attach", trace=True,
+                trace_options=(("-i", "open*"), ("-j", "com.example!*")),
+            ),
+        )
+        records = [manager.launch(plan).record for plan in plans]
+        for record, expected_executable in zip(
+            records,
+            ("/opt/tools/objection", "/opt/tools/frida", "/opt/tools/frida-trace"),
+        ):
+            manager.records[record.session_id] = replace(
+                record, command=("/opt/tools/objection", "stale-preview")
+            )
+            result = manager.reconnect(record.session_id)
+            self.assertTrue(result.ok)
+            self.assertEqual(terminal.commands[-1][0][0], expected_executable)
+        self.assertEqual(terminal.commands[-1][0][-4:], ("-i", "open*", "-j", "com.example!*"))
+        self.assertEqual(records[0].descriptor.usb_serial, "SERIAL")
+        self.assertEqual(records[1].descriptor.endpoint, "127.0.0.1:27042")
+        self.assertEqual(len(manager.objection_manager.readiness_calls), 1)
+        self.assertEqual(len(manager.frida_sessions.readiness_calls), 2)
+
+    def test_legacy_incomplete_and_mismatched_descriptors_fail_without_guessing(self):
+        manager, _terminal, _selected = self.manager()
+        launched = manager.launch(
+            manager.build_objection("SERIAL", "org.example.fixture", transport="usb")
+        )
+        record = replace(
+            launched.record,
+            descriptor=None,
+            command=("/opt/tools/objection", "-S", "usb", "-n", "org.example.fixture", "start"),
+        )
+        manager.records[record.session_id] = record
+        result = manager.reconnect(record.session_id)
+        self.assertFalse(result.ok)
+        self.assertIn("transport label", result.error)
+
+        wrong = replace(
+            launched.record,
+            descriptor=InstrumentationLaunchDescriptor(
+                "frida-trace", "trace", "attach", "application",
+                "org.example.fixture", "network", "SERIAL",
+                network_host="127.0.0.1", network_port=27042,
+            ),
+        )
+        manager.records[wrong.session_id] = wrong
+        result = manager.reconnect(wrong.session_id)
+        self.assertFalse(result.ok)
+        self.assertIn("does not match", result.error)
 
 
 if __name__ == "__main__":

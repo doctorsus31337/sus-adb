@@ -174,6 +174,11 @@ class CommandCompletionTests(unittest.TestCase):
         result = self.service.suggest("frida-p", context)
         self.assertIn("Tool unavailable", result.suggestions[0].description)
 
+    def test_objection_completion_never_uses_transport_labels_as_serials(self):
+        commands = self.commands("objection")
+        self.assertTrue(any("-N -h 127.0.0.1 -P 27042" in value for value in commands))
+        self.assertFalse(any("-S socket" in value or "-S usb" in value for value in commands))
+
     def test_common_prefix_is_stable(self):
         result = self.service.suggest("adb re")
         self.assertTrue(result.common_prefix.startswith("adb re"))

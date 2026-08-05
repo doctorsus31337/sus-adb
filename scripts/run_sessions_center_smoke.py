@@ -19,7 +19,9 @@ def main():
         from app.core.command_router import CommandRouter
         from app.core.external_terminal import ExternalTerminal
         from app.core.frida_target import FridaTarget, TargetType
-        from app.core.host_state import DeviceState, HostStateSnapshot, HostStateStore
+        from app.core.host_state import (
+            DeviceState, HostStateSnapshot, HostStateStore, TargetState,
+        )
         from app.core.interactive_sessions import InteractiveSessionManager
         from app.core.objection_session_recovery import ObjectionSessionRecovery
         from app.core.script_descriptor import ScriptKind
@@ -67,15 +69,44 @@ def main():
         class Objection:
             objection_path = "/opt/fake tools/objection"
 
-            def build_attach_command(self, target, transport, serial):
-                return (self.objection_path, "-S", transport, "-n", target, "start")
+            def build_attach_command(self, target, transport, serial, *, host, port):
+                if transport == "usb":
+                    return (self.objection_path, "-S", serial, "-n", target, "start")
+                return (
+                    self.objection_path, "-N", "-h", host, "-P", str(port),
+                    "-n", target, "start",
+                )
 
-            def build_spawn_command(self, target, transport, serial):
-                return (self.objection_path, "-S", transport, "-n", target, "-s", "start")
+            def build_spawn_command(self, target, transport, serial, *, host, port):
+                command = list(self.build_attach_command(
+                    target, transport, serial, host=host, port=port
+                ))
+                command.insert(-1, "-s")
+                return tuple(command)
 
         class Frida:
             frida_path = "/opt/fake tools/frida"
             frida_trace_path = "/opt/fake tools/frida-trace"
+
+            def build_attach_command(self, target, *, endpoint):
+                return (
+                    self.frida_path, "-H", endpoint, "-N",
+                    target.application_identifier,
+                )
+
+            def build_spawn_command(self, target, *, endpoint):
+                return (
+                    self.frida_path, "-H", endpoint, "-f",
+                    target.application_identifier,
+                )
+
+            def build_pid_command(self, target, *, endpoint):
+                return (self.frida_path, "-H", endpoint, "-p", str(target.pid))
+
+            def build_trace_command(self, target, _pattern, *, mode, endpoint):
+                flag = "-p" if mode == "pid" else "-f" if mode == "spawn" else "-N"
+                value = str(target.pid) if mode == "pid" else target.application_identifier
+                return (self.frida_trace_path, "-H", endpoint, flag, value)
 
         class RecoveryFrida:
             def managed_forwarding_ports(self, _serial):
@@ -112,6 +143,9 @@ def main():
                     ),
                 ),
                 "device",
+                TargetState(
+                    "Fixture App", "org.example.fixture", 42, "application"
+                ),
             )
         )
         library = ScriptLibrary(Path(directory) / "script library")
@@ -141,6 +175,24 @@ def main():
         assert center._serial() == "fixture-serial"
         assert center._adb_plan().ready
         assert center._objection_plan().target == "org.example.fixture"
+        network = center._objection_plan()
+        assert network.command[1:6] == (
+            "-N", "-h", "127.0.0.1", "-P", "27042"
+        )
+        center.objection_transport.set("usb")
+        center._objection_transport_changed("usb")
+        usb = center._objection_plan()
+        assert usb.command[1:3] == ("-S", "fixture-serial")
+        assert "usb" not in usb.command and "socket" not in usb.command
+        center.launch_plan(usb)
+        settle()
+        assert manager.list()[-1].command == usb.command
+        assert manager.list()[-1].descriptor.usb_serial == "fixture-serial"
+        manager.terminate(manager.list()[-1].session_id)
+        center.objection_transport.set("network")
+        center._objection_transport_changed("network")
+        assert center.objection_host.get() == "127.0.0.1"
+        assert center.objection_port.get() == "27042"
         center.script_combo.set("my observation script")
         frida = center._frida_plan()
         assert frida.ready and frida.command[-2] == "-l"
@@ -175,9 +227,13 @@ def main():
         )
         center.launch_routed()
         settle()
-        assert manager.list()[0].state.value == "connected"
+        routed_record = next(
+            record for record in manager.list()
+            if record.session_type.value == "adb-shell"
+            and record.state.value == "connected"
+        )
         assert "fixture-serial" in center.sessions_text.get("1.0", "end")
-        manager.terminate(manager.list()[0].session_id)
+        manager.terminate(routed_record.session_id)
         objection = manager.launch(
             manager.build_objection(
                 "fixture-serial", "org.example.fixture"

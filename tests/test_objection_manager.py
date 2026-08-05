@@ -49,21 +49,38 @@ class ObjectionManagerTests(unittest.TestCase):
     def test_empty_target_rejected(self):
         self.assertFalse(ObjectionManager.validate_target("   ").ok)
 
-    def test_socket_attach_and_spawn_commands(self):
+    def test_network_attach_and_spawn_commands_use_verified_host_port_flags(self):
         manager = self.make_manager()
         self.assertEqual(
-            manager.build_attach_command("com.example.app", "socket"),
-            ("/tools/objection", "-S", "socket", "-n", "com.example.app", "start"),
+            manager.build_attach_command(
+                "com.example.app", "network", host="10.0.0.7", port=28042
+            ),
+            (
+                "/tools/objection", "-N", "-h", "10.0.0.7", "-P", "28042",
+                "-n", "com.example.app", "start",
+            ),
         )
         self.assertEqual(
             manager.build_spawn_command("com.example.app", "socket"),
-            ("/tools/objection", "-S", "socket", "-n", "com.example.app", "-s", "start"),
+            (
+                "/tools/objection", "-N", "-h", "127.0.0.1", "-P", "27042",
+                "-n", "com.example.app", "-s", "start",
+            ),
         )
 
     def test_usb_command_uses_selected_serial(self):
         command = self.make_manager().build_attach_command("com.example.app", "usb", "SERIAL")
         self.assertEqual(command[1:3], ("-S", "SERIAL"))
+        self.assertNotIn("socket", command)
+        self.assertNotIn("usb", command)
         self.assertNotIn("-g", command)
+
+    def test_usb_requires_exact_serial_and_spawn_rejects_pid(self):
+        manager = self.make_manager()
+        with self.assertRaisesRegex(ValueError, "USB serial"):
+            manager.build_attach_command("com.example.app", "usb", "")
+        with self.assertRaisesRegex(ValueError, "package/application identifier"):
+            manager.build_spawn_command("1234", "usb", "SERIAL")
 
     def test_missing_objection(self):
         manager = ObjectionManager(FakeRunner(), FakeFrida(), FakeTerminal(), objection_path="")

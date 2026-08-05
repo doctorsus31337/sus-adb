@@ -21,6 +21,7 @@ from app.core.installed_app_discovery import (
     InstalledAppResult,
     filter_installed_apps,
 )
+from app.core.interactive_sessions import InteractiveSessionType, SessionLaunchPlan
 from app.core.objection_manager import ObjectionManager
 from app.core.target_discovery import TargetDiscovery, TargetDiscoveryResult, filter_targets
 from app.core.tool_diagnostics import ToolDiagnostic, ToolDiagnostics
@@ -78,6 +79,8 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.target_rows: list[tuple[FridaTarget, ctk.CTkFrame]] = []
         self.frida_preview_command: tuple[str, ...] = ()
         self.objection_preview_command: tuple[str, ...] = ()
+        self.frida_preview_plan = None
+        self.objection_preview_plan = None
         self._last_diagnosis: FridaDiagnosis | None = None
         self._action_buttons: list[ctk.CTkButton] = []
         self._busy = False
@@ -474,17 +477,44 @@ class InstrumentationPanel(ctk.CTkFrame):
             text_color=self.theme["text"], placeholder_text_color=self.theme["muted"],
         )
         self.trace_pattern.grid(row=0, column=1, sticky="ew", padx=4)
+        self.trace_pattern.bind(
+            "<KeyRelease>", lambda _event: self._invalidate_preview("frida")
+        )
         ctk.CTkLabel(options, text="Objection transport:", text_color=self.theme["muted"]).grid(
             row=0, column=2, padx=4
         )
         self.transport = ctk.CTkSegmentedButton(
-            options, values=["Socket", "USB"], command=lambda _value: self.preview_objection(),
+            options, values=["Network", "USB"], command=self._transport_changed,
             selected_color=self.theme["red"], selected_hover_color=self.theme["red_hover"],
             unselected_color=self.theme["panel_alt"],
             unselected_hover_color=self.theme["gold_dark"], text_color=self.theme["text"],
         )
         self.transport.grid(row=0, column=3, padx=4)
-        self.transport.set("Socket")
+        self.transport.set("Network")
+        ctk.CTkLabel(options, text="Host:", text_color=self.theme["muted"]).grid(
+            row=1, column=0, padx=4, pady=(4, 0)
+        )
+        self.objection_host = ctk.CTkEntry(
+            options, fg_color=self.theme["terminal_bg"],
+            border_color=self.theme["gold_dark"], text_color=self.theme["text"],
+        )
+        self.objection_host.grid(row=1, column=1, sticky="ew", padx=4, pady=(4, 0))
+        self.objection_host.insert(0, "127.0.0.1")
+        self.objection_host.bind(
+            "<KeyRelease>", lambda _event: self._invalidate_preview("objection")
+        )
+        ctk.CTkLabel(options, text="Port:", text_color=self.theme["muted"]).grid(
+            row=1, column=2, padx=4, pady=(4, 0)
+        )
+        self.objection_port = ctk.CTkEntry(
+            options, width=110, fg_color=self.theme["terminal_bg"],
+            border_color=self.theme["gold_dark"], text_color=self.theme["text"],
+        )
+        self.objection_port.grid(row=1, column=3, sticky="ew", padx=4, pady=(4, 0))
+        self.objection_port.insert(0, "27042")
+        self.objection_port.bind(
+            "<KeyRelease>", lambda _event: self._invalidate_preview("objection")
+        )
 
         action_split = ctk.CTkFrame(frame, fg_color="transparent")
         action_split.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=7, pady=4)
@@ -927,6 +957,8 @@ class InstrumentationPanel(ctk.CTkFrame):
             self.target_callback(None)
         self.frida_preview_command = ()
         self.objection_preview_command = ()
+        self.frida_preview_plan = None
+        self.objection_preview_plan = None
         self._render_targets()
         self._show_selected_target()
         self._render_previews()
@@ -1066,48 +1098,81 @@ class InstrumentationPanel(ctk.CTkFrame):
             state="normal" if self.objection_preview_command and not self._busy else "disabled"
         )
 
+    def _build_frida_plan(self, mode: str):
+        if self.interactive_sessions is None:
+            return SessionLaunchPlan(
+                InteractiveSessionType.FRIDA_TRACE
+                if mode == "trace" else InteractiveSessionType.FRIDA_REPL,
+                (), errors=("Canonical instrumentation session builder is unavailable.",),
+            )
+        return self.interactive_sessions.build_frida(
+            self._serial(), self.selected_target,
+            mode="attach" if mode == "trace" else mode,
+            trace=mode == "trace", trace_pattern=self.trace_pattern.get(),
+        )
+
+    def _build_objection_plan(self, spawn: bool):
+        if self.interactive_sessions is None:
+            return SessionLaunchPlan(
+                InteractiveSessionType.OBJECTION, (),
+                errors=("Canonical instrumentation session builder is unavailable.",),
+            )
+        return self.interactive_sessions.build_objection(
+            self._serial() or "", self._objection_target(), spawn=spawn,
+            transport=self.transport.get(), host=self.objection_host.get(),
+            port=self.objection_port.get(),
+        )
+
+    def _transport_changed(self, value: str):
+        self._invalidate_preview("objection")
+        network = value.casefold() != "usb"
+        for entry in (self.objection_host, self.objection_port):
+            entry.configure(state="normal")
+            entry.delete(0, "end")
+        if network:
+            self.objection_host.insert(0, "127.0.0.1")
+            self.objection_port.insert(0, "27042")
+        else:
+            self.objection_host.configure(state="disabled")
+            self.objection_port.configure(state="disabled")
+        self.preview_objection()
+
+    def _invalidate_preview(self, kind: str):
+        if kind == "frida":
+            self.frida_preview_plan = None
+            self.frida_preview_command = ()
+        else:
+            self.objection_preview_plan = None
+            self.objection_preview_command = ()
+        self._render_previews()
+
     def preview_frida(self, mode="attach"):
-        try:
-            if mode == "spawn":
-                command = self.frida_sessions.build_spawn_command(self.selected_target)
-            elif mode == "pid":
-                command = self.frida_sessions.build_pid_command(self.selected_target)
-            elif mode == "trace":
-                command = self.frida_sessions.build_trace_command(
-                    self.selected_target, self.trace_pattern.get()
-                )
-            else:
-                command = self.frida_sessions.build_attach_command(self.selected_target)
-        except ValueError as exc:
-            self._report_failure("Frida preview", str(exc))
+        plan = self._build_frida_plan(mode)
+        if not plan.ready:
+            if self.selected_target is not None:
+                self._report_failure("Frida preview", "; ".join(plan.errors))
             return
-        self._set_preview(command, "frida")
+        self._set_plan_preview(plan, "frida")
 
     def launch_frida(self, mode: str):
-        try:
-            if mode == "spawn":
-                command = self.frida_sessions.build_spawn_command(self.selected_target)
-            elif mode == "pid":
-                command = self.frida_sessions.build_pid_command(self.selected_target)
-            elif mode == "trace":
-                command = self.frida_sessions.build_trace_command(self.selected_target, self.trace_pattern.get())
-            else:
-                command = self.frida_sessions.build_attach_command(self.selected_target)
-        except ValueError as exc:
-            self._report_failure("Frida session", str(exc))
+        plan = self._build_frida_plan(mode)
+        if not plan.ready:
+            self._report_failure("Frida session", "; ".join(plan.errors))
             return
-        self._set_preview(command, "frida")
-        serial = self._serial()
+        self._set_plan_preview(plan, "frida")
+        descriptor = plan.descriptor
+        target = self.selected_target
         self._run_operation(
             "Frida session readiness",
             lambda: self.frida_sessions.readiness(
-                serial, self.selected_target, require_pid=mode == "pid",
-                require_application=mode == "spawn", trace=mode == "trace",
+                descriptor.device_serial, target, require_pid=descriptor.mode == "pid",
+                require_application=descriptor.mode == "spawn",
+                trace=descriptor.backend == "frida-trace",
             ),
-            lambda readiness: self._launch_frida_if_ready(readiness, command),
+            lambda readiness: self._launch_frida_if_ready(readiness, plan),
         )
 
-    def _launch_frida_if_ready(self, readiness: FridaSessionReadiness, command: Sequence[str]):
+    def _launch_frida_if_ready(self, readiness: FridaSessionReadiness, plan):
         if not readiness.ready:
             self._report_failure("Frida session", "; ".join(readiness.errors))
             return
@@ -1116,18 +1181,8 @@ class InstrumentationPanel(ctk.CTkFrame):
             self.log("[FRIDA] Session launch cancelled after version warning.")
             return
         if self.interactive_sessions is None:
-            operation = lambda: self.frida_sessions.launch(command)
+            operation = lambda: self.frida_sessions.launch(plan.command)
         else:
-            plan = self.interactive_sessions.build_frida(
-                self._serial(), self.selected_target,
-                mode=(
-                    "spawn" if "-f" in command
-                    else "pid" if "-p" in command
-                    else "attach"
-                ),
-                trace=bool(command and "frida-trace" in os.path.basename(command[0])),
-                trace_pattern=self.trace_pattern.get(),
-            )
             operation = lambda: self.interactive_sessions.launch(plan)
         self._run_operation(
             "Launch external Frida session", operation,
@@ -1135,19 +1190,26 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
 
     def preview_objection(self):
-        target = self._objection_target()
-        try:
-            command = self.objection.build_attach_command(target, self.transport.get(), self._serial())
-        except ValueError as exc:
+        plan = self._build_objection_plan(False)
+        if not plan.ready:
             if self.selected_target is not None:
-                self._report_failure("Objection preview", str(exc))
+                self._report_failure("Objection preview", "; ".join(plan.errors))
             return
-        self._set_preview(command, "objection")
+        self._set_plan_preview(plan, "objection")
 
     def validate_objection(self):
-        serial, target, transport = self._serial(), self._objection_target(), self.transport.get()
+        plan = self._build_objection_plan(False)
+        if not plan.ready:
+            text = "\n".join(plan.errors)
+            self.session_notice.configure(text=text, text_color=self.theme["error"])
+            self._append_results("Objection validation", text)
+            return
+        descriptor = plan.descriptor
         self._run_operation(
-            "Objection validation", lambda: self.objection.readiness(serial, target, transport),
+            "Objection validation", lambda: self.objection.readiness(
+                descriptor.device_serial, descriptor.target, descriptor.transport,
+                host=descriptor.network_host, port=descriptor.network_port,
+            ),
             self._show_objection_readiness,
         )
 
@@ -1159,28 +1221,31 @@ class InstrumentationPanel(ctk.CTkFrame):
         self._append_results("Objection validation", text)
 
     def launch_objection(self, spawn: bool):
-        serial, target, transport = self._serial(), self._objection_target(), self.transport.get()
-        try:
-            builder = self.objection.build_spawn_command if spawn else self.objection.build_attach_command
-            command = builder(target, transport, serial)
-        except ValueError as exc:
-            self._report_failure("Objection session", str(exc))
+        plan = self._build_objection_plan(spawn)
+        if not plan.ready:
+            self._report_failure("Objection session", "; ".join(plan.errors))
             return
-        self._set_preview(command, "objection")
+        self._set_plan_preview(plan, "objection")
+        descriptor = plan.descriptor
+        target = self.selected_target
 
         def readiness():
             frida_ready = self.frida_sessions.readiness(
-                serial, self.selected_target, require_application=spawn
+                descriptor.device_serial, target, require_application=descriptor.mode == "spawn"
             )
-            objection_ready = self.objection.readiness(serial, target, transport)
+            objection_ready = self.objection.readiness(
+                descriptor.device_serial, descriptor.target, descriptor.transport,
+                spawn=descriptor.mode == "spawn", host=descriptor.network_host,
+                port=descriptor.network_port,
+            )
             return frida_ready, objection_ready
 
         self._run_operation(
             "Objection session readiness", readiness,
-            lambda value: self._launch_objection_if_ready(value, command),
+            lambda value: self._launch_objection_if_ready(value, plan),
         )
 
-    def _launch_objection_if_ready(self, value, command):
+    def _launch_objection_if_ready(self, value, plan):
         frida_ready, objection_ready = value
         errors = frida_ready.errors + objection_ready.errors
         if errors:
@@ -1191,12 +1256,8 @@ class InstrumentationPanel(ctk.CTkFrame):
             self.log("[OBJECTION] Session launch cancelled after version warning.")
             return
         if self.interactive_sessions is None:
-            operation = lambda: self.objection.launch_external_session(command)
+            operation = lambda: self.objection.launch_external_session(plan.command)
         else:
-            plan = self.interactive_sessions.build_objection(
-                self._serial(), self._objection_target(),
-                spawn="-s" in command, transport=self.transport.get(),
-            )
             operation = lambda: self.interactive_sessions.launch(plan)
         self._run_operation(
             "Launch external Objection session",
@@ -1227,11 +1288,13 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.clipboard_append(self._preview_text(command))
         self.log(f"[INSTRUMENTATION] {kind.title()} command copied to clipboard.")
 
-    def _set_preview(self, command: Sequence[str], kind: str):
+    def _set_plan_preview(self, plan, kind: str):
         if kind == "frida":
-            self.frida_preview_command = tuple(command)
+            self.frida_preview_plan = plan
+            self.frida_preview_command = tuple(plan.command)
         else:
-            self.objection_preview_command = tuple(command)
+            self.objection_preview_plan = plan
+            self.objection_preview_command = tuple(plan.command)
         self._render_previews()
 
     def _render_previews(self):

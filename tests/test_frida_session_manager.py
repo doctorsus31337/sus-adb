@@ -45,7 +45,7 @@ class FridaSessionManagerTests(unittest.TestCase):
 
     def test_attach_by_identifier_pid_spawn_and_trace(self):
         manager = self.make_manager()
-        self.assertEqual(manager.build_attach_command(APP)[-2:], ("-n", "com.example.app"))
+        self.assertEqual(manager.build_attach_command(APP)[-2:], ("-N", "com.example.app"))
         self.assertEqual(manager.build_pid_command(PROCESS)[-2:], ("-p", "77"))
         self.assertEqual(manager.build_spawn_command(APP)[-2:], ("-f", "com.example.app"))
         self.assertEqual(manager.build_trace_command(APP, "open*")[-2:], ("-i", "open*"))

@@ -45,31 +45,51 @@ class FridaSessionManager:
         self.frida_path = self.resolver.resolve("frida") if frida_path is None else frida_path
         self.frida_trace_path = self.resolver.resolve("frida-trace") if frida_trace_path is None else frida_trace_path
 
-    def build_attach_command(self, target: FridaTarget | None) -> tuple[str, ...]:
-        value = self._target_name(target)
-        return (self.frida_path or "frida", "-H", self.ENDPOINT, "-n", value)
+    def build_attach_command(
+        self, target: FridaTarget | None, *, endpoint: str = ENDPOINT
+    ) -> tuple[str, ...]:
+        value, flag = self._attach_target(target)
+        return (self.frida_path or "frida", "-H", endpoint, flag, value)
 
-    def build_pid_command(self, target: FridaTarget | None) -> tuple[str, ...]:
+    def build_pid_command(
+        self, target: FridaTarget | None, *, endpoint: str = ENDPOINT
+    ) -> tuple[str, ...]:
         if target is None or target.pid is None or target.pid <= 0:
             raise ValueError("A valid target PID is required.")
-        return (self.frida_path or "frida", "-H", self.ENDPOINT, "-p", str(target.pid))
+        return (self.frida_path or "frida", "-H", endpoint, "-p", str(target.pid))
 
-    def build_spawn_command(self, target: FridaTarget | None) -> tuple[str, ...]:
+    def build_spawn_command(
+        self, target: FridaTarget | None, *, endpoint: str = ENDPOINT
+    ) -> tuple[str, ...]:
         if target is None or not target.application_identifier:
             raise ValueError("An application identifier is required for spawn.")
         return (
-            self.frida_path or "frida", "-H", self.ENDPOINT,
+            self.frida_path or "frida", "-H", endpoint,
             "-f", target.application_identifier,
         )
 
-    def build_repl_command(self) -> tuple[str, ...]:
-        return (self.frida_path or "frida", "-H", self.ENDPOINT)
+    def build_repl_command(self, *, endpoint: str = ENDPOINT) -> tuple[str, ...]:
+        return (self.frida_path or "frida", "-H", endpoint)
 
     def build_trace_command(
-        self, target: FridaTarget | None, pattern: str | None = None
+        self, target: FridaTarget | None, pattern: str | None = None, *,
+        mode: str = "attach", endpoint: str = ENDPOINT,
     ) -> tuple[str, ...]:
-        value = self._target_name(target)
-        command = [self.frida_trace_path or "frida-trace", "-H", self.ENDPOINT, "-n", value]
+        if mode == "spawn":
+            if target is None or not target.application_identifier:
+                raise ValueError("An application identifier is required for spawn.")
+            flag, value = "-f", target.application_identifier
+        elif mode == "pid":
+            if target is None or target.pid is None or target.pid <= 0:
+                raise ValueError("A valid target PID is required.")
+            flag, value = "-p", str(target.pid)
+        elif mode == "frontmost":
+            flag, value = "-F", ""
+        else:
+            value, flag = self._attach_target(target)
+        command = [self.frida_trace_path or "frida-trace", "-H", endpoint, flag]
+        if value:
+            command.append(value)
         if pattern and pattern.strip():
             command.extend(("-i", pattern.strip()))
         return tuple(command)
@@ -175,6 +195,17 @@ class FridaSessionManager:
         if not value:
             raise ValueError("The selected target has no attachable name.")
         return value
+
+    @staticmethod
+    def _attach_target(target: FridaTarget | None) -> tuple[str, str]:
+        if target is None:
+            raise ValueError("No target is selected.")
+        if target.application_identifier:
+            return target.application_identifier, "-N"
+        value = target.name or target.identifier
+        if not value:
+            raise ValueError("The selected target has no attachable name.")
+        return value, "-n"
 
     @staticmethod
     def _version_parts(value: str | None) -> tuple[int, ...]:
