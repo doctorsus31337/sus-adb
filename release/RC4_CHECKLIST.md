@@ -16,7 +16,7 @@ metadata commit on `release/1.0.0-rc.4`.
 - [ ] Independently downloaded Linux and Windows archive verification
 - [ ] Preferred `sus-companion` and compatibility `sus-adb` launchers
 - [ ] Exact `release/1.0.0-rc.4` ref, metadata commit, and `rc` channel
-- [ ] Six official add-ons, Plugin API 1.1, branding, themes, documentation,
+- [ ] Seven official add-ons, Plugin API 1.1, branding, themes, documentation,
   Command Assistant, Project Wizard, Workbench, Pillow, Frida, and
   CustomTkinter resources
 - [ ] No protected paths, user-local state, caches, bytecode, developer paths,
