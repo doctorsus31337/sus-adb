@@ -52,7 +52,7 @@ class T(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    _root,_candidate,_store,_trust,manager=self.fixture(d);item=manager.official()[0];self.assertTrue(manager.mark_official_update_reviewed(PID,item.package_digest).ok);self.assertTrue(manager.enable(PID).ok)
    manager.loader.statuses[PID]=LoaderStatus(PID,LoaderState.ACTIVE);manager.loader.instances[PID]=object();manager.registry.register(PID,(Contribution("demo.panel","pentest-panel","Demo",PID),))
-   opened=card_spec(item,manager,WindowHost(True));self.assertEqual(opened.lifecycle_status,"Window Open");self.assertIn("Unload",card_actions(opened));self.assertNotIn("Install Update",card_actions(opened));self.assertIn("unload addon",opened.update_status)
+   opened=card_spec(item,manager,WindowHost(True));self.assertEqual(opened.lifecycle_status,"Window Open");self.assertIn("Unload",card_actions(opened));self.assertNotIn("Install Update",card_actions(opened));self.assertIn("unload add-on",opened.update_status)
    self.assertFalse(manager.install_official_update(PID,item.package_digest).ok);self.assertTrue(manager.official_update_reviewed(PID,item.package_digest))
    self.assertTrue(manager.unload(PID).ok);self.assertFalse(manager.registry.by_plugin(PID));ready=card_spec(item,manager,WindowHost(False));self.assertIn("Install Update",card_actions(ready));self.assertTrue(manager.official_update_reviewed(PID,item.package_digest))
  def test_successful_update_is_atomic_disabled_untrusted_and_needs_no_restart(self):

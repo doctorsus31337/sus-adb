@@ -13,7 +13,7 @@ metadata commit on `release/1.0.0-rc.3`.
 - [ ] Independently downloaded Linux and Windows archive verification
 - [ ] Preferred `sus-companion` and compatibility `sus-adb` launchers
 - [ ] Exact `release/1.0.0-rc.3` ref, metadata commit, and `rc` channel
-- [ ] Six official addons, Plugin API 1.1, branding, themes, documentation,
+- [ ] Six official add-ons, Plugin API 1.1, branding, themes, documentation,
   Project Wizard, Workbench, Pillow, Frida, and CustomTkinter resources
 - [ ] No protected paths, user-local state, caches, bytecode, or developer path
 - [ ] Exact release source promoted to `main` only after both packages pass

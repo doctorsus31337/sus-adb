@@ -9,7 +9,7 @@ and independently verifiable Linux and Windows portable packages.
 - Redesigns Workspace Home around six clear entry points and a compact
   selected-device dock while preserving explicit device and target ownership.
 - Adds the Universal Command Palette for safe navigation and focus without
-  silently executing commands or advancing addon lifecycle state.
+  silently executing commands or advancing add-on lifecycle state.
 - Adds Workflow Recipes as operator-reviewed procedures whose classified steps
   never run or advance automatically.
 - Completes SUS Companion visual branding across the splash, application shell,
@@ -26,7 +26,7 @@ and independently verifiable Linux and Windows portable packages.
 - Introduces Plugin SDK 1.1 host-rendered forms, actions, confirmations,
   progress, cancellation, refresh behavior, and safe navigation while
   preserving Plugin API 1.0 compatibility.
-- Adds the Plugin Project Wizard with deterministic, inert addon folder and ZIP
+- Adds the Plugin Project Wizard with deterministic, inert add-on folder and ZIP
   generation, exact identity ownership, validation, and Workbench handoff.
 - Produces independently verifiable Linux and Windows one-folder packages with
   exact build identity, manifests, checksums, verification reports, branding,
@@ -36,7 +36,7 @@ and independently verifiable Linux and Windows portable packages.
 
 Use SUS Companion only with devices and applications you own or are explicitly
 authorized to assess. The application has no telemetry and performs no
-automatic upload. Opening a screen, assistant, recipe, addon, or project does
+automatic upload. Opening a screen, assistant, recipe, add-on, or project does
 not scan a device, attach or spawn, execute a script, run a shell, change
 device state, or approve plugin capabilities.
 

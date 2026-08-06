@@ -68,8 +68,8 @@ mouse and themed scrollbar. Guided mode favors plain-language descriptions;
 Advanced mode adds compact already-known device, target, package, and
 contribution context. Palette choices only navigate or focus existing screens:
 they never launch a shell, attach or spawn, run a script, change a device, or
-silently install, trust, approve, enable, load, or open an unready addon.
-Unready and uninstalled addons route to their Add-ons Center card.
+silently install, trust, approve, enable, load, or open an unready add-on.
+Unready and uninstalled add-ons route to their Add-ons Center card.
 
 Choose **Tools → Workflow Recipes** or search `recipes` with **Ctrl+K** for
 guided Device Readiness, Frida Readiness, Instrumentation Session,

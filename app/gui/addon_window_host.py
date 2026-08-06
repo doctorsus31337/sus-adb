@@ -1,4 +1,4 @@
-"""Core-owned detachable addon windows built only from immutable SDK specs."""
+"""Core-owned detachable add-on windows built only from immutable SDK specs."""
 from __future__ import annotations
 
 import customtkinter as ctk
@@ -23,7 +23,7 @@ class AddonWindowHost:
     def spec_for(self,contribution):
         try:
             panel=contribution.factory(self.manager.plugin_context(contribution.plugin_id)) if contribution.factory else None
-            if not isinstance(panel,PluginPanelSpec):raise TypeError("Addon factory did not return PluginPanelSpec.")
+            if not isinstance(panel,PluginPanelSpec):raise TypeError("Add-on factory did not return PluginPanelSpec.")
             meta=contribution.metadata;return AddonWindowSpec(contribution.contribution_id,contribution.title,panel,resolve_ui_mode(meta.get("ui_mode")),int(meta.get("default_width",1080)),int(meta.get("default_height",720)),int(meta.get("minimum_width",820)),int(meta.get("minimum_height",560)),bool(meta.get("singleton",True)),bool(meta.get("embedded_summary",False)),str(meta.get("icon","⚙")),device_selector=bool(meta.get("device_selector",False)),workspace_kind=str(meta.get("workspace_kind","")))
         except Exception as exc:self.errors[contribution.contribution_id]=str(exc)[:240];return None
     def _binding_for(self,contribution,spec):
@@ -40,7 +40,7 @@ class AddonWindowHost:
         existing=self.windows.get(contribution_id)
         if existing is not None and existing.winfo_exists():existing.deiconify();existing.lift();existing.focus_force();return existing
         contribution=next((c for c in self.manager.registry.list("pentest-panel") if c.contribution_id==contribution_id),None)
-        if contribution is None:self.errors[contribution_id]="Loaded addon contribution was not found.";return None
+        if contribution is None:self.errors[contribution_id]="Loaded add-on contribution was not found.";return None
         spec=self.spec_for(contribution)
         if spec is None:return None
         try:

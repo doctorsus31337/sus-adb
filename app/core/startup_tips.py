@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 FALLBACK_TIPS = (
-    "Official addons remain inactive until explicitly installed and enabled.",
+    "Official add-ons remain inactive until explicitly installed and enabled.",
     "Bootloader unlocking commonly wipes user data and is not a recovery method.",
     "SUS Companion keeps assessment data local and includes no automatic upload.",
 )

@@ -31,7 +31,7 @@ class OfficialPluginCatalog:
     def get(self,plugin_id,installed_ids=()):return next((item for item in self.list(installed_ids) if item.manifest.plugin_id==plugin_id),None)
     def export_template(self,plugin_id,action_id,destination,expected_digest="",max_files=64,max_bytes=2*1024*1024):
         item=self.get(plugin_id)
-        if not item or not item.valid:return TemplateExportResult(False,error="Validated official addon was not found.")
+        if not item or not item.valid:return TemplateExportResult(False,error="Validated official add-on was not found.")
         current=PluginPackage.inspect(item.path)
         if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return TemplateExportResult(False,error="Official template digest changed before export.")
         action=next((v for v in item.manifest.addon_ui.get("catalog_actions",()) if v.get("action_id")==action_id and v.get("kind")=="export-template"),None)

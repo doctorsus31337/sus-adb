@@ -71,7 +71,7 @@ class WorkspaceHome(ctk.CTkFrame):
         (
             "Device Recovery",
             "✚",
-            "Recover selected files through the reviewed Device Rescue addon.",
+            "Recover selected files through the reviewed Device Rescue add-on.",
         ),
         (
             "Script Studio",

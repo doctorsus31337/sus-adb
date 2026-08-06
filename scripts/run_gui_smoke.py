@@ -100,14 +100,14 @@ def main():
   app.navigate_workspace("Console");app.event_generate("<Alt-Home>");app.update_idletasks();assert app.workspace.get()=="Home"
   app.device_dock.expand();app.update_idletasks();assert app.device_dock.expanded;app.event_generate("<Escape>");app.update_idletasks();assert not app.device_dock.expanded
   assert not install_scroll_target_guard().installed
-  top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","View","Tools","Addons","Help","About"]
+  top=app.nametowidget(app.cget("menu"));cascades=[i for i in range(top.index("end")+1) if top.type(i)=="cascade"];labels=[top.entrycget(i,"label") for i in cascades];assert labels==["File","Settings","View","Tools","Add-ons","Help","About"]
   view=top.nametowidget(top.entrycget(cascades[labels.index("View")],"menu"));view_labels=[view.entrycget(i,"label") for i in range(view.index("end")+1) if view.type(i)=="command"];assert view_labels==["Home","Console","Instrumentation","Script Studio","Pentest","Command Palette"]
   assert app.command_palette is None and app.command_palette_registry is None;palette=app.open_command_palette();assert app.open_command_palette() is palette;palette.search.insert(0,"adb shell");palette.refresh();assert palette.matches[0].command.title=="Sessions Center";palette.close();assert app.command_palette is None and app.host_state.subscription_count("command-palette")==0
   tools=top.nametowidget(top.entrycget(cascades[labels.index("Tools")],"menu"));tool_labels=[tools.entrycget(i,"label") for i in range(tools.index("end")+1) if tools.type(i)=="command"];assert "Sessions Center" in tool_labels and "Workflow Recipes" in tool_labels and "Advanced Command Reference" in tool_labels
   assert app.workflow_recipes_window is None and app.workflow_recipe_controller is None;recipes=app.open_workflow_recipes();assert app.open_workflow_recipes() is recipes;assert app.host_state.subscription_count("workflow-recipes")==1;recipes.close();assert app.workflow_recipes_window is None and app.host_state.subscription_count("workflow-recipes")==0
   help_menu=top.nametowidget(top.entrycget(cascades[labels.index("Help")],"menu"));help_labels=[help_menu.entrycget(i,"label") for i in range(help_menu.index("end")+1) if help_menu.type(i)=="command"];assert "Advanced Command Reference" not in help_labels
   assert not hasattr(app,"action_panel");assert not any(getattr(widget,"cget",lambda _key:"")("text")=="Quick Tools" for widget in descendants(app) if "text" in getattr(widget,"keys",lambda:())())
-  addons=top.nametowidget(top.entrycget(cascades[labels.index("Addons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…"
+  addons=top.nametowidget(top.entrycget(cascades[labels.index("Add-ons")],"menu"));assert addons.entrycget(0,"label")=="Open Add-ons Center…" and addons.entrycget(1,"label")=="Official Add-on Catalog…"
   official=app.plugin_manager.official();assert len(official)==7;assert not app.plugin_manager.list();assert not app.plugin_registry.list()
   assert all(not item.installed and not item.manifest.enabled for item in official)
   app.navigate_workspace("Console");console_before=app.console.get("1.0","end");app.execute_command("adb shell");app.update_idletasks();assert app.command_bar.session_prompt.winfo_ismapped();assert not app.terminal._active;assert "[BUSY]" not in app.console.get("1.0","end")[len(console_before):]
@@ -192,7 +192,7 @@ def main():
    help_window.geometry(f"{width}x{height}+0+0");help_window.update_idletasks();assert help_window.winfo_width()==width and help_window.winfo_height()==height;assert all(button_text_fits(widget) for widget in descendants(help_window) if isinstance(widget,ctk.CTkButton) and widget.winfo_ismapped())
   guide=app.open_guided_setup();assert app.open_guided_setup() is guide;assert len(guide.STEPS)==10 and not guide.plan.executes_automatically
   app.navigate_workspace("Scripts");scripts=app.script_studio_panel;assert scripts is not None and scripts.device is device and scripts.target is target;assert app.navigate_workspace("Scripts") is scripts;assert no_question_help(app)
-  assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded addons"
+  assert all(app.plugin_manager.unload(item.manifest.plugin_id).ok for item in official);app.update_idletasks();assert not app.plugin_registry.list();app.menu_bar.refresh_loaded_addons();assert app.menu_bar.loaded_menu.entrycget(0,"label")=="No loaded add-ons"
   assert "SUS Companion" in app.title() and "1.0.0-rc.4" in app.title();assert "SUS COMPANION" in app.gothic_header.title.cget("text")
   scaling_results=[]
   for scale in (1.25,1.5):

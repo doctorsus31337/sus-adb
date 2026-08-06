@@ -71,7 +71,7 @@ independently verifiable Linux and Windows portable packages.
 
 Use SUS Companion only with devices and applications you own or are explicitly
 authorized to assess. The application has no telemetry and performs no
-automatic upload. Opening a screen, assistant, recipe, addon, or project does
+automatic upload. Opening a screen, assistant, recipe, add-on, or project does
 not scan a device, attach or spawn, execute a script, run a shell, change
 device state, or approve plugin capabilities.
 

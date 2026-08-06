@@ -11,7 +11,7 @@ authorized `release/1.0.0-rc.2` prerelease.
   diagnostics, GUI matrix, Linux package verification, and Windows package
   workflow pass at the exact candidate commit.
 - Representative Windows and Linux launches confirm responsive splash, lazy
-  workspaces, addon focus lifecycle, compact windows, Sessions Center,
+  workspaces, add-on focus lifecycle, compact windows, Sessions Center,
   recovery workflows, Learning Center, and clean shutdown.
 - Build metadata identifies the exact candidate commit and selected ref.
 - The package privacy audit confirms that no credentials, keys, tokens,

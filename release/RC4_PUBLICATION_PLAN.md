@@ -21,7 +21,7 @@ authorized `release/1.0.0-rc.4` prerelease.
   `release/1.0.0-rc.4`, and `rc` channel.
 - Verify the local Linux one-folder package, both launchers, build-info,
   release manifest, checksums, verification report, branding, Pillow/Tk frozen
-  modules, Plugin API 1.1, official addons, Command Assistant, Wizard,
+  modules, Plugin API 1.1, official add-ons, Command Assistant, Wizard,
   Workbench, and privacy exclusions.
 - Dispatch the read-only packaging workflow for the exact RC4 ref and require
   both Linux and Windows jobs from the same run to succeed.

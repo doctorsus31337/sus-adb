@@ -206,7 +206,7 @@ TOPICS = (
         "Generate a documented, inert Plugin API 1.1 starter from the official Skeleton architecture without executing or installing it.",
         "Choose stable derivative-owned IDs, keep zero capabilities unless needed, explicitly validate, then choose each output destination.",
         prerequisites=(
-            "The Wizard creates a starter project; it does not implement operational addon behavior.",
+            "The Wizard creates a starter project; it does not implement operational add-on behavior.",
             "Official `susadb.*` identities are reserved for bundled packages.",
         ),
         controls=(
@@ -264,7 +264,7 @@ TOPICS = (
         "addons-center", "Add-ons Center",
         "Discover and manage official add-ons without automatic installation or loading.",
         "Review an add-on card, then perform only the lifecycle transition you intend.",
-        terminology=("addon", "capability", "detached window"),
+        terminology=("add-on", "capability", "detached window"),
         related=("Plugin Manager", "Learning Center"),
     ),
     _topic(

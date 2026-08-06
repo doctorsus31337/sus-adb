@@ -88,7 +88,7 @@ class PluginStore:
         candidate=PluginPackage.inspect(source)
         if not candidate.ok:return StoreResult(False,candidate,error=candidate.error)
         manifest=candidate.manifest
-        if manifest.plugin_id!=plugin_id:return StoreResult(False,candidate,error="Update candidate plugin ID does not match the installed addon.")
+        if manifest.plugin_id!=plugin_id:return StoreResult(False,candidate,error="Update candidate plugin ID does not match the installed add-on.")
         if candidate.package_digest!=expected_digest:return StoreResult(False,candidate,error="Update candidate digest changed before replacement.")
         current=self.package_path(plugin_id,current_version)
         current_inspection=PluginPackage.inspect(current) if current else None

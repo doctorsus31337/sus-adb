@@ -1240,7 +1240,7 @@ class SusADBWindow(ctk.CTk):
             ),
             command(
                 "tool.addons","Add-ons Center",
-                "Browse and manage explicit addon lifecycle steps.",
+                "Browse and manage explicit add-on lifecycle steps.",
                 "Tools",("addons","add-ons","plugins","plugin manager"),
                 lambda _query:self.open_addons_center(),default_rank=5,
             ),
@@ -1274,7 +1274,7 @@ class SusADBWindow(ctk.CTk):
             ),
             command(
                 "tool.plugin-workbench","Plugin Developer Workbench",
-                "Statically inspect and package a local addon without executing it.",
+                "Statically inspect and package a local add-on without executing it.",
                 "Tools",
                 (
                     "plugin developer","addon developer","module checker",
@@ -1344,7 +1344,7 @@ class SusADBWindow(ctk.CTk):
             if title.casefold() in installed_names|known_names:continue
             values.append(command(
                 command_id,title,
-                "Open Add-ons Center focused on this available addon.",
+                "Open Add-ons Center focused on this available add-on.",
                 "Add-ons",aliases,
                 lambda _query,value=title:self.open_addons_center(value),
                 default_rank=20,
@@ -1367,14 +1367,14 @@ class SusADBWindow(ctk.CTk):
                     lambda _query,value=panel.contribution_id:
                     self.open_addon_window(value)
                 )
-                description="Open or focus the existing loaded addon window."
+                description="Open or focus the existing loaded add-on window."
                 status=""
             else:
                 callback=(
                     lambda _query,value=manifest.name:
                     self.open_addons_center(value)
                 )
-                description="Open Add-ons Center at this addon; no lifecycle step runs."
+                description="Open Add-ons Center at this add-on; no lifecycle step runs."
                 status={
                     "Permissions Required":"Requires permission approval",
                     "Trust Required":"Requires package trust",
@@ -1413,7 +1413,7 @@ class SusADBWindow(ctk.CTk):
             if spec.plugin_id in self.plugin_manager.records:continue
             values.append(command(
                 f"addon.available.{spec.plugin_id}",spec.name,
-                "Open Add-ons Center focused on this available addon.",
+                "Open Add-ons Center focused on this available add-on.",
                 "Add-ons",(spec.name,spec.plugin_id),
                 lambda _query,value=spec.name:self.open_addons_center(value),
                 default_rank=30,status="Available · not installed",
@@ -1760,8 +1760,13 @@ class SusADBWindow(ctk.CTk):
         if destination in {"script-studio"}:return self.navigate_workspace("Scripts")
         if destination in {"learning-center"} and hasattr(self,"open_learning_center"):
             return self.open_learning_center()
-        if destination in {"device-rescue","readiness-advisor","webview-inspector"}:
-            return self.open_addons_center()
+        addon_destinations={
+            "device-rescue":"Device Rescue & Recovery",
+            "readiness-advisor":"Instrumentation & Root Readiness Advisor",
+            "webview-inspector":"WebView Security Inspector",
+        }
+        if destination in addon_destinations:
+            return self.open_addons_center(addon_destinations[destination])
         return self.open_context_help(destination)
 
     def navigate_workspace(self, name: str):
@@ -1797,7 +1802,7 @@ class SusADBWindow(ctk.CTk):
         )
         if contribution is not None:
             return self.open_addon_window(contribution.contribution_id)
-        return self.open_addons_center()
+        return self.open_addons_center("Device Rescue & Recovery")
 
     def open_addons_center(self,focus_query=None):
         if self.addons_center is not None and self.addons_center.winfo_exists():
@@ -1849,9 +1854,18 @@ class SusADBWindow(ctk.CTk):
         panel=self.enter_pentest_workspace()
         if panel:panel.open_report_builder()
 
-    def open_plugin_manager(self):
+    def open_plugin_manager(self,section=None):
         panel=self.enter_pentest_workspace()
-        if panel:panel.open_plugins()
+        if panel:return panel.open_plugins(section)
+
+    def open_official_addon_catalog(self):
+        return self.open_plugin_manager("Official Catalog")
+
+    def open_installed_addons(self):
+        return self.open_plugin_manager("Installed")
+
+    def open_addon_diagnostics(self):
+        return self.open_plugin_manager("Diagnostics")
 
     def open_plugin_contribution(self,contribution_id):
         contribution=next((c for c in self.plugin_registry.list("pentest-panel") if c.contribution_id==contribution_id),None)

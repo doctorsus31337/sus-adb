@@ -1,6 +1,6 @@
 # SUS Companion Plugin SDK v1.1
 
-The host accepts Plugin API `1.0` and `1.1`; existing 1.0 addons require no changes. Version 1.1 adds immutable host-rendered forms, explicit actions, confirmations, progress, cancellation, refresh, and safe navigation. See [interactive contracts](interactive.md) and the [migration guide](migration-1.1.md).
+The host accepts Plugin API `1.0` and `1.1`; existing 1.0 add-ons require no changes. Version 1.1 adds immutable host-rendered forms, explicit actions, confirmations, progress, cancellation, refresh, and safe navigation. See [interactive contracts](interactive.md) and the [migration guide](migration-1.1.md).
 
 The host-owned [Plugin Project Wizard](project-wizard.md) creates a deterministic, disabled, operationally inert API 1.1 starter. Its GUI-neutral [project generator](project-generator.md) produces a reviewable file plan before any explicit write.
 

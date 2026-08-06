@@ -2,7 +2,7 @@
 
 Open **Tools → Plugin Project Wizard** or search for `plugin wizard` in the
 Universal Command Palette. The Wizard creates a starter project from the
-official Skeleton architecture. It does not implement an operational addon,
+official Skeleton architecture. It does not implement an operational add-on,
 scan the filesystem, execute generated Python, install a package, or remember
 destination paths.
 

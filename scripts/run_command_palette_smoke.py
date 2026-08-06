@@ -255,7 +255,7 @@ def _exercise(app):
     assert not app.plugin_manager.records
     manifest = SimpleNamespace(
         plugin_id="fixture.palette-addon",
-        name="Fixture Palette Addon",
+        name="Fixture Palette Add-on",
     )
     app.plugin_manager.records[manifest.plugin_id] = (
         Path("/tmp/fixture"),
@@ -280,7 +280,7 @@ def _exercise(app):
         catalog = app._command_palette_commands()
     addon = next(item for item in catalog if item.command_id.startswith("addon.installed."))
     addon.invoke("")
-    assert routed[-1] == "Fixture Palette Addon"
+    assert routed[-1] == "Fixture Palette Add-on"
     assert "Requires Enable" == addon.unavailable_reason
     app.plugin_registry.unregister_plugin(manifest.plugin_id)
     app.plugin_manager.records.pop(manifest.plugin_id)

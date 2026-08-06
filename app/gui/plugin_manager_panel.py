@@ -203,6 +203,9 @@ class PluginManagerPanel(ctk.CTkFrame):
             v.grid_rowconfigure(0,weight=1 if name in {"Official Catalog","Active Panels","Details","Contributions"} else 0)
             v.grid_rowconfigure(1,weight=1 if name in {"Installed","Permissions","Diagnostics","SDK"} else 0)
         self._build();self.unsubscribe=self.manager.registry.subscribe(lambda _items:self.after(0,self.refresh));self.refresh()
+    def show_section(self,name):
+        if name not in self.views:raise ValueError(f"Unknown Plugin Manager section: {name}")
+        self.tabs.set(name);return self
     def _button(self,p,text,cmd,row,col):b=ctk.CTkButton(p,text=text,command=cmd,fg_color=self.theme["red"],hover_color=self.theme["red_hover"],text_color=self.theme["text"],border_width=1,border_color=self.theme["gold_dark"],height=30,width=estimated_button_width(text,90));b.grid(row=row,column=col,sticky="ew",padx=3,pady=3);return b
     def _text(self,p):t=ReadOnlyTextView(p,fg_color=self.theme["terminal_bg"],text_color=self.theme["terminal_text"],border_width=1,border_color=self.theme["border"],wrap="word");t.grid(row=1,column=0,sticky="nsew",padx=6,pady=4);return t
     def _set(self,w,text):w.replace(text)
