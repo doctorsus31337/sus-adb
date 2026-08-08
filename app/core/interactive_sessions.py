@@ -15,7 +15,15 @@ from typing import Callable, Sequence
 
 from app.core.command_router import CommandRoute
 from app.core.external_terminal import ExternalTerminal
-from app.core.frida_target import FridaTarget
+from app.core.frida_target import FridaTarget, TargetType
+from app.core.instrumentation_launch import (
+    InstrumentationLaunchDescriptor,
+    classify_target,
+    normalize_transport,
+)
+
+
+INSTRUMENTATION_SESSION_TYPES = frozenset(("objection", "frida-repl", "frida-trace"))
 
 
 def utc_now() -> str:
@@ -54,6 +62,7 @@ class SessionLaunchPlan:
     prerequisites: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
     explanation: str = ""
+    descriptor: InstrumentationLaunchDescriptor | None = None
 
     @property
     def ready(self) -> bool:
@@ -85,6 +94,7 @@ class InteractiveSessionRecord:
     stages: tuple[tuple[str, str], ...] = ()
     technical_details: str = ""
     command_history: tuple[str, ...] = ()
+    descriptor: InstrumentationLaunchDescriptor | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,7 +204,9 @@ class InteractiveSessionManager:
         target: str,
         *,
         spawn: bool = False,
-        transport: str = "socket",
+        transport: str = "network",
+        host: str = "127.0.0.1",
+        port: int | str = 27042,
     ) -> SessionLaunchPlan:
         errors = []
         executable = self._resolve(
@@ -202,16 +214,42 @@ class InteractiveSessionManager:
         )
         if not serial:
             errors.append("Select a device explicitly.")
-        if not target.strip():
+        target_value = target.strip()
+        if not target_value:
             errors.append("Select an application or process target.")
         if not executable:
             errors.append(self.resolver.missing_message("objection", "Objection"))
+        normalized_transport = normalize_transport(transport)
+        try:
+            network_port = int(port) if normalized_transport == "network" else 0
+        except (TypeError, ValueError):
+            network_port = 0
+        target_kind = classify_target(target_value)
+        descriptor = InstrumentationLaunchDescriptor(
+            backend="objection",
+            operation="start",
+            mode="spawn" if spawn else "attach",
+            target_kind=target_kind,
+            target=target_value,
+            transport=normalized_transport,
+            device_serial=serial,
+            usb_serial=serial if normalized_transport == "usb" else "",
+            network_host=host.strip() if normalized_transport == "network" else "",
+            network_port=network_port,
+        )
+        try:
+            self._validate_descriptor(descriptor)
+        except ValueError as exc:
+            errors.append(str(exc))
         try:
             builder = (
                 self.objection_manager.build_spawn_command
                 if spawn else self.objection_manager.build_attach_command
             )
-            command = builder(target, transport, serial)
+            command = builder(
+                target_value, normalized_transport, serial,
+                host=descriptor.network_host, port=descriptor.network_port or port,
+            )
             command = (executable or command[0], *command[1:])
         except (AttributeError, ValueError) as exc:
             command = (executable or "objection",)
@@ -220,13 +258,14 @@ class InteractiveSessionManager:
             InteractiveSessionType.OBJECTION,
             tuple(command),
             serial,
-            target,
-            "127.0.0.1:27042" if transport == "socket" else serial,
+            target_value,
+            descriptor.endpoint,
             "spawn" if spawn else "attach",
             executable=executable,
             prerequisites=("Frida route reachable", "Explicit selected target"),
             errors=tuple(dict.fromkeys(errors)),
             explanation="Objection connects in a dedicated terminal and may take time to load its agent.",
+            descriptor=descriptor,
         )
 
     def build_frida(
@@ -239,6 +278,7 @@ class InteractiveSessionManager:
         script_path: str = "",
         trace: bool = False,
         trace_pattern: str = "",
+        trace_options: Sequence[tuple[str, str]] = (),
     ) -> SessionLaunchPlan:
         tool = "frida-trace" if trace else "frida"
         preferred = (
@@ -253,24 +293,33 @@ class InteractiveSessionManager:
             errors.append("Select a device explicitly.")
         if target is None:
             errors.append("Select a Frida target.")
-        command = [executable or tool, "-H", endpoint]
+        try:
+            network_host, network_port = self._split_endpoint(endpoint)
+        except ValueError as exc:
+            network_host, network_port = "", 0
+            errors.append(str(exc))
+        command: list[str] = []
         target_name = ""
+        target_kind = ""
         if target is not None:
             if mode == "spawn":
                 target_name = target.application_identifier or ""
+                target_kind = "application"
                 if not target_name:
                     errors.append("Spawn requires an application package identifier.")
-                command.extend(("-f", target_name))
             elif mode == "pid":
                 target_name = str(target.pid or "")
+                target_kind = "pid"
                 if not target.pid:
                     errors.append("PID attach requires a running process ID.")
-                command.extend(("-p", target_name))
+            elif mode == "frontmost":
+                target_kind = "frontmost"
+                target_name = "frontmost"
             else:
-                target_name = target.identifier or target.name
+                target_name = target.application_identifier or target.name or target.identifier
+                target_kind = "application" if target.application_identifier else "name"
                 if not target_name:
                     errors.append("Attach requires a target name or package.")
-                command.extend(("-n", target_name))
         resolved_script = ""
         if script_path:
             path = Path(script_path).expanduser().resolve()
@@ -278,9 +327,31 @@ class InteractiveSessionManager:
                 errors.append("Select an existing local Frida script.")
             else:
                 resolved_script = str(path)
-                command.extend(("-l", resolved_script))
-        if trace and trace_pattern.strip():
-            command.extend(("-i", trace_pattern.strip()))
+        canonical_trace_options = tuple(
+            (str(flag), str(value)) for flag, value in trace_options
+        ) or ((("-i", trace_pattern.strip()),) if trace and trace_pattern.strip() else ())
+        descriptor = InstrumentationLaunchDescriptor(
+            backend="frida-trace" if trace else "frida",
+            operation="trace" if trace else "repl",
+            mode=mode,
+            target_kind=target_kind,
+            target=target_name,
+            transport="network",
+            device_serial=serial,
+            network_host=network_host,
+            network_port=network_port,
+            trace_options=canonical_trace_options,
+            script_path=resolved_script,
+        )
+        try:
+            self._validate_descriptor(descriptor)
+        except ValueError as exc:
+            errors.append(str(exc))
+        try:
+            command = list(self._frida_command(descriptor, target, executable or tool))
+        except (AttributeError, ValueError) as exc:
+            command = [executable or tool]
+            errors.append(str(exc))
         return SessionLaunchPlan(
             InteractiveSessionType.FRIDA_TRACE if trace else InteractiveSessionType.FRIDA_REPL,
             tuple(command),
@@ -293,7 +364,70 @@ class InteractiveSessionManager:
             ("Frida endpoint reachable", "Explicit selected target"),
             tuple(dict.fromkeys(errors)),
             "Frida runs in a dedicated terminal; prompt readiness depends on target and agent loading.",
+            descriptor,
         )
+
+    def _frida_command(
+        self,
+        descriptor: InstrumentationLaunchDescriptor,
+        target: FridaTarget | None,
+        executable: str,
+    ) -> tuple[str, ...]:
+        endpoint = descriptor.endpoint
+        if descriptor.backend == "frida-trace":
+            command = self.frida_sessions.build_trace_command(
+                target, None, mode=descriptor.mode, endpoint=endpoint
+            )
+            command = (*command, *(part for option in descriptor.trace_options for part in option))
+        elif descriptor.mode == "spawn":
+            command = self.frida_sessions.build_spawn_command(target, endpoint=endpoint)
+        elif descriptor.mode == "pid":
+            command = self.frida_sessions.build_pid_command(target, endpoint=endpoint)
+        elif descriptor.mode == "frontmost":
+            command = (self.frida_sessions.frida_path or "frida", "-H", endpoint, "-F")
+        else:
+            command = self.frida_sessions.build_attach_command(target, endpoint=endpoint)
+        command = (executable, *command[1:])
+        if descriptor.script_path:
+            command = (*command, "-l", descriptor.script_path)
+        return tuple(command)
+
+    @staticmethod
+    def _split_endpoint(endpoint: str) -> tuple[str, int]:
+        value = endpoint.strip()
+        if not value or ":" not in value:
+            raise ValueError("Network endpoint must be host:port.")
+        host, port_text = value.rsplit(":", 1)
+        if not host or any(character in host for character in "\x00\r\n"):
+            raise ValueError("Network host is required and must not contain control characters.")
+        try:
+            port = int(port_text)
+        except ValueError as exc:
+            raise ValueError("Network port must be a number from 1 to 65535.") from exc
+        if not 1 <= port <= 65535:
+            raise ValueError("Network port must be from 1 to 65535.")
+        return host, port
+
+    @staticmethod
+    def _target_from_descriptor(
+        descriptor: InstrumentationLaunchDescriptor,
+    ) -> FridaTarget | None:
+        if descriptor.target_kind == "frontmost":
+            return FridaTarget("Frontmost application", None, None, TargetType.APPLICATION, True)
+        if descriptor.target_kind == "pid":
+            return FridaTarget(
+                descriptor.target, None, int(descriptor.target), TargetType.PROCESS, True
+            )
+        if descriptor.target_kind == "application":
+            return FridaTarget(
+                descriptor.target, descriptor.target, None, TargetType.APPLICATION,
+                descriptor.mode != "spawn",
+            )
+        if descriptor.target_kind == "name":
+            return FridaTarget(
+                descriptor.target, None, None, TargetType.PROCESS, True
+            )
+        return None
 
     def plan_from_route(
         self, route: CommandRoute, selected_serial: str, target: FridaTarget | None = None
@@ -324,11 +458,22 @@ class InteractiveSessionManager:
                 errors.append(self.resolver.missing_message("objection", "Objection"))
             if not route_serial:
                 errors.append("Select a device explicitly.")
+            descriptor = None
+            try:
+                descriptor = self._descriptor_from_command(
+                    InteractiveSessionType.OBJECTION, route_serial, command
+                )
+            except ValueError as exc:
+                errors.append(f"Objection route is incomplete: {exc}")
             return SessionLaunchPlan(
                 InteractiveSessionType.OBJECTION, tuple(command), route_serial,
-                route.target or (target.identifier if target and target.identifier else ""),
-                "127.0.0.1:27042", "spawn" if "-s" in command else "attach",
+                descriptor.target if descriptor else (
+                    route.target or (target.identifier if target and target.identifier else "")
+                ),
+                descriptor.endpoint if descriptor else "",
+                "spawn" if "-s" in command else "attach",
                 executable=executable, errors=tuple(errors), explanation=route.reason,
+                descriptor=descriptor,
             )
         if route.session_type in {"frida-repl", "frida-trace"}:
             command = list(route.resolved_argv or route.argv)
@@ -340,10 +485,20 @@ class InteractiveSessionManager:
                 errors.append("The interactive executable could not be resolved to an absolute path.")
             if not route_serial:
                 errors.append("Select a device explicitly.")
+            descriptor = None
+            try:
+                descriptor = self._descriptor_from_command(
+                    InteractiveSessionType(route.session_type), route_serial, command
+                )
+            except ValueError as exc:
+                errors.append(f"Frida route is incomplete: {exc}")
             return SessionLaunchPlan(
                 InteractiveSessionType(route.session_type), tuple(command), route_serial,
-                route.target, "127.0.0.1:27042", executable=executable,
+                descriptor.target if descriptor else route.target,
+                descriptor.endpoint if descriptor else "",
+                descriptor.mode if descriptor else "", executable=executable,
                 errors=tuple(errors), explanation=route.reason,
+                descriptor=descriptor,
             )
         if route.session_type == "host-shell":
             command=route.resolved_argv or route.argv
@@ -359,6 +514,16 @@ class InteractiveSessionManager:
     def launch(self, plan: SessionLaunchPlan) -> SessionOperationResult:
         if not plan.ready:
             return SessionOperationResult(False, error="; ".join(plan.errors) or "Session plan is not ready.")
+        if plan.session_type.value in INSTRUMENTATION_SESSION_TYPES:
+            if plan.descriptor is None:
+                return SessionOperationResult(
+                    False,
+                    error="Instrumentation launch requires a complete canonical descriptor.",
+                )
+            try:
+                self._validate_descriptor(plan.descriptor)
+            except ValueError as exc:
+                return SessionOperationResult(False, error=str(exc))
         if plan.serial and self.selected_serial_provider() != plan.serial:
             return SessionOperationResult(False, error="Selected device changed; session was not launched.")
         if plan.session_type in self.singleton_types:
@@ -380,6 +545,7 @@ class InteractiveSessionManager:
             plan.command, self.clock(), InteractiveSessionState.PREPARING,
             diagnostics=(plan.explanation, *plan.prerequisites),
             stages=(("process launch", self.clock()),),
+            descriptor=plan.descriptor,
         )
         self._put(record)
         record = self._put(
@@ -426,12 +592,227 @@ class InteractiveSessionManager:
 
     def reconnect(self, session_id: str) -> SessionOperationResult:
         record = self.records.get(session_id)
-        plan = self._plans.get(session_id)
-        if not record or not plan:
+        if not record:
             return SessionOperationResult(False, error="Session record cannot be reconnected.")
         if record.serial and self.selected_serial_provider() != record.serial:
             return SessionOperationResult(False, record, "Reconnect requires the same explicitly selected serial.")
+        if record.session_type.value in INSTRUMENTATION_SESSION_TYPES:
+            descriptor = record.descriptor
+            if descriptor is None:
+                try:
+                    descriptor = self._descriptor_from_command(
+                        record.session_type, record.serial, record.command
+                    )
+                except ValueError as exc:
+                    return SessionOperationResult(
+                        False, record,
+                        f"Legacy session cannot be reconnected safely: {exc}",
+                    )
+            expected_backend = {
+                InteractiveSessionType.OBJECTION: "objection",
+                InteractiveSessionType.FRIDA_REPL: "frida",
+                InteractiveSessionType.FRIDA_TRACE: "frida-trace",
+            }[record.session_type]
+            if descriptor.backend != expected_backend:
+                return SessionOperationResult(
+                    False, record,
+                    "Reconnect descriptor backend does not match the stored session type.",
+                )
+            try:
+                plan = self._rebuild_instrumentation_plan(descriptor)
+            except ValueError as exc:
+                return SessionOperationResult(False, record, str(exc))
+            readiness_errors = self._reconnect_readiness_errors(descriptor)
+            if readiness_errors:
+                return SessionOperationResult(
+                    False, record,
+                    "Reconnect readiness failed: " + "; ".join(readiness_errors),
+                )
+        else:
+            plan = self._plans.get(session_id)
+            if plan is None:
+                return SessionOperationResult(
+                    False, record,
+                    "Legacy session has no complete launch descriptor; reconnect would require guessing.",
+                )
         return self.launch(plan)
+
+    def _rebuild_instrumentation_plan(
+        self, descriptor: InstrumentationLaunchDescriptor
+    ) -> SessionLaunchPlan:
+        self._validate_descriptor(descriptor)
+        if descriptor.backend == "objection":
+            return self.build_objection(
+                descriptor.device_serial,
+                descriptor.target,
+                spawn=descriptor.mode == "spawn",
+                transport=descriptor.transport,
+                host=descriptor.network_host,
+                port=descriptor.network_port,
+            )
+        target = self._target_from_descriptor(descriptor)
+        return self.build_frida(
+            descriptor.device_serial,
+            target,
+            mode=descriptor.mode,
+            endpoint=descriptor.endpoint,
+            script_path=descriptor.script_path,
+            trace=descriptor.backend == "frida-trace",
+            trace_options=descriptor.trace_options,
+        )
+
+    def _reconnect_readiness_errors(
+        self, descriptor: InstrumentationLaunchDescriptor
+    ) -> tuple[str, ...]:
+        if descriptor.backend == "objection":
+            readiness = self.objection_manager.readiness(
+                descriptor.device_serial,
+                descriptor.target,
+                descriptor.transport,
+                spawn=descriptor.mode == "spawn",
+                host=descriptor.network_host,
+                port=descriptor.network_port,
+            )
+        else:
+            target = self._target_from_descriptor(descriptor)
+            readiness = self.frida_sessions.readiness(
+                descriptor.device_serial,
+                target,
+                require_pid=descriptor.mode == "pid",
+                require_application=descriptor.mode == "spawn",
+                trace=descriptor.backend == "frida-trace",
+            )
+        return tuple(readiness.errors)
+
+    @staticmethod
+    def _validate_descriptor(descriptor: InstrumentationLaunchDescriptor) -> None:
+        expected_operation = {
+            "objection": "start", "frida": "repl", "frida-trace": "trace",
+        }
+        if descriptor.backend not in expected_operation:
+            raise ValueError("Launch descriptor has an unsupported instrumentation backend.")
+        if descriptor.operation != expected_operation[descriptor.backend]:
+            raise ValueError("Launch descriptor operation does not match its backend.")
+        if descriptor.mode not in {"attach", "spawn", "pid", "frontmost"}:
+            raise ValueError("Launch descriptor has an unsupported launch mode.")
+        if descriptor.mode == "spawn" and descriptor.target_kind != "application":
+            raise ValueError("Spawn requires a package/application identifier.")
+        if descriptor.mode == "pid" and descriptor.target_kind != "pid":
+            raise ValueError("PID attach requires a stored numeric PID target.")
+        if descriptor.mode == "frontmost" and descriptor.target_kind != "frontmost":
+            raise ValueError("Frontmost attach requires the frontmost target selector.")
+        if descriptor.mode == "attach" and descriptor.target_kind not in {"application", "name"}:
+            raise ValueError("Attach requires a stored application identifier or process name.")
+        if descriptor.backend == "objection" and descriptor.target_kind == "pid":
+            raise ValueError("Objection cannot use a PID target.")
+        if descriptor.backend == "objection" and descriptor.mode not in {"attach", "spawn"}:
+            raise ValueError("Objection supports attach or spawn mode only.")
+        if descriptor.mode != "frontmost" and not descriptor.target:
+            raise ValueError("Launch descriptor is missing its exact target.")
+        if descriptor.transport == "usb":
+            if not descriptor.usb_serial:
+                raise ValueError("Launch descriptor is missing the exact USB serial.")
+            if descriptor.device_serial and descriptor.usb_serial != descriptor.device_serial:
+                raise ValueError("USB serial does not match the explicitly selected device.")
+        elif descriptor.transport == "network":
+            if not descriptor.network_host or not 1 <= descriptor.network_port <= 65535:
+                raise ValueError("Launch descriptor is missing a valid network host/port.")
+            if any(character.isspace() or character == "\x00" for character in descriptor.network_host):
+                raise ValueError("Launch descriptor network host is invalid.")
+        else:
+            raise ValueError("Launch descriptor has an unsupported transport.")
+        if descriptor.backend in {"frida", "frida-trace"} and descriptor.transport != "network":
+            raise ValueError("This Frida launch descriptor requires a network endpoint.")
+        supported_trace_options = {"-i", "-x", "-I", "-X", "-a", "-T", "-j", "-J"}
+        if descriptor.backend != "frida-trace" and descriptor.trace_options:
+            raise ValueError("Trace filters are valid only for the Frida Trace backend.")
+        for flag, value in descriptor.trace_options:
+            if flag not in supported_trace_options or not value.strip():
+                raise ValueError("Frida Trace contains an unsupported or empty filter option.")
+
+    def _descriptor_from_command(
+        self,
+        session_type: InteractiveSessionType,
+        serial: str,
+        command: Sequence[str],
+    ) -> InstrumentationLaunchDescriptor:
+        argv = tuple(str(part) for part in command)
+        if not argv:
+            raise ValueError("the stored command is empty")
+        backend = {
+            InteractiveSessionType.OBJECTION: "objection",
+            InteractiveSessionType.FRIDA_REPL: "frida",
+            InteractiveSessionType.FRIDA_TRACE: "frida-trace",
+        }.get(session_type)
+        if backend is None:
+            raise ValueError("the stored backend is unsupported")
+        executable_backend = Path(argv[0]).name.casefold()
+        if executable_backend.endswith(".exe"):
+            executable_backend = executable_backend[:-4]
+        if executable_backend != backend:
+            raise ValueError("the stored executable does not match the session backend")
+
+        def option(flag: str) -> str:
+            try:
+                index = argv.index(flag)
+                return argv[index + 1]
+            except (ValueError, IndexError) as exc:
+                raise ValueError(f"the stored command is missing {flag}") from exc
+
+        if backend == "objection":
+            target = option("-n")
+            mode = "spawn" if "-s" in argv else "attach"
+            target_kind = classify_target(target)
+            if "-S" in argv:
+                usb_serial = option("-S")
+                if usb_serial.casefold() in {"usb", "socket", "network"}:
+                    raise ValueError("the stored -S value is a transport label, not a USB serial")
+                descriptor = InstrumentationLaunchDescriptor(
+                    backend, "start", mode, target_kind, target, "usb",
+                    serial, usb_serial=usb_serial,
+                )
+            elif "-N" in argv:
+                host = option("-h")
+                try:
+                    port = int(option("-P"))
+                except ValueError as exc:
+                    raise ValueError("the stored network port is invalid") from exc
+                descriptor = InstrumentationLaunchDescriptor(
+                    backend, "start", mode, target_kind, target, "network",
+                    serial, network_host=host, network_port=port,
+                )
+            else:
+                raise ValueError("the stored Objection transport is incomplete")
+            self._validate_descriptor(descriptor)
+            return descriptor
+
+        endpoint = option("-H")
+        host, port = self._split_endpoint(endpoint)
+        flag = next((value for value in ("-f", "-p", "-N", "-n", "-F") if value in argv), "")
+        if not flag:
+            raise ValueError("the stored Frida target selector is missing")
+        mode, target_kind = {
+            "-f": ("spawn", "application"),
+            "-p": ("pid", "pid"),
+            "-N": ("attach", "application"),
+            "-n": ("attach", "name"),
+            "-F": ("frontmost", "frontmost"),
+        }[flag]
+        target = "frontmost" if flag == "-F" else option(flag)
+        trace_options = []
+        if backend == "frida-trace":
+            for index, value in enumerate(argv[:-1]):
+                if value in {"-i", "-x", "-I", "-X", "-a", "-T", "-j", "-J"}:
+                    trace_options.append((value, argv[index + 1]))
+        script_path = option("-l") if "-l" in argv else ""
+        descriptor = InstrumentationLaunchDescriptor(
+            backend, "trace" if backend == "frida-trace" else "repl",
+            mode, target_kind, target, "network", serial,
+            network_host=host, network_port=port,
+            trace_options=tuple(trace_options), script_path=script_path,
+        )
+        self._validate_descriptor(descriptor)
+        return descriptor
 
     def refresh_states(self):
         for session_id, process in tuple(self._processes.items()):
@@ -583,6 +964,24 @@ class InteractiveSessionManager:
         record = self.records.get(session_id)
         if not record:
             return "Session record was not found."
+        descriptor = record.descriptor
+        descriptor_lines = (
+            (
+                "Canonical launch descriptor:",
+                f"- Backend: {descriptor.backend}",
+                f"- Operation: {descriptor.operation}",
+                f"- Mode: {descriptor.mode}",
+                f"- Target kind: {descriptor.target_kind}",
+                f"- Exact target: {descriptor.target}",
+                f"- Transport: {descriptor.transport}",
+                f"- USB serial: {descriptor.usb_serial or 'None'}",
+                f"- Network host: {descriptor.network_host or 'None'}",
+                f"- Network port: {descriptor.network_port or 'None'}",
+                f"- Trace options: {descriptor.trace_options or 'None'}",
+                f"- Script: {descriptor.script_path or 'None'}",
+            )
+            if descriptor else ("Canonical launch descriptor: unavailable (legacy record)",)
+        )
         lines = (
             f"Session ID: {record.session_id}",
             f"Type: {record.session_type.value}",
@@ -596,6 +995,7 @@ class InteractiveSessionManager:
             "Launch stages:",
             *(f"- {name}: {value}" for name, value in record.stages),
             f"Command: {SessionLaunchPlan(record.session_type, record.command).preview()}",
+            *descriptor_lines,
             f"Last error: {record.last_error or 'None'}",
             f"Command history: {len(record.command_history)} preserved entr{'y' if len(record.command_history) == 1 else 'ies'}",
             *(f"- {entry}" for entry in record.command_history),

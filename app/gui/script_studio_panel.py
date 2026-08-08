@@ -168,7 +168,7 @@ class ScriptStudioPanel(ctk.CTkFrame):
         self.library_details = ReadOnlyTextView(split, fg_color=self.theme["terminal_bg"], text_color=self.theme["terminal_text"], border_width=1, border_color=self.theme["border"], wrap="word"); self.library_details.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         actions = ctk.CTkFrame(frame, fg_color="transparent"); actions.grid(row=3, column=0, sticky="ew", padx=7, pady=(2, 7))
         for i in range(4): actions.grid_columnconfigure(i, weight=1)
-        for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Untrust", self.toggle_trust), ("Open Editor", lambda: self._select_workspace("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
+        for i, (text, callback) in enumerate((("Refresh", self.refresh_library), ("New Script", self.new_script), ("Import", self.import_script), ("Rename", self.rename_script), ("Delete", self.delete_script), ("Trust / Revoke Trust", self.toggle_trust), ("Open Editor", lambda: self._select_workspace("Editor")))): self._button(actions, text, callback, i // 4, i % 4)
 
     def _build_editor(self):
         frame = self._panel(

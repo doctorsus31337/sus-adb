@@ -20,6 +20,7 @@ RUNNERS = (
     "run_sessions_center_smoke.py",
     "run_script_studio_smoke.py",
     "run_addons_center_smoke.py",
+    "run_addons_routing_smoke.py",
     "run_addons_update_smoke.py",
     "run_plugin_sdk_v11_smoke.py",
     "run_plugin_workbench_smoke.py",
@@ -30,6 +31,7 @@ RUNNERS = (
     "run_branding_smoke.py",
     "run_pentest_plugin_manager_smoke.py",
     "run_logcat_investigator_smoke.py",
+    "run_logcat_investigator_analysis_smoke.py",
 )
 
 

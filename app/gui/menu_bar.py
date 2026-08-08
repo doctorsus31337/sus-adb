@@ -81,12 +81,12 @@ class MenuBar:
 
         addons_menu=tk.Menu(menu,tearoff=False,font=MENU_FONT)
         addons_menu.add_command(label="Open Add-ons Center…",command=window.open_addons_center)
-        addons_menu.add_command(label="Official Addon Catalog…",command=window.open_addons_center)
-        addons_menu.add_command(label="Manage Installed Addons…",command=window.open_plugin_manager)
-        addons_menu.add_command(label="Addon Diagnostics…",command=window.open_plugin_manager)
-        addons_menu.add_separator();self.loaded_menu=tk.Menu(addons_menu,tearoff=False,font=MENU_FONT);addons_menu.add_cascade(label="Open Loaded Addon",menu=self.loaded_menu)
-        addons_menu.add_separator();addons_menu.add_command(label="Unload All Addons",command=window.unload_all_addons)
-        menu.add_cascade(label="Addons",menu=addons_menu);self.addons_menu=addons_menu;self.refresh_loaded_addons()
+        addons_menu.add_command(label="Official Add-on Catalog…",command=window.open_official_addon_catalog)
+        addons_menu.add_command(label="Manage Installed Add-ons…",command=window.open_installed_addons)
+        addons_menu.add_command(label="Add-on Diagnostics…",command=window.open_addon_diagnostics)
+        addons_menu.add_separator();self.loaded_menu=tk.Menu(addons_menu,tearoff=False,font=MENU_FONT);addons_menu.add_cascade(label="Open Loaded Add-on",menu=self.loaded_menu)
+        addons_menu.add_separator();addons_menu.add_command(label="Unload All Add-ons",command=window.unload_all_addons)
+        menu.add_cascade(label="Add-ons",menu=addons_menu);self.addons_menu=addons_menu;self.refresh_loaded_addons()
         manager=getattr(window,"plugin_manager",None);self.manager_unsubscribe=manager.subscribe(lambda _event,_pid:window.after(0,self.refresh_loaded_addons)) if manager else None
 
         help_menu = tk.Menu(menu, tearoff=False, font=MENU_FONT)
@@ -128,5 +128,5 @@ class MenuBar:
 
     def refresh_loaded_addons(self):
         self.loaded_menu.delete(0,"end");items=getattr(getattr(self.window,"plugin_registry",None),"list",lambda _type:())("pentest-panel")
-        if not items:self.loaded_menu.add_command(label="No loaded addons",state="disabled");return
+        if not items:self.loaded_menu.add_command(label="No loaded add-ons",state="disabled");return
         for item in items:self.loaded_menu.add_command(label=item.title,command=lambda cid=item.contribution_id:self.window.open_addon_window(cid))

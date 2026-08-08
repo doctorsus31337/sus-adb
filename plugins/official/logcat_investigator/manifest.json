@@ -1,8 +1,8 @@
 {
   "plugin_id": "susadb.logcat-investigator",
   "name": "Logcat Investigator",
-  "version": "0.1.0",
-  "description": "Bounded, privacy-sensitive live Android Logcat viewing through a host-owned capture workspace.",
+  "version": "0.2.0",
+  "description": "Bounded live Android Logcat capture with deterministic local crash, ANR, security, and process event analysis.",
   "author": "SUS-ADB",
   "license": "MIT",
   "minimum_sus_adb_version": "1.0.0",
@@ -38,5 +38,5 @@
   },
   "trust_state": "untrusted",
   "enabled": false,
-  "caution_text": "Device logs may contain identifiers, paths, messages, tokens, account information, and application data. Capture is explicit, bounded, selected-device-only, and cleared when the host window closes."
+  "caution_text": "Device logs and reconstructed event context may contain identifiers, paths, messages, tokens, account information, and application data. Capture and analysis are explicit, local, bounded, selected-device-only, and cleared when the host window closes."
 }

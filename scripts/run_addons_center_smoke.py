@@ -1,4 +1,4 @@
-"""Isolated Add-ons Center scrolling acceptance checks; executes no addon."""
+"""Isolated Add-ons Center scrolling acceptance checks; executes no add-on."""
 from __future__ import annotations
 
 import os
@@ -62,17 +62,17 @@ def main():
             items=[]
             for index in range(count):
                 suffix=(
-                    " — A deliberately long deterministic addon name"
+                    " — A deliberately long deterministic add-on name"
                     if long_text else ""
                 )
                 description=(
                     "A long local-only description used to verify responsive "
                     "wrapping, capability text changes, and bounded horizontal "
                     "layout without executing plugin code. "
-                )*2 if long_text else f"Synthetic addon {index+1}."
+                )*2 if long_text else f"Synthetic add-on {index+1}."
                 manifest=SimpleNamespace(
                     plugin_id=f"fixture.addon-{index+1:02d}",
-                    name=f"Fixture Addon {index+1:02d}{suffix}",
+                    name=f"Fixture Add-on {index+1:02d}{suffix}",
                     version="1.0.0",
                     description=description,
                     requested_capabilities=(
@@ -278,7 +278,7 @@ def main():
         center.refresh()
         pump(root)
         assert len(center.visible_plugin_ids)==7
-        center.search.insert(0,"no matching addon fixture")
+        center.search.insert(0,"no matching add-on fixture")
         center.refresh()
         pump(root)
         assert not center.visible_plugin_ids

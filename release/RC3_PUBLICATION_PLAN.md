@@ -18,7 +18,7 @@ authorized `release/1.0.0-rc.3` prerelease.
   checkout and inject its version, commit, selected ref, and `rc` channel.
 - Verify the local Linux one-folder package, preferred and compatibility
   launchers, build-info, release manifest, checksums, verification report,
-  branding, Plugin API 1.1, official addons, Wizard, Workbench, and privacy.
+  branding, Plugin API 1.1, official add-ons, Wizard, Workbench, and privacy.
 - Dispatch the read-only packaging workflow for the exact RC3 ref and require
   both Linux and Windows jobs from the same run to succeed.
 - Download that run’s artifacts to a fresh disposable directory and verify

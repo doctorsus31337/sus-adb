@@ -19,7 +19,7 @@ Contributions, Findings, Update Comparison, Package Plan, and Limitation
 summaries. Empty capability and contribution lists, a missing installed
 package match, and an unavailable package plan are stated explicitly.
 
-Local candidates that retain a bundled official addon ID are blocked from
+Local candidates that retain a bundled official add-on ID are blocked from
 Plugin Manager handoff before installation. Exported educational templates
 remain inspectable and reportable, but derivatives must choose a new stable
 plugin ID and keep unique contribution IDs synchronized between the manifest

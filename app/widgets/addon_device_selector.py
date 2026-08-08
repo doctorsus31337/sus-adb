@@ -1,4 +1,4 @@
-"""Compact host-owned selected-device control for addon windows."""
+"""Compact host-owned selected-device control for add-on windows."""
 
 from __future__ import annotations
 

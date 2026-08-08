@@ -1,4 +1,4 @@
-"""Local-only Learning Center for educational addon courses and glossary."""
+"""Local-only Learning Center for educational add-on courses and glossary."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
         self.search.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 8))
         self.search.bind("<KeyRelease>", lambda _event: self.refresh())
         ctk.CTkButton(
-            header, text="Manage Educational Addons",
+            header, text="Manage Educational Add-ons",
             command=self.open_addons,
             fg_color=self.theme["red"], hover_color=self.theme["red_hover"],
             text_color=self.theme["text"], border_width=1,
@@ -295,7 +295,7 @@ class LearningCenterWindow(ctk.CTkToplevel):
         self.lesson_heading.configure(text=addon.name)
         self._set_text(
             self.lesson_text,
-            "This educational addon is inactive. Installation, digest trust, "
+            "This educational add-on is inactive. Installation, digest trust, "
             "enablement, and loading remain separate explicit actions in "
             "Add-ons Center.\n\nLesson browsing cannot activate it.",
         )

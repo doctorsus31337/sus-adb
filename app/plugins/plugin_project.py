@@ -120,7 +120,7 @@ class PluginProjectIdentity:
             raise ValueError("Plugin ID must be a stable lowercase identifier.")
         if plugin_id == "susadb" or plugin_id.startswith("susadb."):
             raise ValueError(
-                "The susadb namespace is reserved for bundled official addons."
+                "The susadb namespace is reserved for bundled official add-ons."
             )
         object.__setattr__(self, "plugin_id", plugin_id)
         if not SEMVER.fullmatch(str(self.version or "")):

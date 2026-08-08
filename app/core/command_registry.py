@@ -421,8 +421,8 @@ class CommandRegistry:
                 "objection.version", "Objection", "Discovery",
             ),
             CommandSpec(
-                "objection -S socket -n <target> start",
-                "Attach Objection through the forwarded Frida socket",
+                "objection -N -h 127.0.0.1 -P 27042 -n <target> start",
+                "Attach Objection through an explicit forwarded network endpoint",
                 "objection.attach", "Objection", "Sessions",
                 aliases=("objection start", "objection attach"),
                 classification="interactive", opens_session=True, requires_device=True,

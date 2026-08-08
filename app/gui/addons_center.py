@@ -342,7 +342,7 @@ class AddonCard(ctk.CTkFrame):
 
     def update_spec(self,spec):
         if spec.plugin_id!=self.plugin_id:
-            raise ValueError("Addon card identity cannot change.")
+            raise ValueError("Add-on card identity cannot change.")
         self.spec=spec
         impact=" · High-impact approval" if spec.high_impact else ""
         self.name_label.configure(text=spec.name)
@@ -422,7 +422,7 @@ class AddonCard(ctk.CTkFrame):
 
 
 class UpdateReviewDialog(ctk.CTkToplevel):
-    """Non-mutating official-addon comparison with one explicit review action."""
+    """Non-mutating official add-on comparison with one explicit review action."""
 
     def __init__(self,parent,theme,review,mark_callback,close_callback):
         super().__init__(parent)
@@ -431,7 +431,7 @@ class UpdateReviewDialog(ctk.CTkToplevel):
         self.mark_callback=mark_callback
         self.close_callback=close_callback
         self._closed=False
-        self.title("Review Official Addon Update")
+        self.title("Review Official Add-on Update")
         self.configure(fg_color=theme["bg"])
         self.geometry(parent._center(760,580))
         self.minsize(680,500)
@@ -441,7 +441,7 @@ class UpdateReviewDialog(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.bind("<Escape>",lambda _event:self.close(),add="+")
         ctk.CTkLabel(
-            self,text="REVIEW OFFICIAL ADDON UPDATE",
+            self,text="REVIEW OFFICIAL ADD-ON UPDATE",
             font=("Times New Roman",22,"bold"),text_color=theme["gold"],
         ).grid(row=0,column=0,sticky="ew",padx=18,pady=(16,8))
         details=ReadOnlyTextView(
@@ -481,7 +481,7 @@ class UpdateReviewDialog(ctk.CTkToplevel):
             if review.digest_only_changed else ""
         )
         return (
-            f"Addon: {review.name}\n"
+            f"Add-on: {review.name}\n"
             f"Installed version: {review.installed_version}\n"
             f"Candidate version: {review.candidate_version}\n"
             f"Installed digest: {review.installed_digest[:12]}…\n"
@@ -503,7 +503,7 @@ class UpdateReviewDialog(ctk.CTkToplevel):
             f"Version changed: {'Yes' if review.version_changed else 'No'}\n\n"
             "Mark Reviewed records only this exact candidate digest. It does "
             "not install, unload, disable, trust, approve, enable, load, or "
-            "open the addon. Prior trust and capability approval do not "
+            "open the add-on. Prior trust and capability approval do not "
             "transfer if the changed package is later installed."
         )
 
@@ -566,7 +566,7 @@ class AddonsCenter(ctk.CTkToplevel):
         row.grid(row=1,column=0,sticky="ew",padx=18,pady=5)
         row.grid_columnconfigure(0,weight=1)
         self.search=ctk.CTkEntry(
-            row,placeholder_text="Search available and installed addons",
+            row,placeholder_text="Search available and installed add-ons",
             fg_color=theme["terminal_bg"],border_color=theme["gold_dark"],
             text_color=theme["text"],
         )
@@ -585,7 +585,7 @@ class AddonsCenter(ctk.CTkToplevel):
             self,
             text=(
                 "Discovery never installs, trusts, approves, enables, "
-                "loads, or runs an addon."
+                "loads, or runs an add-on."
             ),
             text_color=theme["gold"],anchor="w",wraplength=1050,
         )
@@ -659,13 +659,13 @@ class AddonsCenter(ctk.CTkToplevel):
         self._layout(preserve_offset=position)
         self.footer.configure(
             text=self.status_message or (
-                f"{len(self.visible_plugin_ids)} official addons · "
+                f"{len(self.visible_plugin_ids)} official add-ons · "
                 "Every lifecycle transition remains explicit."
             )
         )
 
     def focus_addon(self, query):
-        """Focus/filter the existing catalog without changing addon lifecycle."""
+        """Focus/filter the existing catalog without changing add-on lifecycle."""
         self.deiconify()
         self.lift()
         self.search.delete(0,"end")
@@ -732,10 +732,10 @@ class AddonsCenter(ctk.CTkToplevel):
             manifest=self.manager.records[plugin_id][2]
             digest=self.manager.records[plugin_id][1].package_digest
             confirmed=messagebox.askyesno(
-                "Trust Zero-Capability Addon",
-                f"Addon: {manifest.name}\nVersion: {manifest.version}\n"
+                "Trust Zero-Capability Add-on",
+                f"Add-on: {manifest.name}\nVersion: {manifest.version}\n"
                 f"Package digest: {digest}\n\n"
-                "This addon requests zero capabilities. Trust is bound only "
+                "This add-on requests zero capabilities. Trust is bound only "
                 "to this exact digest. Trusting does not enable, load, or open "
                 "it.\n\nTrust this package?",
                 parent=self,
@@ -748,7 +748,7 @@ class AddonsCenter(ctk.CTkToplevel):
             confirmed=(
                 not bool(set(manifest.requested_capabilities)&HIGH_IMPACT)
                 or messagebox.askyesno(
-                    "Approve Addon Permissions",
+                    "Approve Add-on Permissions",
                     "Approve the displayed capabilities for this exact "
                     "package digest?",
                     parent=self,
@@ -771,7 +771,7 @@ class AddonsCenter(ctk.CTkToplevel):
                 self.footer.configure(
                     text=self.window_host.errors.get(
                         contribution_id,
-                        "Addon window could not be opened.",
+                        "Add-on window could not be opened.",
                     ),
                     text_color=self.theme["error"],
                 )

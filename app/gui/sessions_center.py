@@ -9,6 +9,8 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from app.core.app_metadata import METADATA
+from app.core.frida_target import FridaTarget, TargetType
+from app.core.instrumentation_launch import classify_target
 from app.core.interactive_sessions import InteractiveSessionState
 from app.core.script_descriptor import ScriptKind
 from app.core.worker import BackgroundWorker
@@ -282,16 +284,34 @@ class SessionsCenter(ctk.CTkToplevel):
             "while the external terminal is prepared.",
         )
         self.objection_target = self._entry(body, "Application package or process")
+        self.objection_target.bind("<KeyRelease>", lambda _event: self.refresh_previews())
         self._labeled(body, 1, "Target", self.objection_target)
         self.objection_mode = self._combo(body, ("attach", "spawn"))
+        self.objection_mode.configure(command=lambda _value: self.refresh_previews())
         self._labeled(body, 2, "Mode", self.objection_mode)
-        self.objection_transport = self._combo(body, ("socket", "usb"))
+        self.objection_transport = self._combo(body, ("network", "usb"))
+        self.objection_transport.configure(command=self._objection_transport_changed)
         self._labeled(body, 3, "Transport", self.objection_transport)
+        endpoint = ctk.CTkFrame(body, fg_color="transparent")
+        endpoint.grid(row=4, column=1, columnspan=2, sticky="ew", padx=8, pady=4)
+        endpoint.grid_columnconfigure(0, weight=1)
+        self.objection_host = self._entry(endpoint, "Network host")
+        self.objection_host.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.objection_host.insert(0, "127.0.0.1")
+        self.objection_host.bind("<KeyRelease>", lambda _event: self.refresh_previews())
+        self.objection_port = self._entry(endpoint, "Port")
+        self.objection_port.configure(width=110)
+        self.objection_port.grid(row=0, column=1, sticky="e", padx=(4, 0))
+        self.objection_port.insert(0, "27042")
+        self.objection_port.bind("<KeyRelease>", lambda _event: self.refresh_previews())
+        ctk.CTkLabel(
+            body, text="Network endpoint", text_color=self.theme["muted"], anchor="w",
+        ).grid(row=4, column=0, sticky="w", padx=8, pady=4)
         self.objection_launch = self._button(
             body, "Open Objection Session",
             lambda: self.launch_plan(self._objection_plan()), 0,
         )
-        self.objection_launch.grid(row=5, column=0, columnspan=3, sticky="ew", padx=8, pady=6)
+        self.objection_launch.grid(row=6, column=0, columnspan=3, sticky="ew", padx=8, pady=6)
 
     def _build_frida(self):
         body, self.frida_preview = self._form(
@@ -397,7 +417,21 @@ class SessionsCenter(ctk.CTkToplevel):
         return self.context.selected_serial
 
     def _target(self):
-        return self.target_provider()
+        target = self.context.selected_target
+        if target is None:
+            return None
+        try:
+            target_type = TargetType(target.target_type)
+        except ValueError:
+            target_type = (
+                TargetType.APPLICATION
+                if classify_target(target.identifier or "") == "application"
+                else TargetType.PROCESS
+            )
+        return FridaTarget(
+            target.name, target.identifier or None, target.pid, target_type,
+            target.pid is not None,
+        )
 
     def _target_text(self):
         target = self._target()
@@ -411,12 +445,26 @@ class SessionsCenter(ctk.CTkToplevel):
         return self.manager.build_adb_shell(self._serial())
 
     def _objection_plan(self):
-        target = self.objection_target.get().strip() or self._target_text()
+        target = self.objection_target.get().strip()
         return self.manager.build_objection(
             self._serial(), target,
             spawn=self.objection_mode.get() == "spawn",
             transport=self.objection_transport.get(),
+            host=self.objection_host.get(), port=self.objection_port.get(),
         )
+
+    def _objection_transport_changed(self, value):
+        network = value.casefold() != "usb"
+        for entry in (self.objection_host, self.objection_port):
+            entry.configure(state="normal")
+            entry.delete(0, "end")
+        if network:
+            self.objection_host.insert(0, "127.0.0.1")
+            self.objection_port.insert(0, "27042")
+        else:
+            self.objection_host.configure(state="disabled")
+            self.objection_port.configure(state="disabled")
+        self.refresh_previews()
 
     def _selected_script_path(self):
         value = self.script_combo.get()
@@ -438,6 +486,18 @@ class SessionsCenter(ctk.CTkToplevel):
         )
 
     def _plan_text(self, plan):
+        descriptor = plan.descriptor
+        routing = (
+            f"Backend: {descriptor.backend}\n"
+            f"Operation: {descriptor.operation}\n"
+            f"Target kind: {descriptor.target_kind}\n"
+            f"Transport: {descriptor.transport}\n"
+            f"USB serial: {descriptor.usb_serial or 'None'}\n"
+            f"Network host: {descriptor.network_host or 'None'}\n"
+            f"Network port: {descriptor.network_port or 'None'}\n"
+            f"Trace options: {descriptor.trace_options or 'None'}\n"
+            if descriptor else ""
+        )
         return (
             f"Session type: {plan.session_type.value}\n"
             f"Selected serial: {plan.serial or 'None'}\n"
@@ -446,7 +506,8 @@ class SessionsCenter(ctk.CTkToplevel):
             f"Executable: {plan.executable or 'Unresolved'}\n"
             f"Mode: {plan.attach_mode or 'interactive'}\n"
             f"Script: {plan.script_path or 'None'}\n"
-            f"Prerequisites: {', '.join(plan.prerequisites) or 'Review command'}\n"
+            + routing
+            + f"Prerequisites: {', '.join(plan.prerequisites) or 'Review command'}\n"
             f"Ready: {plan.ready}\n"
             + (f"Errors: {'; '.join(plan.errors)}\n" if plan.errors else "")
             + f"\nGuided explanation:\n{plan.explanation}\n\n"
@@ -469,11 +530,14 @@ class SessionsCenter(ctk.CTkToplevel):
         }
         for key, value in values.items():
             self.header_values[key].configure(text=value)
-        target_text = self._target_text()
-        if target_text and not self.objection_target.get():
-            self.objection_target.insert(0, target_text)
-        if old_serial and old_serial != snapshot.selected_serial:
+        serial_changed = bool(old_serial and old_serial != snapshot.selected_serial)
+        if serial_changed:
             self.clear_route()
+            self.objection_target.delete(0, "end")
+        else:
+            target_text = self._target_text()
+            if target_text and not self.objection_target.get():
+                self.objection_target.insert(0, target_text)
         self.refresh_previews()
 
     def refresh_previews(self):
@@ -652,6 +716,8 @@ class SessionsCenter(ctk.CTkToplevel):
             f"{record.session_id}\n"
             f"Type: {record.session_type.value} · State: {record.state.value}\n"
             f"Serial: {record.serial or 'None'} · Target: {record.target or 'None'}\n"
+            f"Route: {record.descriptor.transport if record.descriptor else 'legacy'} · "
+            f"Endpoint: {record.descriptor.endpoint if record.descriptor else record.endpoint or 'None'}\n"
             f"Started: {record.start_time}\n"
             f"Backend: {record.backend or 'Preparing'}\n"
             f"Prompt ready: {record.prompt_ready_time or 'Not observable'}\n"

@@ -1,4 +1,4 @@
-"""Isolated actionable official-addon update acceptance checks."""
+"""Isolated actionable official add-on update acceptance checks."""
 from __future__ import annotations
 
 import json
@@ -200,7 +200,7 @@ def main():
         observed_states.update(("loaded","open","unload required"))
         assert card.spec.lifecycle_status=="Window Open"
         assert "Unload" in card.actions and "Install Update" not in card.actions
-        assert "unload addon before installing" in card.spec.update_status
+        assert "unload add-on before installing" in card.spec.update_status
         assert not manager.install_official_update(target_id,item.package_digest).ok
         assert manager.official_update_reviewed(target_id,item.package_digest)
         manager.unload(target_id);host.opened=False

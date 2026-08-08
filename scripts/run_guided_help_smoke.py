@@ -57,6 +57,13 @@ def main():
     assert guide.step == len(guide.STEPS) - 1
     assert guide.open_button.cget("state") == "normal"
     assert not guide.plan.executes_automatically
+    bodies = [
+        guide.step_body(index, guide.plan, guide.state)
+        for index in range(len(guide.STEPS))
+    ]
+    assert len(bodies) == len(set(bodies))
+    assert all(option in bodies[6] for option in ("-p", "-N", "-F", "-f"))
+    assert all(option in bodies[7] for option in ("-i", "-j"))
     assert all(
         not value.casefold().startswith("blue")
         for value in theme.values() if isinstance(value, str)

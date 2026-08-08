@@ -13,7 +13,7 @@ release commit.
 - [ ] Downloaded Windows archive integrity and privacy verification
 - [ ] Preferred `sus-companion` and compatibility `sus-adb` launchers
 - [ ] Exact `release/1.0.0-rc.2` ref and commit in both build-info files
-- [ ] Six official addons, themes, documentation, and CustomTkinter resources
+- [ ] Six official add-ons, themes, documentation, and CustomTkinter resources
 - [ ] Exact release source promoted to `main`
 - [ ] Annotated `v1.0.0-rc.2` tag points to the packaged release commit
 - [ ] GitHub Release is explicitly marked prerelease

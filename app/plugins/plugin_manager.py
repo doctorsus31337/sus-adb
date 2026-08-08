@@ -45,7 +45,7 @@ class PluginManager:
         return self._api(record[2]).subscribe_context(callback,replay=replay) if record else None
     def authorize_action(self,plugin_id,required_capabilities=()):
         record=self.records.get(plugin_id);status=self.loader.statuses.get(plugin_id)
-        if not record or status is None or status.state is not LoaderState.ACTIVE:return ManagerResult(False,error="The addon is no longer loaded.")
+        if not record or status is None or status.state is not LoaderState.ACTIVE:return ManagerResult(False,error="The add-on is no longer loaded.")
         if not self.trust.verify(plugin_id,record[1].package_digest):return ManagerResult(False,error="Trust for this exact package digest is no longer valid.")
         approved=set(self.trust.approved(plugin_id,record[1].package_digest));required=set(required_capabilities)
         if not required<=set(record[2].requested_capabilities):return ManagerResult(False,error="The action requires an undeclared capability.")
@@ -83,7 +83,7 @@ class PluginManager:
         record=self.records.get(plugin_id)
         if not item or not record:return ManagerResult(False,error="Installed official plugin was not found.")
         if not item.valid:return ManagerResult(False,item.manifest,error="; ".join(item.errors))
-        if item.package_digest==record[1].package_digest:return ManagerResult(False,item.manifest,error="The bundled official addon already matches the installed digest.")
+        if item.package_digest==record[1].package_digest:return ManagerResult(False,item.manifest,error="The bundled official add-on already matches the installed digest.")
         current=PluginPackage.inspect(item.path)
         if not current.ok or current.package_digest!=item.package_digest or expected_digest and current.package_digest!=expected_digest:return ManagerResult(False,item.manifest,error="Official plugin digest changed during update review.")
         installed_manifest=record[2];candidate_manifest=item.manifest
@@ -96,7 +96,7 @@ class PluginManager:
             ("description",installed_manifest.description,candidate_manifest.description),
             ("author",installed_manifest.author,candidate_manifest.author),
             ("caution text",installed_manifest.caution_text,candidate_manifest.caution_text),
-            ("addon presentation",installed_manifest.addon_ui,candidate_manifest.addon_ui),
+            ("add-on presentation",installed_manifest.addon_ui,candidate_manifest.addon_ui),
         ) if old!=new)
         executable_suffixes=(".py",".pyc",".pyd",".so",".dll",".dylib")
         old_files={name:digest for name,digest,_size in record[1].files if name.casefold().endswith(executable_suffixes)}
@@ -105,7 +105,7 @@ class PluginManager:
         review=OfficialUpdateReview(
             plugin_id,candidate_manifest.name,installed_manifest.version,candidate_manifest.version,
             record[1].package_digest,current.package_digest,candidate_manifest.author or "Unspecified",
-            "Bundled official addon",tuple(sorted(new_caps-old_caps)),tuple(sorted(old_caps-new_caps)),
+            "Bundled official add-on",tuple(sorted(new_caps-old_caps)),tuple(sorted(old_caps-new_caps)),
             tuple(sorted(set(new_contributions)-set(old_contributions))),tuple(sorted(set(old_contributions)-set(new_contributions))),
             tuple(sorted(value for value in shared if old_contributions[value]!=new_contributions[value])),
             presentation,old_files!=new_files,version_changed,not version_changed,
@@ -133,12 +133,12 @@ class PluginManager:
         record=self.records[plugin_id];review=review_result.status
         if not self.official_update_reviewed(plugin_id,review.candidate_digest):return ManagerResult(False,review_result.manifest,error="Review this exact update candidate before installing it.")
         status=self.loader.statuses.get(plugin_id)
-        if plugin_id in self.loader.instances or status and status.state is LoaderState.ACTIVE or self.registry.by_plugin(plugin_id):return ManagerResult(False,review_result.manifest,error="Update ready — unload addon before installing.")
+        if plugin_id in self.loader.instances or status and status.state is LoaderState.ACTIVE or self.registry.by_plugin(plugin_id):return ManagerResult(False,review_result.manifest,error="Update ready — unload add-on before installing.")
         current_digest=record[1].package_digest
         result=self.store.replace_package(plugin_id,record[2].version,current_digest,self.catalog.get(plugin_id,self.records).path,review.candidate_digest)
         if not result.ok:return ManagerResult(False,review_result.manifest,error=result.error)
-        self._release_api(plugin_id);self.trust.revoke(plugin_id,"Trust and capability approval revoked after official addon update.");self.refresh();self._changed("update",plugin_id)
-        self._event(plugin_id,"Official addon update installed disabled","Trust and capability approval do not transfer across the new package digest.")
+        self._release_api(plugin_id);self.trust.revoke(plugin_id,"Trust and capability approval revoked after official add-on update.");self.refresh();self._changed("update",plugin_id)
+        self._event(plugin_id,"Official add-on update installed disabled","Trust and capability approval do not transfer across the new package digest.")
         return ManagerResult(True,self.records[plugin_id][2],path=result.path)
     def update_official(self,plugin_id,expected_digest="",confirmed=False):
         return ManagerResult(False,error="Review and Install Update are separate explicit actions; use the Add-ons Center update controls.")
@@ -155,7 +155,7 @@ class PluginManager:
     def trust_zero_capability(self,plugin_id,confirmed=False):
         record=self.records.get(plugin_id)
         if not record:return ManagerResult(False,error="Plugin was not found.")
-        if record[2].requested_capabilities:return ManagerResult(False,error="This addon requests capabilities; review them through Permissions.")
+        if record[2].requested_capabilities:return ManagerResult(False,error="This add-on requests capabilities; review them through Permissions.")
         if not confirmed:return ManagerResult(False,error="Explicit package-digest trust confirmation is required.")
         self.trust.approve(plugin_id,record[1].package_digest,());self.store.clear_post_update_activation(plugin_id,record[1].package_digest);self.refresh();self._event(plugin_id,"Plugin digest trusted","Zero capabilities approved; enablement and loading remain separate.");return ManagerResult(True,self.records[plugin_id][2])
     def revoke(self,plugin_id):self.unload(plugin_id);self.trust.revoke(plugin_id);self.refresh();return ManagerResult(True)

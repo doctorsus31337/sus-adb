@@ -24,7 +24,7 @@ recovery reliability, interactive tooling, and cross-platform packaging.
   Learning Center.
 - Expands Instrumentation & Root Readiness Advisor while preserving the
   no-root-acquisition and no-flashing boundary.
-- Converts the educational addons into independent Frida Assistant and
+- Converts the educational add-ons into independent Frida Assistant and
   Objection Assistant windows with immutable live context and explicit
   handoffs to shared workflows.
 - Stabilizes Add-ons Center card/focus lifecycle on Linux and Windows.

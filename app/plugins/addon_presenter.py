@@ -1,4 +1,4 @@
-"""GUI-neutral addon card and lifecycle projection."""
+"""GUI-neutral add-on card and lifecycle projection."""
 from app.plugins.plugin_capabilities import HIGH_IMPACT
 from app.plugins.plugin_loader import LoaderState
 from app.plugins.plugin_ui import AddonCardSpec,AddonCatalogAction,resolve_ui_mode
@@ -30,7 +30,7 @@ def card_spec(item,manager,window_host=None):
     if update_available:
         update_status=f"Update available · Candidate v{item.manifest.version}"
         if item.manifest.version==manifest.version:update_status+="\nPackage contents changed without a version change"
-        if reviewed:update_status="Update ready — unload addon before installing" if blocked else "Update reviewed — Install Update is ready"
+        if reviewed:update_status="Update ready — unload add-on before installing" if blocked else "Update reviewed — Install Update is ready"
     elif post_update_activation:
         update_status=(
             "Update installed.\n"

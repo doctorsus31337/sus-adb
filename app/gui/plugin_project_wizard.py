@@ -759,7 +759,7 @@ class PluginProjectWizardWindow(ctk.CTkToplevel):
         self._heading(
             "Generate",
             "Every output is explicit. Generation never installs, trusts, "
-            "approves, enables, loads, opens, or executes the addon.",
+            "approves, enables, loads, opens, or executes the add-on.",
         )
         actions = (
             ("Create Project Folder", self.create_project, True),

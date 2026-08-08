@@ -1,4 +1,4 @@
-"""GUI-neutral registration for capability-gated host addon workspaces."""
+"""GUI-neutral registration for capability-gated host add-on workspaces."""
 
 from __future__ import annotations
 

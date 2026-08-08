@@ -1,7 +1,7 @@
 # Migrating from Plugin API 1.0 to 1.1
 
 Plugin API 1.0 remains supported unchanged. Do not rewrite a 1.0 manifest
-unless the addon needs 1.1 interactions.
+unless the add-on needs 1.1 interactions.
 
 Declare API `1.1`, retain stable plugin/contribution IDs, and add explicit
 immutable actions to the existing panel. Start no work in panel construction.

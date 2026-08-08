@@ -72,6 +72,108 @@ class FridaManagerTests(unittest.TestCase):
 
         self.assertFalse(self.make_manager(adb=FakeADB(stopped)).server_running("SERIAL"))
 
+    def test_executable_plain_shell_server_is_discovered_while_stopped(self):
+        selected_serial = "SELECTED"
+        server_path = "/data/local/tmp/frida-server"
+
+        def handler(args, serial, _kwargs):
+            self.assertEqual(serial, selected_serial)
+            joined = " ".join(args)
+            if "for f in" in joined:
+                self.assertEqual(args[:3], ("shell", "sh", "-c"))
+                self.assertIn('if [ -x "$f" ]', joined)
+                self.assertNotIn('] && printf', joined)
+                return CommandResult.from_command(args, 0, stdout=server_path)
+            if args == ("shell", server_path, "--version"):
+                return CommandResult.from_command(args, 0, stdout="17.15.5")
+            if "pidof frida-server" in joined:
+                return CommandResult.from_command(args, 0, stdout="")
+            if "su -c id" in joined:
+                return CommandResult.from_command(args, 0, stdout="uid=0(root)")
+            if args[:2] == ("forward", "--list"):
+                return CommandResult.from_command(args, 0, stdout="")
+            if "chmod 755" in joined:
+                self.assertIn(server_path, joined)
+                self.assertEqual(args[:3], ("shell", "su", "-c"))
+                return CommandResult.from_command(args, 0)
+            return CommandResult.from_command(args, 1, error="unexpected fake command")
+
+        host = FakeRunner(
+            lambda command, _: CommandResult.from_command(
+                command, 0, stdout="17.15.5"
+            )
+        )
+        adb = FakeADB(handler)
+        manager = self.make_manager(adb=adb, runner=host)
+
+        diagnosis = manager.diagnose(selected_serial)
+
+        self.assertEqual(diagnosis.serial, selected_serial)
+        self.assertEqual(diagnosis.server_path, server_path)
+        self.assertEqual(diagnosis.server_version, "17.15.5")
+        self.assertTrue(diagnosis.versions_match)
+        self.assertFalse(diagnosis.server_running)
+        self.assertFalse(diagnosis.reachable)
+        self.assertTrue(any("Start frida-server" in item for item in diagnosis.recommendations))
+
+        result = manager.start_server(selected_serial)
+
+        self.assertTrue(result.ok)
+        self.assertFalse(any(call[1] != selected_serial for call in adb.calls))
+        start_calls = [call for call in adb.calls if "chmod 755" in " ".join(call[0])]
+        self.assertEqual(len(start_calls), 1)
+        self.assertIn(server_path, " ".join(start_calls[0][0]))
+
+    def test_root_hidden_alternate_server_uses_root_probe_and_version_fallback(self):
+        server_path = "/data/adb/frida/frida-server"
+
+        def handler(args, _serial, _kwargs):
+            joined = " ".join(args)
+            if "for f in" in joined:
+                stdout = server_path if args[:3] == ("shell", "su", "-c") else ""
+                return CommandResult.from_command(args, 0, stdout=stdout)
+            if args == ("shell", server_path, "--version"):
+                return CommandResult.from_command(args, 1, error="permission denied")
+            if "--version" in joined and args[:3] == ("shell", "su", "-c"):
+                return CommandResult.from_command(args, 0, stdout="17.15.5")
+            return adb_output(args, _serial, _kwargs)
+
+        manager = self.make_manager(adb=FakeADB(handler))
+        self.assertEqual(manager.locate_server("SERIAL"), server_path)
+        version = manager.server_version("SERIAL", server_path)
+        self.assertTrue(version.ok)
+        self.assertEqual(version.stdout, "17.15.5")
+
+    def test_alternate_local_tmp_path_and_running_state_remain_supported(self):
+        server_path = "/data/local/tmp/frida-server-17.15.5"
+
+        def handler(args, serial, kwargs):
+            if "for f in" in " ".join(args):
+                return CommandResult.from_command(args, 0, stdout=server_path)
+            return adb_output(args, serial, kwargs)
+
+        diagnosis = self.make_manager(adb=FakeADB(handler)).diagnose("SERIAL")
+        self.assertEqual(diagnosis.server_path, server_path)
+        self.assertTrue(diagnosis.server_running)
+        self.assertTrue(diagnosis.reachable)
+
+    def test_missing_binary_and_failed_probe_are_not_false_discoveries(self):
+        def missing(args, _serial, _kwargs):
+            return CommandResult.from_command(args, 0)
+
+        self.assertIsNone(self.make_manager(adb=FakeADB(missing)).locate_server("SERIAL"))
+
+        def failed(args, _serial, _kwargs):
+            return CommandResult.from_command(
+                args, 1, stdout="/data/local/tmp/frida-server", error="transport failed"
+            )
+
+        manager = self.make_manager(adb=FakeADB(failed))
+        self.assertIsNone(manager.locate_server("SERIAL"))
+        start = manager.start_server("SERIAL")
+        self.assertFalse(start.ok)
+        self.assertIn("not found", start.output)
+
     def test_version_match_and_mismatch(self):
         host_match = FakeRunner(lambda command, _: CommandResult.from_command(command, 0, stdout="16.2.1"))
         self.assertTrue(self.make_manager(runner=host_match).diagnose("SERIAL").versions_match)

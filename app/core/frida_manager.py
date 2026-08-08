@@ -90,18 +90,26 @@ class FridaManager:
         self.frida_path = executable
         return self.runner.run((executable, "--version"), timeout=10)
 
-    def server_version(self, serial: str | None) -> CommandResult:
+    def server_version(
+        self, serial: str | None, path: str | None = None
+    ) -> CommandResult:
         if not serial:
             return self._serial_error("frida-server --version")
-        path = self.locate_server(serial)
-        if not path:
+        selected_path = path or self.locate_server(serial)
+        if not selected_path:
             return CommandResult.from_command(
                 ("adb", "-s", serial, "shell", "su", "-c", "frida-server --version"),
                 -1,
                 error="frida-server was not found on the selected device.",
             )
+        result = self.adb.run(
+            "shell", selected_path, "--version", serial=serial, timeout=10,
+        )
+        if result.ok:
+            return result
+        command = f"{shlex.quote(selected_path)} --version"
         return self.adb.run(
-            "shell", "su", "-c", f"{shlex.quote(path)} --version",
+            "shell", "su", "-c", shlex.quote(command),
             serial=serial, timeout=10,
         )
 
@@ -109,7 +117,8 @@ class FridaManager:
         if not serial:
             return False
         result = self.adb.run(
-            "shell", "su", "-c", "pidof frida-server", serial=serial, timeout=8
+            "shell", "su", "-c", shlex.quote("pidof frida-server"),
+            serial=serial, timeout=8,
         )
         return result.ok and bool(result.stdout.strip())
 
@@ -119,15 +128,21 @@ class FridaManager:
         command = (
             "for f in /data/local/tmp/frida-server "
             "/data/local/tmp/frida-server-* /data/adb/frida/frida-server; "
-            "do [ -f \"$f\" ] && printf '%s\\n' \"$f\"; done"
+            "do if [ -x \"$f\" ]; then printf '%s\\n' \"$f\"; fi; done"
         )
-        result = self.adb.run("shell", "su", "-c", command, serial=serial, timeout=10)
-        if not result.ok:
-            return None
-        for line in result.stdout.splitlines():
-            path = line.strip()
-            if path in self.SERVER_PATHS or path.startswith("/data/local/tmp/frida-server-"):
-                return path
+        quoted_command = shlex.quote(command)
+        probes = (
+            ("shell", "sh", "-c", quoted_command),
+            ("shell", "su", "-c", quoted_command),
+        )
+        for probe in probes:
+            result = self.adb.run(*probe, serial=serial, timeout=10)
+            if not result.ok:
+                continue
+            for line in result.stdout.splitlines():
+                path = line.strip()
+                if path in self.SERVER_PATHS or path.startswith("/data/local/tmp/frida-server-"):
+                    return path
         return None
 
     def root_available(self, serial: str | None) -> bool:
@@ -257,7 +272,10 @@ class FridaManager:
             )
         quoted = shlex.quote(selected_path)
         command = f"chmod 755 {quoted} && {quoted} >/dev/null 2>&1 &"
-        result = self.adb.run("shell", "su", "-c", command, serial=serial, timeout=12)
+        result = self.adb.run(
+            "shell", "su", "-c", shlex.quote(command),
+            serial=serial, timeout=12,
+        )
         address_in_use = "address already in use" in result.output.casefold()
         if address_in_use and self._expected_server_ready(serial, selected_path):
             return CommandResult.from_command(result.command, 0, stdout="Frida server is already running.")
@@ -302,7 +320,7 @@ class FridaManager:
         running = self.server_running(serial) if adb_available else False
         path = self.locate_server(serial) if adb_available else None
         host_result = self.host_version()
-        server_result = self.server_version(serial) if path else None
+        server_result = self.server_version(serial, path) if path else None
         host_version = self._extract_version(host_result.stdout) if host_result.ok else None
         server_version = self._extract_version(server_result.stdout) if server_result and server_result.ok else None
         match = host_version == server_version if host_version and server_version else None

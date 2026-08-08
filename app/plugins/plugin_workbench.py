@@ -515,7 +515,7 @@ class PluginWorkbenchAnalyzer:
                 "CON006", "information", "Contributions",
                 "No contributions are declared",
                 "The package declares no host-visible contribution.",
-                "Declare a supported contribution if the addon should appear in the host.",
+                "Declare a supported contribution if the add-on should appear in the host.",
                 "manifest.json",
             ))
         return findings
@@ -845,7 +845,7 @@ class PluginWorkbenchAnalyzer:
             "official plugin ID is reserved."
             if template else
             "This local third-party candidate uses a plugin ID reserved by the "
-            "bundled official addon catalog, so production installation will reject it."
+            "bundled official add-on catalog, so production installation will reject it."
         )
         remediation = "Choose a new stable plugin ID before installation."
         if template:

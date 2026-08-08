@@ -141,6 +141,25 @@ class ContextHelpWindow(ctk.CTkToplevel):
     def _set_text(widget, text):
         widget.replace(text)
 
+    @staticmethod
+    def format_topic(topic):
+        sections = (
+            ("Purpose", (topic.purpose,)),
+            ("Prerequisites", topic.prerequisites),
+            ("Quick Start", topic.quick_start),
+            ("Controls", topic.controls),
+            ("Terminology", topic.terminology),
+            ("Empty States", topic.empty_states),
+            ("Common Errors", topic.common_errors),
+            ("Safe Example", (topic.safe_example,)),
+            ("Related Tools", topic.related_tools),
+            ("Guided / Advanced", (topic.mode_notes,)),
+        )
+        text = topic.title + "\n" + "=" * len(topic.title)
+        for title, values in sections:
+            text += f"\n\n{title}\n" + "\n".join(f"• {value}" for value in values)
+        return text
+
     def _search_changed(self):
         self._render_topic_list()
         self._render_glossary()
@@ -201,24 +220,7 @@ class ContextHelpWindow(ctk.CTkToplevel):
         self.mode_label.configure(
             text=f"Interface mode: {self.interface_mode_provider().title()}"
         )
-        sections = (
-            ("Purpose", (topic.purpose,)),
-            ("Prerequisites", topic.prerequisites),
-            ("Quick Start", topic.quick_start),
-            ("Controls", topic.controls),
-            ("Terminology", topic.terminology),
-            ("Empty States", topic.empty_states),
-            ("Common Errors", topic.common_errors),
-            ("Safe Example", (topic.safe_example,)),
-            ("Related Tools", topic.related_tools),
-            ("Guided / Advanced", (topic.mode_notes,)),
-        )
-        text = topic.title + "\n" + "=" * len(topic.title)
-        for title, values in sections:
-            text += f"\n\n{title}\n" + "\n".join(
-                f"• {value}" for value in values
-            )
-        self._set_text(self.topic_text, text)
+        self._set_text(self.topic_text, self.format_topic(topic))
         self.tabs.set("Topics")
         self._render_topic_list()
         self.deiconify()
