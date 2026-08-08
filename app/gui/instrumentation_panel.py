@@ -198,6 +198,18 @@ class InstrumentationPanel(ctk.CTkFrame):
         ).grid(row=0, column=0, columnspan=2, sticky="ew", padx=12, pady=(10, 6))
         return frame
 
+    def _target_section(self, parent, title: str):
+        frame = ctk.CTkFrame(
+            parent, fg_color="transparent", border_width=0, corner_radius=0,
+        )
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=(8, 10))
+        frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            frame, text=title, text_color=self.theme["gold"],
+            font=self.theme["header_font"], anchor="w",
+        ).grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=(2, 8))
+        return frame
+
     def _value_row(self, parent, row: int, title: str, initial: str = "Unknown", wrap=430):
         ctk.CTkLabel(
             parent, text=f"{title}:", text_color=self.theme["muted"], anchor="nw",
@@ -305,8 +317,7 @@ class InstrumentationPanel(ctk.CTkFrame):
 
     def _build_target_browser(self, parent):
         self.target_sources = ctk.CTkTabview(
-            parent, fg_color=self.theme["panel"], border_width=1,
-            border_color=self.theme["border"],
+            parent, fg_color="transparent", border_width=0, corner_radius=0,
             segmented_button_fg_color=self.theme["panel_alt"],
             segmented_button_selected_color=self.theme["red"],
             segmented_button_selected_hover_color=self.theme["red_hover"],
@@ -318,17 +329,29 @@ class InstrumentationPanel(ctk.CTkFrame):
         installed_tab = self.target_sources.add("Installed Applications")
         runtime_tab = self.target_sources.add("Runtime Targets")
         for tab in (installed_tab, runtime_tab):
-            tab.configure(fg_color=self.theme["bg"])
+            tab.configure(fg_color="transparent")
             tab.grid_rowconfigure(0, weight=1)
             tab.grid_columnconfigure(0, weight=1)
         self._build_installed_browser(installed_tab)
 
-        frame = self._section(runtime_tab, "Runtime Targets — Frida-backed", 0, 0)
+        frame = self._target_section(runtime_tab, "Runtime Targets — Frida-backed")
+        self.runtime_targets_workspace = frame
         frame.grid_rowconfigure(2, weight=1)
         frame.grid_columnconfigure(0, weight=3)
         frame.grid_columnconfigure(1, weight=2)
-        toolbar = ctk.CTkFrame(frame, fg_color="transparent")
-        toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=4)
+        self.runtime_targets_actions = ctk.CTkFrame(
+            frame, fg_color=self.theme["panel_alt"], border_width=0,
+            corner_radius=7,
+        )
+        self.runtime_targets_actions.grid(
+            row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8)
+        )
+        self.runtime_targets_actions.grid_columnconfigure(0, weight=1)
+        toolbar = ctk.CTkFrame(
+            self.runtime_targets_actions, fg_color="transparent",
+            border_width=0, corner_radius=0,
+        )
+        toolbar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 3))
         toolbar.grid_columnconfigure(0, weight=1)
         self.search_entry = ctk.CTkEntry(
             toolbar, placeholder_text="Search name, identifier, or PID...",
@@ -346,19 +369,28 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.target_type.grid(row=0, column=1, padx=4)
         self.target_type.set("All")
-        self.refresh_targets_button = self._button(
-            toolbar, "Scan Running Processes", self.refresh_targets, 0, 2, track=False
+        action_row = ctk.CTkFrame(
+            self.runtime_targets_actions, fg_color="transparent",
+            border_width=0, corner_radius=0,
         )
-        self._button(toolbar, "Clear Search", self.clear_search, 0, 3)
+        action_row.grid(row=1, column=0, sticky="ew", padx=8, pady=(3, 8))
+        action_row.grid_columnconfigure(0, weight=1)
+        action_row.grid_columnconfigure(1, weight=1)
+        action_row.grid_columnconfigure(2, weight=1)
+        self.refresh_targets_button = self._button(
+            action_row, "Scan Running Processes", self.refresh_targets, 0, 0,
+            track=False,
+        )
+        self._button(action_row, "Clear Search", self.clear_search, 0, 1)
         self.target_count = ctk.CTkLabel(
-            toolbar, text="0 targets", text_color=self.theme["gold"],
+            action_row, text="0 targets", text_color=self.theme["gold"],
             font=("Segoe UI", 12, "bold"),
         )
-        self.target_count.grid(row=0, column=4, padx=8)
+        self.target_count.grid(row=0, column=2, sticky="e", padx=8)
 
         self.target_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
-            border_width=1, border_color=self.theme["border"],
+            border_width=0,
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
@@ -384,17 +416,29 @@ class InstrumentationPanel(ctk.CTkFrame):
             details, text="Copy Version Guidance", command=self.copy_version_guidance,
             fg_color=self.theme["panel_alt"], hover_color=self.theme["red"],
             text_color=self.theme["text"], border_width=1,
-            border_color=self.theme["gold_dark"], state="disabled",
+            border_color=self.theme["gold_dark"], state="disabled", width=180,
         )
         self.copy_guidance_button.grid(row=6, column=0, columnspan=2, sticky="e", padx=12, pady=(0, 8))
 
     def _build_installed_browser(self, parent):
-        frame = self._section(
-            parent, "Installed Applications — ADB-backed (Frida not required)", 0, 0
+        frame = self._target_section(
+            parent, "Installed Applications — ADB-backed (Frida not required)"
         )
-        frame.grid_rowconfigure(3, weight=1)
-        toolbar = ctk.CTkFrame(frame, fg_color="transparent")
-        toolbar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=4)
+        self.installed_targets_workspace = frame
+        frame.grid_rowconfigure(2, weight=1)
+        self.installed_targets_actions = ctk.CTkFrame(
+            frame, fg_color=self.theme["panel_alt"], border_width=0,
+            corner_radius=7,
+        )
+        self.installed_targets_actions.grid(
+            row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8)
+        )
+        self.installed_targets_actions.grid_columnconfigure(0, weight=1)
+        toolbar = ctk.CTkFrame(
+            self.installed_targets_actions, fg_color="transparent",
+            border_width=0, corner_radius=0,
+        )
+        toolbar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 3))
         toolbar.grid_columnconfigure(0, weight=1)
         self.installed_search = ctk.CTkEntry(
             toolbar, placeholder_text="Search application or package ID...",
@@ -418,17 +462,27 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.installed_type.grid(row=0, column=1, padx=4)
         self.installed_type.set("All")
+        buttons = ctk.CTkFrame(
+            self.installed_targets_actions, fg_color="transparent",
+            border_width=0, corner_radius=0,
+        )
+        buttons.grid(row=1, column=0, sticky="ew", padx=8, pady=3)
+        for column in range(3):
+            buttons.grid_columnconfigure(column, weight=1)
         self.scan_installed_button = self._button(
-            toolbar, "Scan Installed Apps", self.scan_installed_apps, 0, 2,
+            buttons, "Scan Installed Apps", self.scan_installed_apps, 0, 0,
             track=False,
         )
         self._button(
-            toolbar, "Guided Instrumentation Setup", self._open_guided_setup, 0, 3
+            buttons, "Guided Instrumentation Setup", self._open_guided_setup, 0, 1
         )
-        self._button(toolbar, "Help", lambda: self._open_help("targets"), 0, 4)
+        self._button(buttons, "Help", lambda: self._open_help("targets"), 0, 2)
 
-        filters = ctk.CTkFrame(frame, fg_color="transparent")
-        filters.grid(row=2, column=0, columnspan=2, sticky="ew", padx=12, pady=2)
+        filters = ctk.CTkFrame(
+            self.installed_targets_actions, fg_color="transparent",
+            border_width=0, corner_radius=0,
+        )
+        filters.grid(row=2, column=0, sticky="ew", padx=12, pady=(3, 8))
         self.launchable_only = ctk.BooleanVar(value=False)
         self.running_only = ctk.BooleanVar(value=False)
         for column, (text, variable) in enumerate((
@@ -451,13 +505,13 @@ class InstrumentationPanel(ctk.CTkFrame):
 
         self.installed_list = ScopedScrollableFrame(
             frame, fg_color=self.theme["terminal_bg"],
-            border_width=1, border_color=self.theme["border"],
+            border_width=0,
             scrollbar_button_color=self.theme["gold_dark"],
             scrollbar_button_hover_color=self.theme["red_hover"],
         )
         self.installed_list.grid(
-            row=3, column=0, columnspan=2, sticky="nsew",
-            padx=12, pady=(5, 10),
+            row=2, column=0, columnspan=2, sticky="nsew",
+            padx=4, pady=(0, 2),
         )
         self.installed_list.grid_columnconfigure(0, weight=1)
         self._render_installed_apps()
