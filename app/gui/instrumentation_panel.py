@@ -95,9 +95,9 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self._build_summary_header()
         self._build_workspace()
-        self._build_toolchain_section(self.overview_tab)
-        self._build_frida_section(self.overview_tab)
-        self._build_overview_notice(self.overview_tab)
+        self._build_toolchain_section(self.overview_scroll)
+        self._build_frida_section(self.overview_scroll)
+        self._build_overview_notice(self.overview_scroll)
         self._build_target_browser(self.targets_tab)
         self._build_session_section(self.sessions_tab)
         self._build_results_section(self.results_tab)
@@ -179,11 +179,21 @@ class InstrumentationPanel(ctk.CTkFrame):
         for tab in (self.overview_tab, self.targets_tab, self.sessions_tab, self.results_tab):
             tab.configure(fg_color=self.theme["bg"])
             tab.grid_columnconfigure(0, weight=1)
-        self.overview_tab.grid_columnconfigure(1, weight=1)
-        self.overview_tab.grid_rowconfigure(1, weight=1)
+        self.overview_tab.grid_rowconfigure(0, weight=1)
         self.targets_tab.grid_rowconfigure(0, weight=1)
         self.sessions_tab.grid_rowconfigure(0, weight=1)
         self.results_tab.grid_rowconfigure(0, weight=1)
+        self.overview_scroll = ScopedScrollableFrame(
+            self.overview_tab, fg_color="transparent", border_width=0,
+            corner_radius=0,
+            scrollbar_button_color=self.theme["gold_dark"],
+            scrollbar_button_hover_color=self.theme["red_hover"],
+        )
+        self.overview_scroll.grid(
+            row=0, column=0, sticky="nsew", padx=0, pady=0,
+        )
+        self.overview_scroll.grid_columnconfigure(0, weight=1)
+        self.overview_scroll.grid_columnconfigure(1, weight=1)
 
     def _section(self, parent, title: str, row: int, column: int = 0, columnspan: int = 1):
         frame = ctk.CTkFrame(
@@ -1257,6 +1267,7 @@ class InstrumentationPanel(ctk.CTkFrame):
             text = "\n".join(plan.errors)
             self.session_notice.configure(text=text, text_color=self.theme["error"])
             self._append_results("Objection validation", text)
+            self._reveal_validation_results()
             return
         descriptor = plan.descriptor
         self._run_operation(
@@ -1273,6 +1284,7 @@ class InstrumentationPanel(ctk.CTkFrame):
             text=text, text_color=self.theme["success"] if readiness.ready else self.theme["error"]
         )
         self._append_results("Objection validation", text)
+        self._reveal_validation_results()
 
     def launch_objection(self, spawn: bool):
         plan = self._build_objection_plan(spawn)
@@ -1445,6 +1457,8 @@ class InstrumentationPanel(ctk.CTkFrame):
     def _report_failure(self, title: str, error: str):
         message = error or "Operation failed."
         self._append_results(f"{title} failed", message)
+        if "validation" in title.casefold():
+            self._reveal_validation_results()
         self.overview_notice.configure(text=f"{title}: {message}")
         if "session" in title.casefold() or "objection" in title.casefold():
             self.session_notice.configure(text=message, text_color=self.theme["error"])
@@ -1505,6 +1519,9 @@ class InstrumentationPanel(ctk.CTkFrame):
         self.results_source.configure(text=f"Source: {title}")
         self.results.insert("end", f"\n=== {title} ===\n{text}\n")
         self.results.see("end")
+
+    def _reveal_validation_results(self):
+        self.internal_workspace.set("Results")
 
     def copy_results(self):
         text = self.results.get("1.0", "end").strip()
