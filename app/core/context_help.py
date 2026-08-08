@@ -132,7 +132,10 @@ TOPICS = (
         controls=("Preview produces argv without launching.", "Validate runs bounded readiness checks; launch remains a separate confirmation."),
         terminology=("attach", "spawn", "endpoint"),
         empty_states=("Without a selected target, preview and launch controls remain unavailable.",),
-        common_errors=("Attach requires a running target; spawn requires an application identifier.", "A broken Objection executable is not ready even when its path exists."),
+        common_errors=(
+            "Attach requires the selected app/process to already be running. Open or otherwise start it on the device first. Spawn starts a non-running target.",
+            "A broken Objection executable is not ready even when its path exists.",
+        ),
         example="Preview an attach to the selected running app, validate it, then launch the reviewed session.",
         related=("Sessions Center", "Script Studio"),
     ),

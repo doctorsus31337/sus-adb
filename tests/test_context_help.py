@@ -48,6 +48,17 @@ class ContextHelpTests(unittest.TestCase):
             registry.search_topics("one-shot")[0].topic_id, "console"
         )
 
+    def test_sessions_help_explains_objection_attach_and_spawn_prerequisites(self):
+        sessions = HelpRegistry().get("sessions")
+        self.assertIsNotNone(sessions)
+        guidance = " ".join(sessions.common_errors)
+        self.assertIn(
+            "Attach requires the selected app/process to already be running.",
+            guidance,
+        )
+        self.assertIn("Open or otherwise start it on the device first.", guidance)
+        self.assertIn("Spawn starts a non-running target.", guidance)
+
 
 if __name__ == "__main__":
     unittest.main()

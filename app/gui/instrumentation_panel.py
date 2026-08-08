@@ -32,6 +32,20 @@ from app.gui.instrumentation_reference_window import InstrumentationReferenceWin
 
 class InstrumentationPanel(ctk.CTkFrame):
     INSTALLED_RENDER_BATCH_SIZE = 20
+    OBJECTION_SESSION_GUIDANCE = (
+        "Attach requires the selected app/process to already be running. Open or "
+        "otherwise start it on the device first. Spawn starts a non-running target."
+    )
+    FRIDA_HEADER_STATES = {
+        "Missing": "Server missing",
+        "Stopped": "Server stopped",
+        "Starting": "Server starting",
+        "Stopping": "Server stopping",
+        "Running": "Server running",
+        "Unreachable": "Server unreachable",
+        "Version mismatch": "Version mismatch",
+        "Command failed": "Command failed",
+    }
 
     def __init__(
         self,
@@ -50,6 +64,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         help_callback: Callable[[str], object] | None = None,
         guided_setup_callback: Callable[[], object] | None = None,
         ui_dispatch: Callable[..., None] | None = None,
+        frida_status_callback: Callable[[str | None, str, bool | None], object] | None = None,
     ):
         super().__init__(parent, fg_color=theme["bg"], corner_radius=0)
         self.theme = theme
@@ -67,6 +82,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         )
         self.help_callback = help_callback
         self.guided_setup_callback = guided_setup_callback
+        self.frida_status_callback = frida_status_callback
         self.dispatch = ui_dispatch or (
             lambda callback, *args: self.after(0, callback, *args)
         )
@@ -617,24 +633,32 @@ class InstrumentationPanel(ctk.CTkFrame):
             objection_buttons, text="Objection Sessions", text_color=self.theme["gold"],
             font=("Segoe UI", 13, "bold"),
         ).grid(row=0, column=0, columnspan=3, sticky="ew", pady=(7, 2))
+        self.objection_session_guidance = ctk.CTkLabel(
+            objection_buttons, text=self.OBJECTION_SESSION_GUIDANCE,
+            text_color=self.theme["muted"], font=("Segoe UI", 11),
+            justify="left", anchor="w", wraplength=430,
+        )
+        self.objection_session_guidance.grid(
+            row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=(1, 4)
+        )
         self.objection_preview_button = self._button(
-            objection_buttons, "Preview Command", self.preview_objection, 1, 0
+            objection_buttons, "Preview Command", self.preview_objection, 2, 0
         )
         self.objection_validate_button = self._button(
-            objection_buttons, "Validate", self.validate_objection, 1, 1
+            objection_buttons, "Validate", self.validate_objection, 2, 1
         )
         self.objection_attach_button = self._button(
-            objection_buttons, "Attach", lambda: self.launch_objection(False), 1, 2
+            objection_buttons, "Attach", lambda: self.launch_objection(False), 2, 2
         )
         self.objection_spawn_button = self._button(
-            objection_buttons, "Spawn", lambda: self.launch_objection(True), 2, 0
+            objection_buttons, "Spawn", lambda: self.launch_objection(True), 3, 0
         )
         self.objection_copy_button = self._button(
-            objection_buttons, "Copy Command", lambda: self.copy_preview("objection"), 2, 1
+            objection_buttons, "Copy Command", lambda: self.copy_preview("objection"), 3, 1
         )
         self.open_grimoire_session_button = self._button(
             objection_buttons, "Command Reference", self.open_reference_window,
-            2, 2,
+            3, 2,
         )
 
         self.command_preview = ReadOnlyTextView(
@@ -709,13 +733,38 @@ class InstrumentationPanel(ctk.CTkFrame):
 
     def diagnose_frida(self):
         serial = self._serial()
-        self._run_operation("Frida diagnostics", lambda: self.frida.diagnose(serial), self._show_frida_diagnosis)
+        self._run_operation(
+            "Frida diagnostics", lambda: self.frida.diagnose(serial),
+            self._show_frida_diagnosis,
+            failure_callback=lambda _error: self._set_frida_status(
+                "Command failed", serial=serial
+            ),
+        )
+
+    @staticmethod
+    def _frida_status_from_diagnosis(diagnosis: FridaDiagnosis) -> tuple[str, bool]:
+        if not diagnosis.server_running:
+            return ("Missing" if not diagnosis.server_path else "Stopped"), False
+        if diagnosis.versions_match is False:
+            return "Version mismatch", True
+        if not diagnosis.reachable:
+            return "Unreachable", True
+        return "Running", True
+
+    def _set_frida_status(
+        self, status: str, running: bool | None = None, serial: str | None = None
+    ):
+        rendered = self.FRIDA_HEADER_STATES[status]
+        self.frida_labels["running"].configure(text=rendered)
+        self.summary_labels["server"].configure(text=rendered)
+        if self.frida_status_callback:
+            operation_serial = serial or (self.device.serial if self.device else None)
+            self.frida_status_callback(operation_serial, status, running)
 
     def _show_frida_diagnosis(self, diagnosis: FridaDiagnosis):
         self._last_diagnosis = diagnosis
         values = {
             "path": diagnosis.server_path or "Not found",
-            "running": "Server running" if diagnosis.server_running else "Server stopped",
             "version": diagnosis.server_version or "Unknown",
             "match": self._state(diagnosis.versions_match),
             "27042": self._state(diagnosis.port_27042),
@@ -724,10 +773,9 @@ class InstrumentationPanel(ctk.CTkFrame):
         }
         for name, value in values.items():
             self.frida_labels[name].configure(text=value)
+        status, running = self._frida_status_from_diagnosis(diagnosis)
+        self._set_frida_status(status, running, diagnosis.serial)
         self.summary_labels["root"].configure(text=self._state(diagnosis.root_available))
-        self.summary_labels["server"].configure(
-            text="Server running" if diagnosis.server_running else "Server stopped"
-        )
         self.summary_labels["reachable"].configure(text=self._state(diagnosis.reachable))
         self.summary_labels["versions"].configure(
             text="Match" if diagnosis.versions_match is True
@@ -761,26 +809,29 @@ class InstrumentationPanel(ctk.CTkFrame):
     def _lifecycle(self, action: str, operation):
         serial = self._serial()
         if action in {"Start", "Restart"}:
-            self.frida_labels["running"].configure(text="Server starting")
-            self.summary_labels["server"].configure(text="Server starting")
+            self._set_frida_status("Starting", serial=serial)
+        elif action == "Stop":
+            self._set_frida_status("Stopping", serial=serial)
         self._run_operation(
             f"{action} Frida server", lambda: operation(serial),
-            lambda value: self._complete_lifecycle(value, action),
+            lambda value: self._complete_lifecycle(value, action, serial),
+            failure_callback=lambda _error: self._set_frida_status(
+                "Command failed", serial=serial
+            ),
         )
 
-    def _complete_lifecycle(self, value, action):
+    def _complete_lifecycle(self, value, action, serial=None):
         results = value if isinstance(value, tuple) else (value,)
         already = any(isinstance(result, CommandResult) and "already running" in result.output.casefold() for result in results)
         if already:
-            state = "Server already running"
+            status, running = "Running", True
         elif action in {"Start", "Restart"} and all(result.ok for result in results):
-            state = "Server running"
+            status, running = "Running", True
         elif action == "Stop" and all(result.ok for result in results):
-            state = "Server stopped"
+            status, running = "Stopped", False
         else:
-            state = "Target discovery unavailable"
-        self.frida_labels["running"].configure(text=state)
-        self.summary_labels["server"].configure(text=state)
+            status, running = "Command failed", None
+        self._set_frida_status(status, running, serial)
         self._complete_stale_operation(value, "Frida server state changed")
 
     def repair_forwarding(self):
@@ -1380,7 +1431,7 @@ class InstrumentationPanel(ctk.CTkFrame):
         target = self.selected_target
         return (target.identifier or target.name) if target else ""
 
-    def _run_operation(self, title: str, target, callback):
+    def _run_operation(self, title: str, target, callback, failure_callback=None):
         if self._busy:
             self.log("[BUSY] An instrumentation operation is already running.")
             return
@@ -1396,14 +1447,16 @@ class InstrumentationPanel(ctk.CTkFrame):
         BackgroundWorker(
             guarded,
             callback=lambda outcome: self.dispatch(
-                self._finish_operation, title, outcome, callback
+                self._finish_operation, title, outcome, callback, failure_callback
             ),
         ).start()
 
-    def _finish_operation(self, title: str, outcome, callback):
+    def _finish_operation(self, title: str, outcome, callback, failure_callback=None):
         self._set_busy(False)
         success, value = outcome
         if not success:
+            if failure_callback:
+                failure_callback(value)
             self._report_failure(title, str(value))
             return
         callback(value)

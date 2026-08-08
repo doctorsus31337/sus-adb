@@ -616,7 +616,17 @@ class SusADBWindow(ctk.CTk):
             help_callback=self.open_context_help,
             guided_setup_callback=self.open_guided_setup,
             ui_dispatch=self.call_on_ui,
+            frida_status_callback=self._apply_instrumentation_frida_status,
         )
+
+    def _apply_instrumentation_frida_status(self, serial, status, running):
+        selected = self.devices.selected
+        if selected is None or selected.serial != serial:
+            return
+        if running is not None:
+            selected.frida = running
+        self.status_bar.set_status(frida=status)
+        self._publish_host_state("frida-status-changed")
 
     def _construct_scripts(self, parent):
         from app.gui.script_studio_panel import ScriptStudioPanel

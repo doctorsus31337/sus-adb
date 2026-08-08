@@ -147,6 +147,7 @@ def main():
     frida = FakeFrida()
     objection = FakeObjection()
     interactive = FakeInteractiveSessions()
+    frida_statuses = []
     inert = SimpleNamespace()
     panel = InstrumentationPanel(
         root,
@@ -158,6 +159,9 @@ def main():
         inert,
         lambda _message: None,
         interactive_sessions=interactive,
+        frida_status_callback=lambda serial, status, running: frida_statuses.append(
+            (serial, status, running)
+        ),
     )
     panel.pack(fill="both", expand=True)
     assert panel.overview_scroll.cget("border_width") == 0
@@ -202,6 +206,7 @@ def main():
         "Yes",
     )
     assert tuple(widget.cget("text") for widget in action_widgets) == FRIDA_ACTIONS
+    assert frida_statuses == [("fixture-serial", "Running", True)]
 
     geometry_results = []
     viewport = panel.overview_scroll._parent_canvas
@@ -247,6 +252,11 @@ def main():
     panel._run_operation = run_synchronously
     panel.internal_workspace.set("Sessions")
     settle_tab_transition(root)
+    assert panel.objection_session_guidance.winfo_ismapped()
+    assert panel.objection_session_guidance.cget("text") == (
+        "Attach requires the selected app/process to already be running. Open or "
+        "otherwise start it on the device first. Spawn starts a non-running target."
+    )
     validate_button.invoke()
     settle_tab_transition(root)
     assert panel.internal_workspace.get() == "Results"
@@ -286,7 +296,7 @@ def main():
         "instrumentation-readiness-smoke=PASS "
         f"sizes={geometry_results} frida-fields=7 frida-actions=7 "
         "start-server-route=existing validation-success-failure=visible "
-        "session-launches=0"
+        "status-synchronized=1 objection-guidance=visible session-launches=0"
     )
     return 0
 
